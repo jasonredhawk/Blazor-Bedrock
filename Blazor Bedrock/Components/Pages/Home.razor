@@ -1,0 +1,38 @@
+﻿@page "/"
+@using MudBlazor
+
+<PageTitle>Home</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h3" Class="mb-4">Welcome to Blazor Bedrock</MudText>
+    
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Multi-Tenant Application</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        This is a comprehensive bedrock application with multi-tenant support, 
+                        user management, role-based permissions, and modular architecture.
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.h6">Features</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        <ul>
+                            <li>User & Role Management</li>
+                            <li>ChatGPT Integration</li>
+                            <li>Stripe Payments</li>
+                            <li>Migration Management</li>
+                            <li>Application Logger</li>
+                        </ul>
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>

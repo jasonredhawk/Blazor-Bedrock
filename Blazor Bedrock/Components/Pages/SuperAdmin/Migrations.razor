@@ -1,0 +1,201 @@
+@page "/superadmin/migrations"
+@using Blazor_Bedrock.Services.Migrations
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject IMigrationService MigrationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Migration Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Migration Management</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog"
+                   Class="mb-4">
+            Create Migration
+        </MudButton>
+
+        <MudGrid>
+            @foreach (var migration in _migrations)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard Elevation="2">
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">@migration.Name</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-2">@migration.Description</MudText>
+                            <MudText Typo="Typo.caption" Class="mt-2">Version: @migration.Version</MudText>
+                            <MudChip Size="Size.Small" 
+                                     Color="@GetStatusColor(migration.Status)" 
+                                     Variant="Variant.Filled"
+                                     T="string"
+                                     Class="mt-2">
+                                @migration.Status
+                            </MudChip>
+                            @if (migration.ExecutedAt.HasValue)
+                            {
+                                <MudText Typo="Typo.caption" Class="mt-2">
+                                    Executed: @migration.ExecutedAt.Value.ToString("g")
+                                </MudText>
+                            }
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Size="Size.Small" 
+                                       Variant="Variant.Text"
+                                       OnClick="() => ViewMigration(migration.Id)">
+                                View
+                            </MudButton>
+                            @if (migration.Status == MigrationStatus.Pending)
+                            {
+                                <MudButton Size="Size.Small" 
+                                           Variant="Variant.Filled"
+                                           Color="Color.Success"
+                                           OnClick="() => ExecuteMigration(migration.Id)">
+                                    Execute
+                                </MudButton>
+                            }
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+</MudContainer>
+
+<MudDialog @bind-IsVisible="_showCreateDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create Migration</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_newMigration.Name" 
+                      Label="Name" 
+                      Variant="Variant.Outlined" 
+                      Required="true"
+                      Class="mb-4" />
+        <MudTextField @bind-Value="_newMigration.Description" 
+                      Label="Description" 
+                      Variant="Variant.Outlined" 
+                      Lines="3"
+                      Class="mb-4" />
+        <MudTextField @bind-Value="_newMigration.Version" 
+                      Label="Version" 
+                      Variant="Variant.Outlined" 
+                      Required="true"
+                      Class="mb-4" />
+        <MudTextField @bind-Value="_newMigration.SqlScript" 
+                      Label="SQL Script" 
+                      Variant="Variant.Outlined" 
+                      Lines="10"
+                      Required="true"
+                      Class="mb-4" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCreateDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateMigration">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<MigrationEntry> _migrations = new();
+    private bool _showCreateDialog = false;
+    private MigrationModel _newMigration = new();
+
+    private class MigrationModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
+        public string SqlScript { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMigrationsAsync();
+    }
+
+    private async Task LoadMigrationsAsync()
+    {
+        _migrations = await MigrationService.GetAllMigrationsAsync();
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newMigration = new MigrationModel();
+        _showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog()
+    {
+        _showCreateDialog = false;
+    }
+
+    private async Task CreateMigration()
+    {
+        try
+        {
+            await MigrationService.CreateMigrationAsync(
+                _newMigration.Name,
+                _newMigration.Description,
+                _newMigration.Version,
+                _newMigration.SqlScript);
+            
+            Snackbar.Add("Migration created successfully", Severity.Success);
+            _showCreateDialog = false;
+            await LoadMigrationsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExecuteMigration(int migrationId)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var executedBy = authState.User?.Identity?.Name ?? "System";
+        
+        try
+        {
+            var success = await MigrationService.ExecuteMigrationAsync(migrationId, executedBy);
+            if (success)
+            {
+                Snackbar.Add("Migration executed successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Migration execution failed", Severity.Error);
+            }
+            await LoadMigrationsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ViewMigration(int migrationId)
+    {
+        // Could open a dialog to view full migration details
+    }
+
+    private Color GetStatusColor(MigrationStatus status)
+    {
+        return status switch
+        {
+            MigrationStatus.Pending => Color.Default,
+            MigrationStatus.Running => Color.Info,
+            MigrationStatus.Completed => Color.Success,
+            MigrationStatus.Failed => Color.Error,
+            _ => Color.Default
+        };
+    }
+}
+

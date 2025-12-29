@@ -1,0 +1,205 @@
+@using Blazor_Bedrock.Services.Logger
+@using Microsoft.JSInterop
+@using MudBlazor
+@inject IApplicationLoggerService LoggerService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+@if (_isVisible)
+{
+    <MudPaper Elevation="10" 
+              Class="application-logger" 
+              Style="@GetLoggerStyle()">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="pa-2" Style="border-bottom: 1px solid var(--mud-palette-divider);">
+            <MudText Typo="Typo.body2" Class="ml-2">Application Logger (@_logs.Count)</MudText>
+            <div>
+                <MudIconButton Icon="@Icons.Material.Filled.FilterList" 
+                               Size="Size.Small" 
+                               OnClick="ToggleFilter" 
+                               Color="@(_showFilter ? Color.Primary : Color.Default)" />
+                <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" 
+                               Size="Size.Small" 
+                               OnClick="ToggleExpanded" />
+                <MudIconButton Icon="@Icons.Material.Filled.Clear" 
+                               Size="Size.Small" 
+                               OnClick="ClearLogs" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" 
+                               Size="Size.Small" 
+                               OnClick="HideLogger" />
+            </div>
+        </MudStack>
+        
+        @if (_showFilter)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2" Style="border-bottom: 1px solid var(--mud-palette-divider);">
+                <MudSelect @bind-Value="_selectedLevel" 
+                           Label="Log Level" 
+                           Variant="Variant.Outlined" 
+                           Dense="true"
+                           Style="width: 150px;"
+                           T="LogLevel?">
+                    <MudSelectItem Value="@((LogLevel?)null)">All</MudSelectItem>
+                    <MudSelectItem Value="@LogLevel.Information">Information</MudSelectItem>
+                    <MudSelectItem Value="@LogLevel.Warning">Warning</MudSelectItem>
+                    <MudSelectItem Value="@LogLevel.Error">Error</MudSelectItem>
+                    <MudSelectItem Value="@LogLevel.Debug">Debug</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_searchText" 
+                              Label="Search" 
+                              Variant="Variant.Outlined" 
+                              Dense="true"
+                              Immediate="true"
+                              Style="width: 200px;"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search" />
+            </MudStack>
+        }
+        
+        @if (_isExpanded)
+        {
+            <MudScrollContainer Style="height: calc(100% - 100px); overflow-y: auto;">
+                <MudTable Items="@FilteredLogs" Dense="true" Hover="true" Striped="true">
+                    <ColGroup>
+                        <col style="width: 150px;" />
+                        <col style="width: 100px;" />
+                        <col style="width: 150px;" />
+                        <col />
+                    </ColGroup>
+                    <HeaderContent>
+                        <MudTh>Timestamp</MudTh>
+                        <MudTh>Level</MudTh>
+                        <MudTh>Category</MudTh>
+                        <MudTh>Message</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Timestamp">@context.Timestamp.ToString("HH:mm:ss.fff")</MudTd>
+                        <MudTd DataLabel="Level">
+                            <MudChip Size="Size.Small" 
+                                     Color="@GetLevelColor(context.Level)" 
+                                     Variant="Variant.Filled"
+                                     T="string">
+                                @context.Level
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Category">@context.Category</MudTd>
+                        <MudTd DataLabel="Message">
+                            <MudText Typo="Typo.body2">@context.Message</MudText>
+                            @if (!string.IsNullOrEmpty(context.Exception))
+                            {
+                                <MudExpansionPanels>
+                                    <MudExpansionPanel Text="Exception Details">
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap; font-family: monospace;">@context.Exception</MudText>
+                                    </MudExpansionPanel>
+                                </MudExpansionPanels>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudScrollContainer>
+        }
+    </MudPaper>
+}
+
+@code {
+    private bool _isVisible = false;
+    private bool _isExpanded = false;
+    private bool _showFilter = false;
+    private List<LogEntry> _logs = new();
+    private LogLevel? _selectedLevel = null;
+    private string _searchText = string.Empty;
+    private DotNetObjectReference<ApplicationLogger>? _objRef;
+
+    private IEnumerable<LogEntry> FilteredLogs
+    {
+        get
+        {
+            var filtered = _logs.AsEnumerable();
+            
+            if (_selectedLevel.HasValue)
+            {
+                filtered = filtered.Where(l => l.Level == _selectedLevel.Value);
+            }
+            
+            if (!string.IsNullOrEmpty(_searchText))
+            {
+                var search = _searchText.ToLower();
+                filtered = filtered.Where(l => 
+                    l.Message.ToLower().Contains(search) ||
+                    l.Category.ToLower().Contains(search));
+            }
+            
+            return filtered.OrderByDescending(l => l.Timestamp);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _objRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("applicationLogger.init", _objRef);
+            LoggerService.OnLogAdded += RefreshLogs;
+            RefreshLogs();
+        }
+    }
+
+    private void RefreshLogs()
+    {
+        _logs = LoggerService.GetLogs();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleExpanded()
+    {
+        _isExpanded = !_isExpanded;
+    }
+
+    private void ToggleFilter()
+    {
+        _showFilter = !_showFilter;
+    }
+
+    private void ClearLogs()
+    {
+        LoggerService.Clear();
+        RefreshLogs();
+    }
+
+    private void HideLogger()
+    {
+        _isVisible = false;
+    }
+
+    [JSInvokable]
+    public void ShowLogger()
+    {
+        _isVisible = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private Color GetLevelColor(LogLevel level)
+    {
+        return level switch
+        {
+            LogLevel.Information => Color.Info,
+            LogLevel.Warning => Color.Warning,
+            LogLevel.Error => Color.Error,
+            LogLevel.Debug => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private string GetLoggerStyle()
+    {
+        var height = _isExpanded ? "400px" : "50px";
+        return $"position: fixed; bottom: 0; left: 0; right: 0; height: {height}; z-index: 9999; background-color: var(--mud-palette-background); border-top: 1px solid var(--mud-palette-divider);";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        LoggerService.OnLogAdded -= RefreshLogs;
+        _objRef?.Dispose();
+    }
+}
+

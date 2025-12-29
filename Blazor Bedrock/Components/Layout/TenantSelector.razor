@@ -1,0 +1,59 @@
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MudBlazor
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@rendermode InteractiveServer
+
+@if (_isAuthenticated)
+{
+    <MudSelect @bind-Value="_selectedTenantId" 
+               Label="Organization" 
+               Variant="Variant.Outlined"
+               Dense="true"
+               Class="mr-4"
+               Style="min-width: 200px;"
+               OnSelectionChanged="HandleTenantChange">
+        @foreach (var tenant in _userTenants)
+        {
+            <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+@code {
+    private List<Tenant> _userTenants = new();
+    private int? _selectedTenantId;
+    private bool _isAuthenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
+
+        if (_isAuthenticated)
+        {
+            var userId = authState.User!.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _userTenants = await TenantService.GetUserTenantsAsync(userId);
+                _selectedTenantId = TenantService.GetCurrentTenantId() ?? _userTenants.FirstOrDefault()?.Id;
+            }
+        }
+    }
+
+    private async Task HandleTenantChange(int? tenantId)
+    {
+        if (tenantId.HasValue && _selectedTenantId != tenantId)
+        {
+            await TenantService.SetCurrentTenantAsync(tenantId.Value);
+            _selectedTenantId = tenantId;
+            // Refresh the page to update tenant context
+            await Task.Delay(100);
+        }
+    }
+}
+

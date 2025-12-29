@@ -1,0 +1,238 @@
+@page "/admin/users/create"
+@page "/admin/users/edit/{UserId}"
+@using Blazor_Bedrock.Services.UserManagement
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.RoleManagement
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject IUserService UserService
+@inject IRoleService RoleService
+@inject ITenantService TenantService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>@(_isEdit ? "Edit User" : "Create User")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit User" : "Create User")</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        @if (_user != null || !_isEdit)
+        {
+            <EditForm Model="@_userModel" OnValidSubmit="HandleSubmit">
+                <DataAnnotationsValidator />
+                
+                <MudTextField @bind-Value="_userModel.FirstName" 
+                              Label="First Name" 
+                              Variant="Variant.Outlined" 
+                              Required="true"
+                              Class="mb-4" />
+                
+                <MudTextField @bind-Value="_userModel.LastName" 
+                              Label="Last Name" 
+                              Variant="Variant.Outlined" 
+                              Required="true"
+                              Class="mb-4" />
+                
+                <MudTextField @bind-Value="_userModel.Email" 
+                              Label="Email" 
+                              Variant="Variant.Outlined" 
+                              InputType="InputType.Email"
+                              Required="true"
+                              Disabled="@_isEdit"
+                              Class="mb-4" />
+                
+                @if (!_isEdit)
+                {
+                    <MudTextField @bind-Value="_userModel.Password" 
+                                  Label="Password" 
+                                  Variant="Variant.Outlined" 
+                                  InputType="InputType.Password"
+                                  Required="true"
+                                  Class="mb-4" />
+                }
+                
+                <MudCheckBox @bind-Checked="_userModel.IsActive" Label="Active" T="bool" Class="mb-4" />
+                
+                <MudText Typo="Typo.h6" Class="mb-2">Roles</MudText>
+                <MudCheckBoxGroup SelectedValues="_selectedRoles" SelectedValuesChanged="OnSelectedRolesChanged" T="string">
+                    @foreach (var role in _availableRoles)
+                    {
+                        <MudCheckBox Value="@role.Id" T="string">@role.Name</MudCheckBox>
+                    }
+                </MudCheckBoxGroup>
+                
+                <div class="d-flex gap-2 mt-4">
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Default"
+                               OnClick="NavigateBack">
+                        Cancel
+                    </MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" 
+                               Variant="Variant.Filled" 
+                               Color="Color.Primary"
+                               Disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Saving...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Save</MudText>
+                        }
+                    </MudButton>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public string? UserId { get; set; }
+    
+    private bool _isEdit => !string.IsNullOrEmpty(UserId);
+    private ApplicationUser? _user;
+    private UserModel _userModel = new();
+    private List<ApplicationRole> _availableRoles = new();
+    private HashSet<string> _selectedRoles = new();
+    private bool _isLoading = false;
+
+    private class UserModel
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public bool IsActive { get; set; } = true;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        _availableRoles = await RoleService.GetRolesAsync(tenantId);
+
+        if (_isEdit && !string.IsNullOrEmpty(UserId))
+        {
+            _user = await UserService.GetUserAsync(UserId);
+            if (_user != null)
+            {
+                _userModel = new UserModel
+                {
+                    FirstName = _user.FirstName ?? string.Empty,
+                    LastName = _user.LastName ?? string.Empty,
+                    Email = _user.Email ?? string.Empty,
+                    IsActive = _user.IsActive
+                };
+
+                var userRoles = await UserService.GetUserRolesAsync(UserId, tenantId ?? 0);
+                _selectedRoles = userRoles.Select(r => r.Id).ToHashSet();
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+            if (!tenantId.HasValue)
+            {
+                Snackbar.Add("No tenant selected", Severity.Error);
+                return;
+            }
+
+            if (_isEdit && _user != null)
+            {
+                _user.FirstName = _userModel.FirstName;
+                _user.LastName = _userModel.LastName;
+                _user.IsActive = _userModel.IsActive;
+                
+                var result = await UserService.UpdateUserAsync(_user);
+                if (result.Succeeded)
+                {
+                    // Update roles
+                    var currentRoles = await UserService.GetUserRolesAsync(_user.Id, tenantId.Value);
+                    var currentRoleIds = currentRoles.Select(r => r.Id).ToHashSet();
+
+                    // Remove roles
+                    foreach (var role in currentRoles.Where(r => !_selectedRoles.Contains(r.Id)))
+                    {
+                        await UserService.RemoveRoleFromUserAsync(_user.Id, role.Id, tenantId.Value);
+                    }
+
+                    // Add new roles
+                    foreach (var roleId in _selectedRoles.Where(id => !currentRoleIds.Contains(id)))
+                    {
+                        await UserService.AssignRoleToUserAsync(_user.Id, roleId, tenantId.Value);
+                    }
+
+                    Snackbar.Add("User updated successfully", Severity.Success);
+                    Navigation.NavigateTo("/admin/users");
+                }
+                else
+                {
+                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                }
+            }
+            else
+            {
+                var user = new ApplicationUser
+                {
+                    UserName = _userModel.Email,
+                    Email = _userModel.Email,
+                    FirstName = _userModel.FirstName,
+                    LastName = _userModel.LastName,
+                    EmailConfirmed = true,
+                    IsActive = _userModel.IsActive
+                };
+
+                var result = await UserService.CreateUserAsync(user, _userModel.Password, tenantId.Value);
+                if (result.Succeeded)
+                {
+                    // Assign roles
+                    foreach (var roleId in _selectedRoles)
+                    {
+                        await UserService.AssignRoleToUserAsync(user.Id, roleId, tenantId.Value);
+                    }
+
+                    Snackbar.Add("User created successfully", Severity.Success);
+                    Navigation.NavigateTo("/admin/users");
+                }
+                else
+                {
+                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        Navigation.NavigateTo("/admin/users");
+    }
+
+    private void OnSelectedRolesChanged(HashSet<string> selectedRoles)
+    {
+        _selectedRoles = selectedRoles;
+    }
+}
+

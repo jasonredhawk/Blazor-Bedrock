@@ -1,0 +1,16 @@
+@page "/auth/logout"
+@using Blazor_Bedrock.Services.Auth
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+@inject IIdentityService IdentityService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await IdentityService.SignOutAsync();
+        Navigation.NavigateTo("/auth/login");
+    }
+}
+

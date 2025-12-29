@@ -1,0 +1,58 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|solutionrelative:appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\appsettings.json",
+              "RelativeDocumentMoniker": "appsettings.json",
+              "ToolTip": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\appsettings.json",
+              "RelativeToolTip": "appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAABhAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-12-29T21:53:22.328Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABMAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-29T21:26:57.465Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

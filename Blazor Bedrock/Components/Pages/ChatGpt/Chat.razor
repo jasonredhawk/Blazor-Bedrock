@@ -1,0 +1,280 @@
+@page "/chatgpt/chat"
+@using Blazor_Bedrock.Services.ChatGpt
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MudBlazor
+@using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
+@inject IChatGptService ChatGptService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject ApplicationDbContext _context
+@rendermode InteractiveServer
+
+<PageTitle>ChatGPT Chat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">ChatGPT Chat</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        @if (!_hasApiKey)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                Please configure your API key in settings first.
+            </MudAlert>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NavigateToSettings">
+                Configure API Key
+            </MudButton>
+        }
+        else
+        {
+            <div class="d-flex gap-2 mb-4">
+                <MudSelect @bind-Value="_selectedModel" 
+                           Label="Model" 
+                           Variant="Variant.Outlined"
+                           T="string?"
+                           Style="min-width: 200px;">
+                    @foreach (var model in _availableModels)
+                    {
+                        <MudSelectItem Value="@model">@model</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Outlined" OnClick="LoadConversations">
+                    Load Conversations
+                </MudButton>
+            </div>
+
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudPaper Elevation="1" Class="pa-2" Style="max-height: 600px; overflow-y: auto;">
+                        <MudText Typo="Typo.h6" Class="mb-2">Conversations</MudText>
+                        @foreach (var conv in _conversations)
+                        {
+                            <MudButton Variant="@(conv.Id == _currentConversationId ? Variant.Filled : Variant.Text)"
+                                       Color="Color.Primary"
+                                       FullWidth="true"
+                                       Justify="Justify.FlexStart"
+                                       OnClick="() => LoadConversation(conv.Id)"
+                                       Class="mb-1">
+                                @conv.Title
+                            </MudButton>
+                        }
+                        <MudButton Variant="Variant.Outlined" 
+                                   Color="Color.Primary" 
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="CreateNewConversation"
+                                   Class="mt-2">
+                            New Conversation
+                        </MudButton>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="8">
+                    <MudPaper Elevation="1" Class="pa-2" Style="height: 600px; display: flex; flex-direction: column;">
+                        <MudScrollContainer Style="flex: 1; overflow-y: auto; margin-bottom: 10px;">
+                            @foreach (var message in _messages)
+                            {
+                                <div class="mb-3">
+                                    <MudChip Size="Size.Small" Color="Color.Primary" T="string">@message.Role</MudChip>
+                                    <MudText Typo="Typo.body1" Class="mt-1">@message.Content</MudText>
+                                </div>
+                            }
+                        </MudScrollContainer>
+                        <MudTextField @bind-Value="_messageText"
+                                       Label="Type your message..."
+                                       Variant="Variant.Outlined"
+                                       Lines="3"
+                                       OnKeyDown="@(async (e) => { if (e.Key == "Enter" && !e.ShiftKey) await SendMessage(); })" />
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   FullWidth="true"
+                                   OnClick="SendMessage"
+                                   Disabled="@_isLoading"
+                                   Class="mt-2">
+                            @if (_isLoading)
+                            {
+                                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                                <MudText Class="ms-2">Sending...</MudText>
+                            }
+                            else
+                            {
+                                <MudText>Send</MudText>
+                            }
+                        </MudButton>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private bool _hasApiKey = false;
+    private List<string> _availableModels = new();
+    private string? _selectedModel;
+    private List<ChatGptConversation> _conversations = new();
+    private int? _currentConversationId;
+    private List<ChatGptMessage> _messages = new();
+    private string _messageText = string.Empty;
+    private bool _isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId))
+            {
+                try
+                {
+                    var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
+                    _hasApiKey = true;
+                    _availableModels = await ChatGptService.GetAvailableModelsAsync(apiKey);
+                    _selectedModel = _availableModels.FirstOrDefault();
+                    await LoadConversations();
+                }
+                catch
+                {
+                    _hasApiKey = false;
+                }
+            }
+        }
+    }
+
+    private async Task LoadConversations()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+        }
+    }
+
+    private async Task LoadConversation(int conversationId)
+    {
+        _currentConversationId = conversationId;
+        _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        StateHasChanged();
+    }
+
+    private async Task CreateNewConversation()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _selectedModel);
+            _currentConversationId = conversation.Id;
+            _messages = new();
+            await LoadConversations();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_messageText)) return;
+
+        _isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (string.IsNullOrEmpty(userId)) return;
+
+            // Get API key
+            var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
+
+            if (!_currentConversationId.HasValue)
+            {
+                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _selectedModel);
+                _currentConversationId = newConversation.Id;
+                _messages = new List<ChatGptMessage>();
+            }
+
+            // Build conversation history from existing messages
+            var conversationMessages = new List<ChatMessage>();
+            
+            // Convert database messages to ChatMessage format
+            foreach (var msg in _messages)
+            {
+                conversationMessages.Add(new ChatMessage
+                {
+                    Role = msg.Role,
+                    Content = msg.Content
+                });
+            }
+
+            // Add the new user message to conversation
+            conversationMessages.Add(new ChatMessage
+            {
+                Role = "user",
+                Content = _messageText
+            });
+
+            // Save user message to database
+            var userMessage = new ChatGptMessage
+            {
+                ConversationId = _currentConversationId.Value,
+                Role = "user",
+                Content = _messageText
+            };
+            _context.ChatGptMessages.Add(userMessage);
+            _messages.Add(userMessage);
+
+            // Send full conversation history to ChatGPT
+            var response = await ChatGptService.SendConversationMessageAsync(conversationMessages, apiKey, _selectedModel);
+
+            // Save assistant response to database
+            var assistantMessage = new ChatGptMessage
+            {
+                ConversationId = _currentConversationId.Value,
+                Role = "assistant",
+                Content = response
+            };
+            _context.ChatGptMessages.Add(assistantMessage);
+            _messages.Add(assistantMessage);
+
+            // Update conversation timestamp
+            var existingConversation = await _context.ChatGptConversations.FindAsync(_currentConversationId.Value);
+            if (existingConversation != null)
+            {
+                existingConversation.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            _messageText = string.Empty;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToSettings()
+    {
+        Navigation.NavigateTo("/profile/edit");
+    }
+}
+

@@ -1,0 +1,24 @@
+@using Blazor_Bedrock.Services.FeatureFlag
+@inject IFeatureFlagService FeatureFlagService
+@inject ILogger<FeatureGate> Logger
+
+@if (_isEnabled)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public string FeatureName { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _isEnabled = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(FeatureName))
+        {
+            _isEnabled = await FeatureFlagService.IsEnabledAsync(FeatureName);
+        }
+    }
+}
+

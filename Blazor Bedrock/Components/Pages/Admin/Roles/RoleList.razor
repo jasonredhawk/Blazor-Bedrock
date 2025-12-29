@@ -1,0 +1,125 @@
+@page "/admin/roles"
+@using Blazor_Bedrock.Services.RoleManagement
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject IRoleService RoleService
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Role Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Role Management</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudTextField @bind-Value="_searchText" 
+                          Placeholder="Search roles..." 
+                          Variant="Variant.Outlined" 
+                          Immediate="true"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Style="max-width: 300px;" />
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="NavigateToCreate">
+                Add Role
+            </MudButton>
+        </div>
+
+        <MudTable Items="@FilteredRoles" Hover="true" Striped="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Description">@context.Description</MudTd>
+                <MudTd DataLabel="Type">
+                    <MudChip Size="Size.Small" 
+                             Color="@(context.IsSystemRole ? Color.Warning : Color.Default)" 
+                             Variant="Variant.Filled"
+                             T="string">
+                        @(context.IsSystemRole ? "System" : "Custom")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                   Color="Color.Primary" 
+                                   Size="Size.Small"
+                                   OnClick="() => NavigateToEdit(context.Id)" />
+                    @if (!context.IsSystemRole)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                       Color="Color.Error" 
+                                       Size="Size.Small"
+                                       OnClick="() => DeleteRole(context.Id)" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<ApplicationRole> _roles = new();
+    private string _searchText = string.Empty;
+
+    private IEnumerable<ApplicationRole> FilteredRoles
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return _roles;
+
+            var search = _searchText.ToLower();
+            return _roles.Where(r => 
+                r.Name?.ToLower().Contains(search) == true ||
+                r.Description?.ToLower().Contains(search) == true);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRolesAsync();
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        _roles = await RoleService.GetRolesAsync(tenantId);
+    }
+
+    private void NavigateToCreate()
+    {
+        Navigation.NavigateTo("/admin/roles/create");
+    }
+
+    private void NavigateToEdit(string roleId)
+    {
+        Navigation.NavigateTo($"/admin/roles/edit/{roleId}");
+    }
+
+    private async Task DeleteRole(string roleId)
+    {
+        var result = await RoleService.DeleteRoleAsync(roleId);
+        if (result.Succeeded)
+        {
+            Snackbar.Add("Role deleted successfully", Severity.Success);
+            await LoadRolesAsync();
+        }
+        else
+        {
+            Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+        }
+    }
+}
+

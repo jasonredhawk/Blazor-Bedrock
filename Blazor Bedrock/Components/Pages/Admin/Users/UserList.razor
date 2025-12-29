@@ -1,0 +1,130 @@
+@page "/admin/users"
+@using Blazor_Bedrock.Services.UserManagement
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject IUserService UserService
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>User Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">User Management</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudTextField @bind-Value="_searchText" 
+                          Placeholder="Search users..." 
+                          Variant="Variant.Outlined" 
+                          Immediate="true"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Style="max-width: 300px;" />
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="NavigateToCreate">
+                Add User
+            </MudButton>
+        </div>
+
+        <MudTable Items="@FilteredUsers" Hover="true" Striped="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Last Login</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.FirstName @context.LastName</MudTd>
+                <MudTd DataLabel="Email">@context.Email</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip Size="Size.Small" 
+                             Color="@(context.IsActive ? Color.Success : Color.Error)" 
+                             Variant="Variant.Filled"
+                             T="string">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Last Login">
+                    @(context.LastLoginAt?.ToString("g") ?? "Never")
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                   Color="Color.Primary" 
+                                   Size="Size.Small"
+                                   OnClick="() => NavigateToEdit(context.Id)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                   Color="Color.Error" 
+                                   Size="Size.Small"
+                                   OnClick="() => DeleteUser(context.Id)" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<ApplicationUser> _users = new();
+    private string _searchText = string.Empty;
+
+    private IEnumerable<ApplicationUser> FilteredUsers
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return _users;
+
+            var search = _searchText.ToLower();
+            return _users.Where(u => 
+                u.FirstName?.ToLower().Contains(search) == true ||
+                u.LastName?.ToLower().Contains(search) == true ||
+                u.Email?.ToLower().Contains(search) == true);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        if (tenantId.HasValue)
+        {
+            _users = await UserService.GetUsersAsync(tenantId.Value);
+        }
+    }
+
+    private void NavigateToCreate()
+    {
+        Navigation.NavigateTo("/admin/users/create");
+    }
+
+    private void NavigateToEdit(string userId)
+    {
+        Navigation.NavigateTo($"/admin/users/edit/{userId}");
+    }
+
+    private async Task DeleteUser(string userId)
+    {
+        var result = await UserService.DeleteUserAsync(userId);
+        if (result.Succeeded)
+        {
+            Snackbar.Add("User deleted successfully", Severity.Success);
+            await LoadUsersAsync();
+        }
+        else
+        {
+            Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+        }
+    }
+}
+

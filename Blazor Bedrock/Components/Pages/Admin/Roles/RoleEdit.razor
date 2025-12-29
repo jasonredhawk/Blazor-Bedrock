@@ -1,0 +1,216 @@
+@page "/admin/roles/create"
+@page "/admin/roles/edit/{RoleId}"
+@using Blazor_Bedrock.Services.RoleManagement
+@using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject IRoleService RoleService
+@inject IPermissionService PermissionService
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>@(_isEdit ? "Edit Role" : "Create Role")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit Role" : "Create Role")</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        @if (_role != null || !_isEdit)
+        {
+            <EditForm Model="@_roleModel" OnValidSubmit="HandleSubmit">
+                <DataAnnotationsValidator />
+                
+                <MudTextField @bind-Value="_roleModel.Name" 
+                              Label="Role Name" 
+                              Variant="Variant.Outlined" 
+                              Required="true"
+                              Disabled="@(_isEdit && _role?.IsSystemRole == true)"
+                              Class="mb-4" />
+                
+                <MudTextField @bind-Value="_roleModel.Description" 
+                              Label="Description" 
+                              Variant="Variant.Outlined" 
+                              Lines="3"
+                              Class="mb-4" />
+                
+                <MudText Typo="Typo.h6" Class="mb-2">Permissions</MudText>
+                <MudCheckBoxGroup SelectedValues="_selectedPermissions" SelectedValuesChanged="OnSelectedPermissionsChanged" T="int">
+                    @foreach (var category in _permissionsByCategory)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">@category.Key</MudText>
+                        @foreach (var permission in category.Value)
+                        {
+                            <MudCheckBox Value="@permission.Id" T="int">@permission.Name</MudCheckBox>
+                            @if (!string.IsNullOrEmpty(permission.Description))
+                            {
+                                <MudText Typo="Typo.caption" Class="ml-8 mb-1">@permission.Description</MudText>
+                            }
+                        }
+                    }
+                </MudCheckBoxGroup>
+                
+                <div class="d-flex gap-2 mt-4">
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Default"
+                               OnClick="NavigateBack">
+                        Cancel
+                    </MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" 
+                               Variant="Variant.Filled" 
+                               Color="Color.Primary"
+                               Disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Saving...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Save</MudText>
+                        }
+                    </MudButton>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public string? RoleId { get; set; }
+    
+    private bool _isEdit => !string.IsNullOrEmpty(RoleId);
+    private ApplicationRole? _role;
+    private RoleModel _roleModel = new();
+    private List<Permission> _allPermissions = new();
+    private Dictionary<string, List<Permission>> _permissionsByCategory = new();
+    private HashSet<int> _selectedPermissions = new();
+    private bool _isLoading = false;
+
+    private class RoleModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allPermissions = await PermissionService.GetAllPermissionsAsync();
+        _permissionsByCategory = _allPermissions
+            .GroupBy(p => p.Category ?? "General")
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        if (_isEdit && !string.IsNullOrEmpty(RoleId))
+        {
+            _role = await RoleService.GetRoleAsync(RoleId);
+            if (_role != null)
+            {
+                _roleModel = new RoleModel
+                {
+                    Name = _role.Name ?? string.Empty,
+                    Description = _role.Description
+                };
+
+                var rolePermissions = await RoleService.GetRolePermissionsAsync(RoleId);
+                _selectedPermissions = rolePermissions.Select(p => p.Id).ToHashSet();
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+
+            if (_isEdit && _role != null)
+            {
+                _role.Name = _roleModel.Name;
+                _role.Description = _roleModel.Description;
+                
+                var result = await RoleService.UpdateRoleAsync(_role);
+                if (result.Succeeded)
+                {
+                    // Update permissions
+                    var currentPermissions = await RoleService.GetRolePermissionsAsync(_role.Id);
+                    var currentPermissionIds = currentPermissions.Select(p => p.Id).ToHashSet();
+
+                    // Remove permissions
+                    foreach (var permission in currentPermissions.Where(p => !_selectedPermissions.Contains(p.Id)))
+                    {
+                        await RoleService.RemovePermissionFromRoleAsync(_role.Id, permission.Id);
+                    }
+
+                    // Add new permissions
+                    foreach (var permissionId in _selectedPermissions.Where(id => !currentPermissionIds.Contains(id)))
+                    {
+                        await RoleService.AssignPermissionToRoleAsync(_role.Id, permissionId);
+                    }
+
+                    Snackbar.Add("Role updated successfully", Severity.Success);
+                    Navigation.NavigateTo("/admin/roles");
+                }
+                else
+                {
+                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                }
+            }
+            else
+            {
+                var role = new ApplicationRole
+                {
+                    Name = _roleModel.Name,
+                    NormalizedName = _roleModel.Name.ToUpper(),
+                    Description = _roleModel.Description,
+                    TenantId = tenantId,
+                    IsSystemRole = false
+                };
+
+                var result = await RoleService.CreateRoleAsync(role);
+                if (result.Succeeded)
+                {
+                    // Assign permissions
+                    foreach (var permissionId in _selectedPermissions)
+                    {
+                        await RoleService.AssignPermissionToRoleAsync(role.Id, permissionId);
+                    }
+
+                    Snackbar.Add("Role created successfully", Severity.Success);
+                    Navigation.NavigateTo("/admin/roles");
+                }
+                else
+                {
+                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        Navigation.NavigateTo("/admin/roles");
+    }
+
+    private void OnSelectedPermissionsChanged(HashSet<int> selectedPermissions)
+    {
+        _selectedPermissions = selectedPermissions;
+    }
+}
+

@@ -1,0 +1,130 @@
+@using Blazor_Bedrock.Services.Navigation
+@using Blazor_Bedrock.Services.Tenant
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IMenuService MenuService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<MudAppBar Elevation="2" Color="Color.Primary">
+    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+    
+    <MudText Typo="Typo.h6" Class="ml-4">@ProjectTitle</MudText>
+    
+    <MudSpacer />
+    
+    <MudMenu Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        @foreach (var item in _menuItems)
+        {
+            @if (item.Children != null && item.Children.Any())
+            {
+                <MudMenuItem>
+                    <MudNavLink Href="@item.Href">
+                        <MudIcon Icon="@item.Icon" Class="mr-2" />
+                        @item.Title
+                    </MudNavLink>
+                </MudMenuItem>
+                @foreach (var child in item.Children)
+                {
+                    <MudMenuItem>
+                        <MudNavLink Href="@child.Href" Class="ml-4">
+                            <MudIcon Icon="@child.Icon" Class="mr-2" />
+                            @child.Title
+                        </MudNavLink>
+                    </MudMenuItem>
+                }
+            }
+            else
+            {
+                <MudMenuItem>
+                    <MudNavLink Href="@item.Href">
+                        <MudIcon Icon="@item.Icon" Class="mr-2" />
+                        @item.Title
+                    </MudNavLink>
+                </MudMenuItem>
+            }
+        }
+    </MudMenu>
+    
+    <TenantSelector />
+    <UserMenu />
+</MudAppBar>
+
+<MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="@DrawerVariant.Temporary">
+    <MudDrawerHeader>
+        <MudText Typo="Typo.h6">@ProjectTitle</MudText>
+    </MudDrawerHeader>
+    <MudNavMenu>
+        @foreach (var item in _menuItems)
+        {
+            @if (item.Children != null && item.Children.Any())
+            {
+                <MudNavGroup Title="@item.Title" Icon="@item.Icon" Expanded="false">
+                    @foreach (var child in item.Children)
+                    {
+                        <MudNavLink Href="@child.Href" Match="NavLinkMatch.Prefix">
+                            <MudIcon Icon="@child.Icon" Class="mr-2" />
+                            @child.Title
+                        </MudNavLink>
+                    }
+                </MudNavGroup>
+            }
+            else
+            {
+                <MudNavLink Href="@item.Href" Match="NavLinkMatch.Prefix">
+                    <MudIcon Icon="@item.Icon" Class="mr-2" />
+                    @item.Title
+                </MudNavLink>
+            }
+        }
+    </MudNavMenu>
+</MudDrawer>
+
+@code {
+    [Parameter] public string ProjectTitle { get; set; } = "Blazor Bedrock";
+    
+    private List<MenuItem> _menuItems = new();
+    private bool _drawerOpen = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _menuItems = await MenuService.GetMenuItemsAsync(userId, tenantId);
+            }
+        }
+        else
+        {
+            // Show login menu item for unauthenticated users
+            _menuItems = new List<MenuItem>
+            {
+                new MenuItem
+                {
+                    Title = "Home",
+                    Href = "/",
+                    Icon = Icons.Material.Filled.Home
+                },
+                new MenuItem
+                {
+                    Title = "Login",
+                    Href = "/auth/login",
+                    Icon = Icons.Material.Filled.Login
+                }
+            };
+        }
+    }
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+}
+
