@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Blazor_Bedrock.Data.Models
 @using MudBlazor
+@implements IDisposable
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -38,6 +39,20 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await UpdateAuthenticationState();
+        
+        // Subscribe to authentication state changes
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
+    {
+        await UpdateAuthenticationState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UpdateAuthenticationState()
+    {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         _isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
 
@@ -48,6 +63,18 @@
             {
                 _user = await UserManager.FindByIdAsync(userId);
             }
+        }
+        else
+        {
+            _user = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (AuthStateProvider != null)
+        {
+            AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         }
     }
 

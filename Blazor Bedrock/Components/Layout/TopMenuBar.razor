@@ -2,6 +2,7 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
+@implements IDisposable
 @inject IMenuService MenuService
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -90,6 +91,20 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await UpdateMenuItems();
+        
+        // Subscribe to authentication state changes
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
+    {
+        await UpdateMenuItems();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UpdateMenuItems()
+    {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (authState.User?.Identity?.IsAuthenticated == true)
         {
@@ -119,6 +134,14 @@
                     Icon = Icons.Material.Filled.Login
                 }
             };
+        }
+    }
+
+    public void Dispose()
+    {
+        if (AuthStateProvider != null)
+        {
+            AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         }
     }
 

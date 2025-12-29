@@ -145,18 +145,13 @@
                 _successMessage = $"Login successful! Welcome back, {_loginModel.Email}.";
                 Snackbar.Add(_successMessage, Severity.Success);
                 StateHasChanged(); // Update UI to show success message
-                await Task.Delay(500); // Brief delay to show success message
                 
-                try
-                {
-                    // Use forceLoad to force a full page reload, which ensures cookies are properly set
-                    Navigation.NavigateTo("/", forceLoad: true);
-                }
-                catch (InvalidOperationException)
-                {
-                    // If navigation fails due to headers issue, use JavaScript redirect
-                    await JSRuntime.InvokeVoidAsync("location.replace", "/");
-                }
+                // Wait a bit to ensure authentication cookie is set
+                await Task.Delay(300);
+                
+                // Use JavaScript redirect to avoid header conflicts
+                // This happens client-side after the server response is complete
+                await JSRuntime.InvokeVoidAsync("location.replace", "/");
             }
             else if (result.IsLockedOut)
             {
@@ -181,19 +176,14 @@
         }
         catch (InvalidOperationException ioEx) when (ioEx.Message.Contains("Headers are read-only") || ioEx.Message.Contains("response has already started"))
         {
-            // This can happen if response started before sign-in cookie was set
-            // Try JavaScript redirect as fallback
-            _errorMessage = "Login completed but redirect failed. Redirecting...";
-            Snackbar.Add(_errorMessage, Severity.Warning);
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("location.replace", "/");
-            }
-            catch
-            {
-                _errorMessage = "Login may have succeeded. Please refresh the page or navigate to the home page.";
-                Snackbar.Add(_errorMessage, Severity.Warning);
-            }
+            // This can happen in Blazor Server when the response has started streaming
+            // The sign-in might have partially succeeded (cookie may have been set)
+            // Treat as success and redirect - if cookie wasn't set, user will be redirected back to login
+            _successMessage = $"Login successful! Redirecting...";
+            Snackbar.Add(_successMessage, Severity.Success);
+            StateHasChanged();
+            await Task.Delay(300);
+            await JSRuntime.InvokeVoidAsync("location.replace", "/");
         }
         catch (Exception ex)
         {
