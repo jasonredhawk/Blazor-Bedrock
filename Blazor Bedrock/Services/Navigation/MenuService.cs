@@ -41,34 +41,45 @@ public class MenuService : IMenuService
             Icon = Icons.Material.Filled.Home
         });
 
-        // Admin Menu
+        // Settings Menu (Admin only)
         if (isAdmin && tenantId.HasValue)
         {
-            var adminMenu = new MenuItem
+            var settingsMenu = new MenuItem
             {
-                Title = "Administration",
-                Icon = Icons.Material.Filled.AdminPanelSettings,
+                Title = "Settings",
+                Icon = Icons.Material.Filled.Settings,
                 Children = new List<MenuItem>()
             };
 
-            adminMenu.Children.Add(new MenuItem
+            settingsMenu.Children.Add(new MenuItem
             {
                 Title = "Users",
                 Href = "/admin/users",
                 Icon = Icons.Material.Filled.People
             });
 
-            adminMenu.Children.Add(new MenuItem
+            settingsMenu.Children.Add(new MenuItem
             {
                 Title = "Roles",
                 Href = "/admin/roles",
                 Icon = Icons.Material.Filled.Security
             });
 
-            menuItems.Add(adminMenu);
+            // Feature Settings (if enabled)
+            if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
+            {
+                settingsMenu.Children.Add(new MenuItem
+                {
+                    Title = "Feature Settings",
+                    Href = "/admin/feature-settings",
+                    Icon = Icons.Material.Filled.ToggleOn
+                });
+            }
+
+            menuItems.Add(settingsMenu);
         }
 
-        // ChatGPT (if enabled)
+        // ChatGPT Menu (if enabled)
         if (await _featureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
         {
             var chatGptMenu = new MenuItem
@@ -80,9 +91,9 @@ public class MenuService : IMenuService
 
             chatGptMenu.Children.Add(new MenuItem
             {
-                Title = "Chat",
-                Href = "/chatgpt/chat",
-                Icon = Icons.Material.Filled.Forum
+                Title = "Settings",
+                Href = "/chatgpt/settings",
+                Icon = Icons.Material.Filled.Settings
             });
 
             chatGptMenu.Children.Add(new MenuItem
@@ -94,9 +105,9 @@ public class MenuService : IMenuService
 
             chatGptMenu.Children.Add(new MenuItem
             {
-                Title = "Document Analysis",
-                Href = "/chatgpt/document-analysis",
-                Icon = Icons.Material.Filled.UploadFile
+                Title = "Chat",
+                Href = "/chatgpt/chat",
+                Icon = Icons.Material.Filled.Forum
             });
 
             menuItems.Add(chatGptMenu);

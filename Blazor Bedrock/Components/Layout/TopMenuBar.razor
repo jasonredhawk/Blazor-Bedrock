@@ -16,39 +16,6 @@
     
     <MudSpacer />
     
-    <MudMenu Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-        @foreach (var item in _menuItems)
-        {
-            @if (item.Children != null && item.Children.Any())
-            {
-                <MudMenuItem>
-                    <MudNavLink Href="@item.Href">
-                        <MudIcon Icon="@item.Icon" Class="mr-2" />
-                        @item.Title
-                    </MudNavLink>
-                </MudMenuItem>
-                @foreach (var child in item.Children)
-                {
-                    <MudMenuItem>
-                        <MudNavLink Href="@child.Href" Class="ml-4">
-                            <MudIcon Icon="@child.Icon" Class="mr-2" />
-                            @child.Title
-                        </MudNavLink>
-                    </MudMenuItem>
-                }
-            }
-            else
-            {
-                <MudMenuItem>
-                    <MudNavLink Href="@item.Href">
-                        <MudIcon Icon="@item.Icon" Class="mr-2" />
-                        @item.Title
-                    </MudNavLink>
-                </MudMenuItem>
-            }
-        }
-    </MudMenu>
-    
     <TenantSelector />
     <UserMenu />
 </MudAppBar>

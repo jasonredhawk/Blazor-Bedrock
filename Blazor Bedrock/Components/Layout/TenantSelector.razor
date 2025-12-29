@@ -11,13 +11,19 @@
 
 @if (_isAuthenticated && _userTenants.Any())
 {
+    var currentTenant = _userTenants.FirstOrDefault(t => t.Id == _selectedTenantId);
     <MudSelect @bind-Value="_selectedTenantId" 
-               Label="Organization" 
-               Variant="Variant.Outlined"
+               Variant="Variant.Text"
                Dense="true"
                Class="mr-4"
-               Style="min-width: 200px;"
+               Style="min-width: 180px; max-width: 250px;"
                OnSelectionChanged="HandleTenantChange">
+        <ActivatorContent>
+            <MudText Typo="Typo.body2" Class="mr-2">
+                <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Class="mr-1" />
+                @(currentTenant?.Name ?? "Select Organization")
+            </MudText>
+        </ActivatorContent>
         @foreach (var tenant in _userTenants)
         {
             <MudSelectItem Value="@tenant.Id">@tenant.Name</MudSelectItem>

@@ -11,26 +11,47 @@
 @if (_isAuthenticated && _user != null)
 {
     <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-        <MudMenuItem>
-            <MudText Typo="Typo.body2" Class="px-4 py-2">
-                @_user.FirstName @_user.LastName
-            </MudText>
-        </MudMenuItem>
-        <MudDivider />
-        <MudMenuItem OnClick="NavigateToProfile">
-            <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
-            View Profile
-        </MudMenuItem>
-        <MudMenuItem OnClick="NavigateToEditProfile">
-            <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-2" />
-            Edit Profile
-        </MudMenuItem>
-        <MudDivider />
-        <MudMenuItem OnClick="HandleLogout">
-            <MudIcon Icon="@Icons.Material.Filled.Logout" Class="mr-2" />
-            Logout
-        </MudMenuItem>
+        <ActivatorContent>
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-2">
+                <MudText Typo="Typo.body1" Class="mr-2">
+                    @_user.FirstName @_user.LastName
+                </MudText>
+                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" />
+            </MudButton>
+        </ActivatorContent>
+        <ChildContent>
+            <MudMenuItem>
+                <MudText Typo="Typo.body2" Class="px-4 py-2">
+                    @_user.FirstName @_user.LastName
+                </MudText>
+                @if (!string.IsNullOrEmpty(_user.Email))
+                {
+                    <MudText Typo="Typo.caption" Class="px-4 pb-2">@_user.Email</MudText>
+                }
+            </MudMenuItem>
+            <MudDivider />
+            <MudMenuItem OnClick="NavigateToProfile">
+                <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+                View Profile
+            </MudMenuItem>
+            <MudMenuItem OnClick="NavigateToEditProfile">
+                <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-2" />
+                Edit Profile
+            </MudMenuItem>
+            <MudDivider />
+            <MudMenuItem OnClick="HandleLogout">
+                <MudIcon Icon="@Icons.Material.Filled.Logout" Class="mr-2" />
+                Logout
+            </MudMenuItem>
+        </ChildContent>
     </MudMenu>
+}
+else
+{
+    <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/auth/login" Class="mr-2">
+        <MudText Typo="Typo.body2" Class="mr-2">Login</MudText>
+        <MudIcon Icon="@Icons.Material.Filled.Login" />
+    </MudButton>
 }
 
 @code {
