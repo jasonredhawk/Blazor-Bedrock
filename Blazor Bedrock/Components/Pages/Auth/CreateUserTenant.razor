@@ -4,6 +4,7 @@
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
 @using Blazor_Bedrock.Services.Navigation
 @using MudBlazor
 @attribute [AllowAnonymous]
@@ -17,6 +18,20 @@
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-16">
     <MudPaper Elevation="3" Class="pa-8">
         <MudText Typo="Typo.h4" Class="mb-4">Create Account & Organization</MudText>
+        
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _errorMessage = string.Empty">
+                <MudText Typo="Typo.body2"><strong>Error:</strong> @_errorMessage</MudText>
+            </MudAlert>
+        }
+
+        @if (!string.IsNullOrEmpty(_successMessage))
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _successMessage = string.Empty">
+                <MudText Typo="Typo.body2">@_successMessage</MudText>
+            </MudAlert>
+        }
         
         <MudTabs Elevation="0" Rounded="true" Color="Color.Primary" @bind-ActivePanelIndex="_activeTab">
             <MudTabPanel Text="User Information">
@@ -119,6 +134,8 @@
     private bool _isLoading = false;
     private int _activeTab = 0;
     private ApplicationUser? _createdUser;
+    private string _errorMessage = string.Empty;
+    private string _successMessage = string.Empty;
 
     private class UserModel
     {
@@ -138,65 +155,178 @@
 
     private async Task HandleUserSubmit()
     {
+        _errorMessage = string.Empty;
+        _successMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_userModel.FirstName))
+        {
+            _errorMessage = "First name is required.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userModel.LastName))
+        {
+            _errorMessage = "Last name is required.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userModel.Email))
+        {
+            _errorMessage = "Email is required.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userModel.Password))
+        {
+            _errorMessage = "Password is required.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            return;
+        }
+
         if (_userModel.Password != _userModel.ConfirmPassword)
         {
-            Snackbar.Add("Passwords do not match.", Severity.Error);
+            _errorMessage = "Passwords do not match.";
+            Snackbar.Add(_errorMessage, Severity.Error);
             return;
         }
 
         if (_userModel.Password.Length < 8)
         {
-            Snackbar.Add("Password must be at least 8 characters long.", Severity.Error);
+            _errorMessage = "Password must be at least 8 characters long.";
+            Snackbar.Add(_errorMessage, Severity.Error);
             return;
         }
 
-        var user = new ApplicationUser
+        try
         {
-            UserName = _userModel.Email,
-            Email = _userModel.Email,
-            FirstName = _userModel.FirstName,
-            LastName = _userModel.LastName,
-            EmailConfirmed = true,
-            IsActive = true
-        };
+            // Check if user already exists
+            var existingUser = await UserManager.FindByEmailAsync(_userModel.Email);
+            if (existingUser != null)
+            {
+                _errorMessage = $"A user with email '{_userModel.Email}' already exists.";
+                Snackbar.Add(_errorMessage, Severity.Error);
+                return;
+            }
 
-        var result = await IdentityService.CreateUserAsync(user, _userModel.Password);
-        
-        if (result.Succeeded)
-        {
-            _createdUser = user;
-            _activeTab = 1;
-            Snackbar.Add("User created successfully! Now create your organization.", Severity.Success);
+            var user = new ApplicationUser
+            {
+                UserName = _userModel.Email,
+                Email = _userModel.Email,
+                FirstName = _userModel.FirstName,
+                LastName = _userModel.LastName,
+                EmailConfirmed = true,
+                IsActive = true
+            };
+
+            var result = await IdentityService.CreateUserAsync(user, _userModel.Password);
+            
+            if (result.Succeeded)
+            {
+                // Refetch the user to get the generated ID
+                _createdUser = await UserManager.FindByEmailAsync(_userModel.Email);
+                
+                if (_createdUser == null)
+                {
+                    Snackbar.Add("User was created but could not be retrieved. Please try logging in.", Severity.Warning);
+                    _activeTab = 1;
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(_createdUser.Id))
+                {
+                    _errorMessage = "User was created but user ID is missing. Please contact support.";
+                    Snackbar.Add(_errorMessage, Severity.Error);
+                    return;
+                }
+
+                _activeTab = 1;
+                _successMessage = $"User '{_userModel.Email}' created successfully! Now create your organization.";
+                Snackbar.Add(_successMessage, Severity.Success);
+            }
+            else
+            {
+                // Show each error on a separate line
+                var errorList = result.Errors.Select(e => $"{e.Description} (Code: {e.Code})").ToList();
+                _errorMessage = string.Join(" | ", errorList);
+                
+                foreach (var error in result.Errors)
+                {
+                    Snackbar.Add($"Error: {error.Description} (Code: {error.Code})", Severity.Error);
+                }
+                
+                // Also show a summary
+                Snackbar.Add($"Failed to create user. Errors: {_errorMessage}", Severity.Error);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            Snackbar.Add($"Error creating user: {errors}", Severity.Error);
+            _errorMessage = $"Exception occurred while creating user: {ex.Message}";
+            if (ex.InnerException != null)
+            {
+                _errorMessage += $" Inner exception: {ex.InnerException.Message}";
+                Snackbar.Add($"Inner exception: {ex.InnerException.Message}", Severity.Error);
+            }
+            Snackbar.Add(_errorMessage, Severity.Error);
         }
     }
 
     private async Task HandleTenantSubmit()
     {
+        _errorMessage = string.Empty;
+        _successMessage = string.Empty;
+
         if (_createdUser == null)
         {
-            Snackbar.Add("Please complete user information first.", Severity.Error);
+            _errorMessage = "Please complete user information first.";
+            Snackbar.Add(_errorMessage, Severity.Error);
             _activeTab = 0;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_createdUser.Id))
+        {
+            _errorMessage = "User ID is missing. Please go back and recreate the user account.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            _activeTab = 0;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_tenantModel.Name))
+        {
+            _errorMessage = "Organization name is required.";
+            Snackbar.Add(_errorMessage, Severity.Error);
             return;
         }
 
         _isLoading = true;
         try
         {
+            // Verify user still exists
+            var userExists = await UserManager.FindByIdAsync(_createdUser.Id);
+            if (userExists == null)
+            {
+                _errorMessage = $"User with ID '{_createdUser.Id}' no longer exists. Please go back and recreate the user account.";
+                Snackbar.Add(_errorMessage, Severity.Error);
+                _activeTab = 0;
+                return;
+            }
+
             var tenant = new Tenant
             {
                 Name = _tenantModel.Name,
                 Description = _tenantModel.Description,
-                Domain = _tenantModel.Domain,
+                Domain = string.IsNullOrWhiteSpace(_tenantModel.Domain) ? null : _tenantModel.Domain,
                 IsActive = true
             };
 
             DbContext.Tenants.Add(tenant);
             await DbContext.SaveChangesAsync();
+
+            _successMessage = $"Organization '{tenant.Name}' created successfully (ID: {tenant.Id})";
+            Snackbar.Add(_successMessage, Severity.Success);
 
             // Link user to tenant
             var userTenant = new UserTenant
@@ -209,12 +339,33 @@
             DbContext.UserTenants.Add(userTenant);
             await DbContext.SaveChangesAsync();
 
-            Snackbar.Add("Account and organization created successfully!", Severity.Success);
+            _successMessage += $"\nUser '{_createdUser.Email}' linked to organization '{tenant.Name}' successfully!";
+            Snackbar.Add($"User '{_createdUser.Email}' linked to organization '{tenant.Name}' successfully!", Severity.Success);
+            Snackbar.Add("Account and organization created successfully! Redirecting to login...", Severity.Success);
+            
+            // Wait a moment before navigating to show success messages
+            await Task.Delay(1500);
             Navigation.NavigateTo("/auth/login");
+        }
+        catch (DbUpdateException dbEx)
+        {
+            _errorMessage = $"Database error creating organization: {dbEx.Message}";
+            if (dbEx.InnerException != null)
+            {
+                _errorMessage += $" Inner exception: {dbEx.InnerException.Message}";
+                Snackbar.Add($"Database inner exception: {dbEx.InnerException.Message}", Severity.Error);
+            }
+            Snackbar.Add(_errorMessage, Severity.Error);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error creating organization: {ex.Message}", Severity.Error);
+            _errorMessage = $"Error creating organization: {ex.Message}";
+            if (ex.InnerException != null)
+            {
+                _errorMessage += $" Inner exception: {ex.InnerException.Message}";
+                Snackbar.Add($"Inner exception: {ex.InnerException.Message}", Severity.Error);
+            }
+            Snackbar.Add(_errorMessage, Severity.Error);
         }
         finally
         {

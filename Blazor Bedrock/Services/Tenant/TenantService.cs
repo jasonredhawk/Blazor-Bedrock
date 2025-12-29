@@ -65,15 +65,18 @@ public class TenantService : ITenantService
         var hasAccess = await UserHasAccessToTenantAsync(userId, tenantId);
         if (!hasAccess) return false;
 
-        // Store in session/cookie
-        httpContext.Session.SetInt32(TenantIdKey, tenantId);
-        httpContext.Response.Cookies.Append(TenantIdKey, tenantId.ToString(), new CookieOptions
+        // Store in session/cookie only if response hasn't started
+        if (!httpContext.Response.HasStarted)
         {
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
-            Expires = DateTimeOffset.UtcNow.AddDays(30)
-        });
+            httpContext.Session.SetInt32(TenantIdKey, tenantId);
+            httpContext.Response.Cookies.Append(TenantIdKey, tenantId.ToString(), new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTimeOffset.UtcNow.AddDays(30)
+            });
+        }
 
         return true;
     }

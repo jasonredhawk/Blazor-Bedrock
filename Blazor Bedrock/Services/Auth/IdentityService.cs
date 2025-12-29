@@ -31,10 +31,22 @@ public class IdentityService : IIdentityService
 
     public async Task<SignInResult> SignInAsync(string email, string password, bool rememberMe)
     {
-        var user = await _userManager.FindByEmailAsync(email);
-        if (user == null || !user.IsActive)
+        if (string.IsNullOrWhiteSpace(email))
         {
             return SignInResult.Failed;
+        }
+
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user == null)
+        {
+            // User not found - return failed without revealing this to prevent user enumeration
+            return SignInResult.Failed;
+        }
+
+        if (!user.IsActive)
+        {
+            // User exists but is inactive
+            return SignInResult.NotAllowed;
         }
 
         var result = await _signInManager.PasswordSignInAsync(user, password, rememberMe, lockoutOnFailure: true);

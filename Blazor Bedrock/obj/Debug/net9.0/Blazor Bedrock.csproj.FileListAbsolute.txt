@@ -159,3 +159,4 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\Blazor Bedrock.genruntimeconfig.cache
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\ref\Blazor_Bedrock.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt
+C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\Blazor Bedrock.sourcelink.json
