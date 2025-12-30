@@ -24,7 +24,8 @@ public interface IChatGptService
     Task<string> SendChatMessageAsync(string userId, int? tenantId, string message, string? model = null, string? systemPrompt = null);
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
     Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
-    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null);
+    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null);
+    Task UpdateConversationDocumentAsync(int conversationId, int? documentId);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
     Task<ChatGptMessage> SaveMessageAsync(ChatGptMessage message);
@@ -322,7 +323,7 @@ public class ChatGptService : IChatGptService
         }
     }
 
-    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null)
+    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null)
     {
         return await _dbSync.ExecuteAsync(async () =>
         {
@@ -332,12 +333,27 @@ public class ChatGptService : IChatGptService
                 TenantId = tenantId,
                 Title = title,
                 Model = model,
-                PromptId = promptId
+                PromptId = promptId,
+                DocumentId = documentId
             };
 
             _context.ChatGptConversations.Add(conversation);
             await _context.SaveChangesAsync();
             return conversation;
+        });
+    }
+
+    public async Task UpdateConversationDocumentAsync(int conversationId, int? documentId)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
+            if (existingConversation != null)
+            {
+                existingConversation.DocumentId = documentId;
+                existingConversation.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
         });
     }
 

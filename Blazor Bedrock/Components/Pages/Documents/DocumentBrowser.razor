@@ -1,0 +1,168 @@
+@page "/documents"
+@using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IDocumentService DocumentService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Documents - Blazor Bedrock</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Documents</h2>
+        <a href="/documents/upload" class="btn btn-primary">Upload Document</a>
+    </div>
+
+    <div class="mb-3">
+        <input type="text" class="form-control" placeholder="Search documents..." @bind="searchTerm" @oninput="FilterDocuments" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => { errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (documents == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (!filteredDocuments.Any())
+    {
+        <div class="alert alert-info">
+            @(documents.Any() ? "No documents match your search." : "No documents uploaded yet. Upload your first document to get started.")
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Title / Filename</th>
+                        <th>Author</th>
+                        <th>Upload Date</th>
+                        <th>Size</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in filteredDocuments)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@(doc.Title ?? doc.FileName)</strong>
+                                @if (!string.IsNullOrEmpty(doc.Title) && doc.Title != doc.FileName)
+                                {
+                                    <br /><small class="text-muted">@doc.FileName</small>
+                                }
+                            </td>
+                            <td>@(doc.Author ?? "-")</td>
+                            <td>@doc.UploadedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@((doc.FileSize / 1024.0).ToString("F1")) KB</td>
+                            <td>
+                                <a href="/documents/@doc.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocument(doc.Id)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Document>? documents;
+    private List<Document> filteredDocuments = new();
+    private string searchTerm = string.Empty;
+    private string? errorMessage;
+    private string? userId;
+    private int? tenantId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        await LoadDocuments();
+    }
+
+    private async Task LoadDocuments()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            documents = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+            FilterDocuments();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading documents: {ex.Message}";
+        }
+    }
+
+    private void FilterDocuments()
+    {
+        if (documents == null)
+        {
+            filteredDocuments = new();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            filteredDocuments = documents;
+        }
+        else
+        {
+            var term = searchTerm.ToLower();
+            filteredDocuments = documents.Where(d =>
+                (d.Title?.ToLower().Contains(term) ?? false) ||
+                (d.FileName.ToLower().Contains(term)) ||
+                (d.Author?.ToLower().Contains(term) ?? false)
+            ).ToList();
+        }
+    }
+
+    private async Task DeleteDocument(int documentId)
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this document?");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await DocumentService.DeleteDocumentAsync(documentId, userId, tenantId.Value);
+            await LoadDocuments();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting document: {ex.Message}";
+        }
+    }
+}

@@ -10,6 +10,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
     {
         builder.HasKey(d => d.Id);
         builder.Property(d => d.FileName).IsRequired().HasMaxLength(500);
+        builder.Property(d => d.Title).HasMaxLength(500);
+        builder.Property(d => d.Author).HasMaxLength(200);
         builder.Property(d => d.ContentType).IsRequired().HasMaxLength(200);
         builder.Property(d => d.FileContent).IsRequired();
         builder.Property(d => d.ExtractedText).HasColumnType("LONGTEXT");

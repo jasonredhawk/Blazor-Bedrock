@@ -8,6 +8,7 @@ public class ChatGptConversation
     public string Title { get; set; } = string.Empty;
     public string? Model { get; set; }
     public int? PromptId { get; set; }
+    public int? DocumentId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

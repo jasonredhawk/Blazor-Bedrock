@@ -1,0 +1,169 @@
+@page "/documents/upload"
+@using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Tenant
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Blazor_Bedrock.Data.Models
+@inject IDocumentService DocumentService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Upload Document - Blazor Bedrock</PageTitle>
+
+<div class="container mt-4">
+    <h2>Upload Document</h2>
+    
+    <div>
+        <div class="mb-3">
+            <label class="form-label">Select Document</label>
+            <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx" />
+            @if (selectedFile != null)
+            {
+                <div class="mt-2">
+                    <small class="text-success">
+                        ✓ Selected: @selectedFile.Name (@(selectedFile.Size / 1024) KB)
+                    </small>
+                </div>
+            }
+            else
+            {
+                <div class="mt-2">
+                    <small class="text-muted">No file selected</small>
+                </div>
+            }
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Title (Optional)</label>
+            <input type="text" class="form-control" @bind="uploadModel.Title" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Author (Optional)</label>
+            <input type="text" class="form-control" @bind="uploadModel.Author" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        @if (isUploading)
+        {
+            <div class="alert alert-info">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Uploading and processing document...
+            </div>
+        }
+
+        <button type="button" class="btn btn-primary" @onclick="HandleUpload" disabled="@IsUploadButtonDisabled">
+            @if (isUploading)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            }
+            Upload Document
+            @if (selectedFile != null)
+            {
+                <span class="badge bg-light text-dark ms-2">Ready</span>
+            }
+        </button>
+    </div>
+</div>
+
+@code {
+    private IBrowserFile? selectedFile;
+    private UploadModel uploadModel = new();
+    private bool isUploading = false;
+    private string? errorMessage;
+    private string? userId;
+    private int? tenantId;
+
+    private bool IsUploadButtonDisabled => selectedFile == null || isUploading;
+
+    private class UploadModel
+    {
+        public string? Title { get; set; }
+        public string? Author { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            selectedFile = e.File;
+            errorMessage = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error selecting file: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to upload.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        isUploading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50MB max
+            var document = await DocumentService.UploadDocumentAsync(
+                stream,
+                selectedFile.Name,
+                selectedFile.ContentType ?? "application/octet-stream",
+                userId,
+                tenantId.Value,
+                uploadModel.Title,
+                uploadModel.Author
+            );
+
+            NavigationManager.NavigateTo($"/documents/{document.Id}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error uploading document: {ex.Message}";
+            if (ex.InnerException != null)
+            {
+                errorMessage += $" ({ex.InnerException.Message})";
+            }
+            Console.WriteLine($"Upload error: {ex}");
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+}

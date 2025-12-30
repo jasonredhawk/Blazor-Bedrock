@@ -238,6 +238,65 @@ public class MenuService : IMenuService
                 }
             }
 
+            // Documents Menu (Permission-based, requires tenant)
+            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Documents_Enabled"))
+            {
+                var documentsMenu = new MenuItem
+                {
+                    Title = "Documents",
+                    Icon = "bi bi-file-earmark",
+                    Children = new List<MenuItem>()
+                };
+
+                // If Admin, show all Documents menu items
+                if (isAdmin)
+                {
+                    documentsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Browse",
+                        Href = "/documents",
+                        Icon = "bi bi-folder"
+                    });
+                    documentsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Upload",
+                        Href = "/documents/upload",
+                        Icon = "bi bi-upload"
+                    });
+                }
+                else
+                {
+                    // Non-admin users: check permissions
+                    var canViewDocuments = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Documents.View");
+                    if (canViewDocuments)
+                    {
+                        documentsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Browse",
+                            Href = "/documents",
+                            Icon = "bi bi-folder"
+                        });
+                    }
+
+                    var canUploadDocuments = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Documents.Upload");
+                    if (canUploadDocuments)
+                    {
+                        documentsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Upload",
+                            Href = "/documents/upload",
+                            Icon = "bi bi-upload"
+                        });
+                    }
+                }
+
+                // Only add Documents menu if it has children
+                if (documentsMenu.Children.Any())
+                {
+                    menuItems.Add(documentsMenu);
+                }
+            }
+
             // Stripe (if enabled, requires tenant)
             if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Stripe_Enabled"))
             {

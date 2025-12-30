@@ -1,0 +1,240 @@
+@page "/documents/{DocumentId:int}"
+@using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IDocumentService DocumentService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Document Details - Blazor Bedrock</PageTitle>
+
+<div class="container mt-4">
+    @if (document == null)
+    {
+        <div class="alert alert-warning">Document not found.</div>
+        <a href="/documents" class="btn btn-secondary">Back to Documents</a>
+    }
+    else
+    {
+        <div class="mb-3">
+            <a href="/documents" class="btn btn-secondary">← Back to Documents</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                @errorMessage
+                <button type="button" class="btn-close" @onclick="() => { errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+            </div>
+        }
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>@(document.Title ?? document.FileName)</h3>
+            </div>
+            <div class="card-body">
+                <p><strong>Filename:</strong> @document.FileName</p>
+                @if (!string.IsNullOrEmpty(document.Author))
+                {
+                    <p><strong>Author:</strong> @document.Author</p>
+                }
+                <p><strong>Upload Date:</strong> @document.UploadedAt.ToString("yyyy-MM-dd HH:mm")</p>
+                <p><strong>File Size:</strong> @((document.FileSize / 1024.0).ToString("F1")) KB</p>
+                <p><strong>File Type:</strong> @document.ContentType</p>
+                
+                <div class="mt-3">
+                    <a href="/chatgpt/chat?documentId=@document.Id" class="btn btn-primary">Use in Chat</a>
+                    <button class="btn btn-outline-secondary" @onclick="DownloadDocument">Download</button>
+                </div>
+            </div>
+        </div>
+
+        @if (isDocx)
+        {
+            <!-- DOCX Formatted Preview -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Document Preview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-muted small mb-2">
+                        @(document.ContentType ?? "DOCX") · DOCX formatted preview
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(docxRenderError))
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0">
+                            <div class="fw-semibold">DOCX preview failed</div>
+                            <div class="small"><code>@docxRenderError</code></div>
+                        </div>
+                    }
+                    <div id="docx-preview-container"
+                         class="border rounded p-2"
+                         style="background: white; max-height: 600px; overflow-y: auto;">
+                        <div class="text-muted small">Rendering DOCX…</div>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(document.ExtractedText))
+        {
+            <!-- Extracted Text Preview -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Extracted Text</h5>
+                </div>
+                <div class="card-body">
+                    <div class="border rounded p-2" style="max-height: 600px; overflow-y: auto;">
+                        <div style="white-space: pre-wrap;">@document.ExtractedText</div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info">
+                No text was extracted from this document. The document may be an image-based PDF or in an unsupported format.
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int DocumentId { get; set; }
+
+    private Document? document;
+    private string? errorMessage;
+    private string? userId;
+    private int? tenantId;
+    private bool isDocx = false;
+    private string? docxRenderError;
+    private bool docxRendered = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        await LoadDocument();
+    }
+
+    private async Task LoadDocument()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            document = await DocumentService.GetDocumentByIdAsync(DocumentId, userId, tenantId.Value);
+            if (document != null)
+            {
+                isDocx = IsDocx(document);
+                docxRenderError = null;
+                docxRendered = false;
+                StateHasChanged(); // Trigger re-render so OnAfterRenderAsync can run
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading document: {ex.Message}";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Render DOCX preview after the DOM updates
+        // This will be called after every render, so we check docxRendered flag
+        if (isDocx && document != null && !docxRendered)
+        {
+            try
+            {
+                // Wait a bit for DOM to be ready
+                await Task.Delay(150);
+                
+                // Check if container exists
+                var containerExists = await JSRuntime.InvokeAsync<bool>("eval", "document.getElementById('docx-preview-container') !== null");
+                if (!containerExists)
+                {
+                    // Container not ready yet, will try again on next render
+                    return;
+                }
+
+                var url = $"/api/documents/{document.Id}/file";
+
+                // Check if the JS library is present
+                var docxLibOk = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.docx !== 'undefined' && typeof window.docx.renderAsync === 'function'");
+                if (!docxLibOk)
+                {
+                    docxRenderError = "DOCX preview library is not loaded (window.docx.renderAsync missing). Please refresh the page.";
+                    docxRendered = true; // Mark as rendered to prevent retries
+                    StateHasChanged();
+                    return;
+                }
+
+                // Check if bedrockDocxPreview is available
+                var previewLibOk = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.bedrockDocxPreview !== 'undefined' && typeof window.bedrockDocxPreview.render === 'function'");
+                if (!previewLibOk)
+                {
+                    docxRenderError = "DOCX preview wrapper is not loaded (window.bedrockDocxPreview.render missing). Please refresh the page.";
+                    docxRendered = true; // Mark as rendered to prevent retries
+                    StateHasChanged();
+                    return;
+                }
+
+                // Mark as rendered before calling to prevent multiple calls
+                docxRendered = true;
+                StateHasChanged();
+
+                // Now render the document
+                await JSRuntime.InvokeVoidAsync("bedrockDocxPreview.render", url, "docx-preview-container");
+            }
+            catch (Exception ex)
+            {
+                docxRenderError = $"Error rendering DOCX: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    docxRenderError += $" ({ex.InnerException.Message})";
+                }
+                docxRendered = true; // Mark as rendered even on error to prevent retries
+                StateHasChanged();
+            }
+        }
+    }
+
+    private static bool IsDocx(Document? doc)
+    {
+        if (doc == null) return false;
+        if (!string.IsNullOrWhiteSpace(doc.FileName) && doc.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return true;
+        return string.Equals(doc.ContentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task DownloadDocument()
+    {
+        if (document == null || string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            var fileContent = await DocumentService.GetDocumentFileAsync(document.Id, userId, tenantId.Value);
+            var fileName = document.FileName;
+            
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(fileContent), document.ContentType);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error downloading document: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+}

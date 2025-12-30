@@ -6,6 +6,8 @@ public class Document
     public string UserId { get; set; } = string.Empty;
     public int TenantId { get; set; }
     public string FileName { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? Author { get; set; }
     public string ContentType { get; set; } = string.Empty;
     public long FileSize { get; set; }
     public byte[] FileContent { get; set; } = Array.Empty<byte>();

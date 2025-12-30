@@ -2,14 +2,17 @@
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
 @using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
 @inject IChatGptService ChatGptService
 @inject IPromptService PromptService
 @inject ITenantService TenantService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -270,6 +273,34 @@
                                 }
                             }
                         </div>
+                        <div class="d-flex align-items-center mt-2" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+                            <div style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;">
+                                <select class="form-select form-select-sm" value="@_selectedDocumentId" @onchange="OnDocumentChanged" disabled="@_isLoading">
+                                    <option value="">No Document</option>
+                                    @foreach (var doc in _availableDocuments)
+                                    {
+                                        <option value="@doc.Id">@(doc.Title ?? doc.FileName)</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (_selectedDocumentId.HasValue || _conversationDocumentId.HasValue)
+                            {
+                                var docId = _selectedDocumentId ?? _conversationDocumentId;
+                                var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == docId);
+                                @if (selectedDoc != null)
+                                {
+                                    <span class="badge bg-info" title="@selectedDoc.FileName">
+                                        <i class="bi bi-file-earmark me-1"></i>@(selectedDoc.Title ?? selectedDoc.FileName)
+                                    </span>
+                                    @if (!_isLoading && _currentConversationId.HasValue)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    }
+                                }
+                            }
+                        </div>
                     </div>
                     
                     @* Messages Area - Only scrollable area *@
@@ -373,6 +404,9 @@
     private List<ChatGptPrompt> _availablePrompts = new();
     private int? _selectedPromptId;
     private int? _currentPromptIdForConversation; // Track which prompt is active for current conversation
+    private List<Document> _availableDocuments = new();
+    private int? _selectedDocumentId;
+    private int? _conversationDocumentId; // Track which document is associated with the current conversation
 
     protected override async Task OnInitializedAsync()
     {
@@ -396,6 +430,20 @@
                     
                     // Load conversations
                     _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    
+                    // Load documents
+                    _availableDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+                    
+                    // Check for documentId in query string
+                    var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+                    if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("documentId", out var docIdValue))
+                    {
+                        if (int.TryParse(docIdValue.FirstOrDefault(), out var docId))
+                        {
+                            _selectedDocumentId = docId;
+                            _conversationDocumentId = docId; // Set this so it's tracked for the conversation
+                        }
+                    }
                 }
                 catch
                 {
@@ -580,24 +628,45 @@
         _currentConversationId = conversationId;
         _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
         
-        // Load the prompt that was used for this conversation
+        // Load the prompt and document that were used for this conversation
         var conversation = _conversations.FirstOrDefault(c => c.Id == conversationId);
-        if (conversation != null && conversation.PromptId.HasValue)
+        if (conversation != null)
         {
-            // Verify the prompt still exists and is available
-            var prompt = _availablePrompts.FirstOrDefault(p => p.Id == conversation.PromptId.Value);
-            if (prompt != null)
+            if (conversation.PromptId.HasValue)
             {
-                _selectedPromptId = conversation.PromptId.Value;
+                // Verify the prompt still exists and is available
+                var prompt = _availablePrompts.FirstOrDefault(p => p.Id == conversation.PromptId.Value);
+                if (prompt != null)
+                {
+                    _selectedPromptId = conversation.PromptId.Value;
+                }
+                else
+                {
+                    _selectedPromptId = null;
+                }
             }
             else
             {
                 _selectedPromptId = null;
             }
+            
+            // Load the document associated with this conversation
+            if (conversation.DocumentId.HasValue)
+            {
+                _selectedDocumentId = conversation.DocumentId.Value;
+                _conversationDocumentId = conversation.DocumentId.Value;
+            }
+            else
+            {
+                _selectedDocumentId = null;
+                _conversationDocumentId = null;
+            }
         }
         else
         {
             _selectedPromptId = null;
+            _selectedDocumentId = null;
+            _conversationDocumentId = null;
         }
         
         _currentPromptIdForConversation = _selectedPromptId;
@@ -670,6 +739,78 @@
         StateHasChanged();
     }
 
+    private async Task OnDocumentChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var documentId))
+        {
+            _selectedDocumentId = documentId;
+            
+            // If there's an active conversation, update it with the new document
+            if (_currentConversationId.HasValue)
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (!string.IsNullOrEmpty(userId) && tenantId != null)
+                {
+                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, documentId);
+                    _conversationDocumentId = documentId;
+                    // Reload conversations to get updated data
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                }
+            }
+        }
+        else
+        {
+            _selectedDocumentId = null;
+            
+            // Clear document from conversation if one exists
+            if (_currentConversationId.HasValue)
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (!string.IsNullOrEmpty(userId) && tenantId != null)
+                {
+                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null);
+                    _conversationDocumentId = null;
+                    // Reload conversations to get updated data
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                }
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task ClearSelectedDocument()
+    {
+        _selectedDocumentId = null;
+        
+        // Clear document from conversation if one exists
+        if (_currentConversationId.HasValue)
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId) && tenantId != null)
+            {
+                await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null);
+                _conversationDocumentId = null;
+                // Reload conversations to get updated data
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            }
+        }
+        else
+        {
+            _conversationDocumentId = null;
+        }
+        
+        StateHasChanged();
+    }
+
     private async Task SendMessage()
     {
         if (string.IsNullOrWhiteSpace(_messageText) || _isLoading) return;
@@ -690,27 +831,47 @@
 
             if (!_currentConversationId.HasValue)
             {
-                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId);
+                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, _selectedDocumentId);
                 _currentConversationId = newConversation.Id;
                 _messages = new List<ChatGptMessage>();
-                // Track the current prompt for this new conversation
+                // Track the current prompt and document for this new conversation
                 _currentPromptIdForConversation = _selectedPromptId;
+                _conversationDocumentId = _selectedDocumentId;
                 _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             }
             else
             {
                 // Update the conversation's prompt ID if it has changed
                 var currentConversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
-                if (currentConversation != null && currentConversation.PromptId != _selectedPromptId)
+                if (currentConversation != null)
                 {
-                    await ChatGptService.UpdateConversationPromptAsync(_currentConversationId.Value, _selectedPromptId);
-                    // Reload conversations to get updated data
-                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    if (currentConversation.PromptId != _selectedPromptId)
+                    {
+                        await ChatGptService.UpdateConversationPromptAsync(_currentConversationId.Value, _selectedPromptId);
+                    }
+                    
+                    // Update document ID if it has changed
+                    if (currentConversation.DocumentId != _selectedDocumentId)
+                    {
+                        await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, _selectedDocumentId);
+                        _conversationDocumentId = _selectedDocumentId;
+                        // Reload conversations to get updated data
+                        _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    }
                 }
             }
 
             // Build conversation history from existing messages
             var conversationMessages = new List<ChatMessage>();
+            
+            // Get the document if one is associated with this conversation
+            Document? conversationDocument = null;
+            int? activeDocumentId = _selectedDocumentId ?? _conversationDocumentId;
+            
+            if (activeDocumentId.HasValue)
+            {
+                conversationDocument = _availableDocuments.FirstOrDefault(d => d.Id == activeDocumentId.Value);
+            }
             
             // Always add system prompt if one is selected (like CustomGPT - persists throughout conversation)
             // Use the currently selected prompt (which may have changed)
@@ -719,14 +880,36 @@
                 var selectedPrompt = _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value);
                 if (selectedPrompt != null)
                 {
+                    var promptText = selectedPrompt.PromptText;
+                    
+                    // If document exists and prompt supports {documentText} placeholder, replace it
+                    if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText) && promptText.Contains("{documentText}"))
+                    {
+                        promptText = promptText.Replace("{documentText}", conversationDocument.ExtractedText);
+                    }
+                    else if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText) && !promptText.Contains("{documentText}"))
+                    {
+                        // If prompt doesn't have placeholder but document exists, append document info to system prompt
+                        promptText = $"{promptText}\n\nYou have access to the following document:\n\nDocument: {conversationDocument.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{conversationDocument.ExtractedText}";
+                    }
+                    
                     // Always include the current system prompt in conversation (sent with every request)
                     // This allows changing prompts mid-conversation without clearing history
                     conversationMessages.Add(new ChatMessage
                     {
                         Role = "system",
-                        Content = selectedPrompt.PromptText
+                        Content = promptText
                     });
                 }
+            }
+            else if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+            {
+                // No prompt selected, but document exists - add as system message
+                conversationMessages.Add(new ChatMessage
+                {
+                    Role = "system",
+                    Content = $"You have access to the following document:\n\nDocument: {conversationDocument.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{conversationDocument.ExtractedText}"
+                });
             }
             
             // Convert database messages to ChatMessage format
@@ -739,8 +922,9 @@
                 });
             }
 
-            // Add the new user message to conversation
+            // Add the new user message to conversation (without document text - it's already in system prompt)
             var userMessageText = _messageText;
+            
             conversationMessages.Add(new ChatMessage
             {
                 Role = "user",

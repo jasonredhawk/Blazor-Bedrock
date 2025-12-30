@@ -98,6 +98,18 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XFNldHRpbmdzLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentBrowser.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnRCcm93c2VyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnREZXRhaWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentUpload.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnRVcGxvYWQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Error.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xFcnJvci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 

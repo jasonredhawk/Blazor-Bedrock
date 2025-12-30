@@ -94,6 +94,10 @@
             "Stripe.net": {
               "target": "Package",
               "version": "[47.0.0, )"
+            },
+            "itext7": {
+              "target": "Package",
+              "version": "[9.0.0, )"
             }
           },
           "imports": [

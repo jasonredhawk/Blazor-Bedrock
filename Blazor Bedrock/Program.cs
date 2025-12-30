@@ -10,6 +10,7 @@ using Blazor_Bedrock.Services.Logger;
 using Blazor_Bedrock.Services.UserManagement;
 using Blazor_Bedrock.Services.RoleManagement;
 using Blazor_Bedrock.Services.ChatGpt;
+using Blazor_Bedrock.Services.Document;
 using Blazor_Bedrock.Services.Migrations;
 using Blazor_Bedrock.Services.Stripe;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
@@ -170,6 +171,7 @@ tempServiceProvider.Dispose();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IDocumentProcessor, DocumentProcessor>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IMigrationService, MigrationService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 
@@ -284,5 +286,32 @@ app.MapGet("/auth/logout-post", async (HttpContext context, IIdentityService ide
 
 // Health check endpoint for Cloud Run
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+// Document file endpoint
+app.MapGet("/api/documents/{id}/file", async (int id, HttpContext context, IDocumentService documentService, ITenantService tenantService) =>
+{
+    // Get user ID from HttpContext.User (available after authentication middleware)
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId) || tenantId == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var (fileContent, contentType, fileName) = await documentService.GetDocumentFileWithMetadataAsync(id, userId, tenantId.Value);
+        return Results.File(fileContent, contentType, fileName);
+    }
+    catch (FileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.StatusCode(500);
+    }
+}).RequireAuthorization();
 
 app.Run();

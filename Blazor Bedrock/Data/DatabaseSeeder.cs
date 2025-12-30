@@ -42,7 +42,8 @@ public class DatabaseSeeder
             new FeatureFlag { Name = "Roles_Enabled", Description = "Enable Roles Management", IsEnabled = true },
             new FeatureFlag { Name = "Migrations_Enabled", Description = "Enable Migration Management", IsEnabled = true },
             new FeatureFlag { Name = "Logger_Enabled", Description = "Enable Application Logger", IsEnabled = true },
-            new FeatureFlag { Name = "FeatureFlags_Enabled", Description = "Enable Feature Flags Management", IsEnabled = true }
+            new FeatureFlag { Name = "FeatureFlags_Enabled", Description = "Enable Feature Flags Management", IsEnabled = true },
+            new FeatureFlag { Name = "Documents_Enabled", Description = "Enable Document Management", IsEnabled = true }
         };
 
         foreach (var flag in flags)
@@ -76,7 +77,12 @@ public class DatabaseSeeder
             new Permission { Name = "ChatGpt.View", Description = "View ChatGPT menu", Category = "ChatGPT" },
             new Permission { Name = "ChatGpt.Settings", Description = "Access ChatGPT settings", Category = "ChatGPT" },
             new Permission { Name = "ChatGpt.Prompts", Description = "Manage ChatGPT prompts", Category = "ChatGPT" },
-            new Permission { Name = "ChatGpt.Chat", Description = "Use ChatGPT chat interface", Category = "ChatGPT" }
+            new Permission { Name = "ChatGpt.Chat", Description = "Use ChatGPT chat interface", Category = "ChatGPT" },
+            
+            // Document Management Permissions
+            new Permission { Name = "Documents.View", Description = "View documents list", Category = "Document Management" },
+            new Permission { Name = "Documents.Upload", Description = "Upload documents", Category = "Document Management" },
+            new Permission { Name = "Documents.Delete", Description = "Delete documents", Category = "Document Management" }
         };
 
         foreach (var permission in permissions)
@@ -298,7 +304,9 @@ Be thorough and analytical while remaining clear and accessible.",
             {
                 Name = "Document Analysis",
                 Description = "Analyze documents and answer questions about them",
-                PromptText = @"You are a helpful assistant that analyzes documents. The user will provide you with document content and ask questions about it.
+                PromptText = @"You are a helpful assistant that analyzes documents. You have access to the following document content:
+
+{documentText}
 
 Please analyze the document carefully and provide accurate, detailed answers based on the content provided. Reference specific sections or passages when relevant. If the document doesn't contain information needed to answer the question, say so clearly.",
                 IsSystemPrompt = false
