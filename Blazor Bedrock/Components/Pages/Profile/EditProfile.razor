@@ -1,13 +1,9 @@
 @page "/profile/edit"
-@using Blazor_Bedrock.Services.ChatGpt
-@using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using MudBlazor
-@inject IChatGptService ChatGptService
-@inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -55,44 +51,12 @@
                 }
             </MudPaper>
         </MudTabPanel>
-        
-        <MudTabPanel Text="ChatGPT API Key">
-            <MudPaper Elevation="2" Class="pa-4 mt-4">
-                <MudTextField @bind-Value="_apiKey" 
-                              Label="OpenAI API Key" 
-                              Variant="Variant.Outlined" 
-                              InputType="InputType.Password"
-                              HelperText="Your API key is encrypted and stored securely"
-                              Class="mb-4" />
-                
-                <MudSelect @bind-Value="_preferredModel" 
-                           Label="Preferred Model" 
-                           Variant="Variant.Outlined"
-                           T="string?"
-                           Class="mb-4">
-                    @foreach (var model in _availableModels)
-                    {
-                        <MudSelectItem Value="@model">@model</MudSelectItem>
-                    }
-                </MudSelect>
-                
-                <MudButton Variant="Variant.Filled" 
-                           Color="Color.Primary"
-                           OnClick="SaveApiKey"
-                           Disabled="@_isLoading">
-                    Save API Key
-                </MudButton>
-            </MudPaper>
-        </MudTabPanel>
     </MudTabs>
 </MudContainer>
 
 @code {
     private ApplicationUser? _user;
     private ProfileModel _profileModel = new();
-    private string _apiKey = string.Empty;
-    private string? _preferredModel;
-    private List<string> _availableModels = new();
     private bool _isLoading = false;
 
     private class ProfileModel
@@ -149,34 +113,6 @@
             else
             {
                 Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _isLoading = false;
-        }
-    }
-
-    private async Task SaveApiKey()
-    {
-        if (string.IsNullOrWhiteSpace(_apiKey)) return;
-
-        _isLoading = true;
-        try
-        {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var tenantId = TenantService.GetCurrentTenantId();
-            
-            if (!string.IsNullOrEmpty(userId))
-            {
-                await ChatGptService.SaveApiKeyAsync(userId, tenantId, _apiKey, _preferredModel);
-                Snackbar.Add("API key saved successfully", Severity.Success);
-                _apiKey = string.Empty;
             }
         }
         catch (Exception ex)

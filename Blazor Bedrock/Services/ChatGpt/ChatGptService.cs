@@ -17,10 +17,12 @@ public class ChatMessage
 public interface IChatGptService
 {
     Task<string> GetDecryptedApiKeyAsync(string userId, int? tenantId);
+    Task<string?> GetPreferredModelAsync(int? tenantId);
     Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null);
     Task<List<string>> GetAvailableModelsAsync(string apiKey);
     Task<string> SendChatMessageAsync(string userId, int? tenantId, string message, string? model = null, string? systemPrompt = null);
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
+    Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
     Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
@@ -52,31 +54,62 @@ public class ChatGptService : IChatGptService
 
     public async Task<string> GetDecryptedApiKeyAsync(string userId, int? tenantId)
     {
-        var apiKey = await _context.ChatGptApiKeys
-            .FirstOrDefaultAsync(k => k.UserId == userId && 
-                                      (tenantId == null || k.TenantId == tenantId) && 
-                                      k.IsActive);
+        if (tenantId == null)
+        {
+            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
+        }
 
-        if (apiKey == null) throw new InvalidOperationException("No API key found");
+        // Prioritize tenant-specific API keys (organization-level)
+        var apiKey = await _context.ChatGptApiKeys
+            .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
+
+        if (apiKey == null)
+        {
+            throw new InvalidOperationException($"No API key found for the current organization. Please configure an API key in Settings.");
+        }
 
         var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
         return protector.Unprotect(apiKey.EncryptedApiKey);
     }
 
+    public async Task<string?> GetPreferredModelAsync(int? tenantId)
+    {
+        if (tenantId == null)
+        {
+            return null;
+        }
+
+        var apiKey = await _context.ChatGptApiKeys
+            .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
+
+        return apiKey?.PreferredModel;
+    }
+
     public async Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null)
     {
+        if (tenantId == null)
+        {
+            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
+        }
+
         var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
         var encryptedKey = protector.Protect(apiKey);
 
+        // Look for existing tenant-specific API key (organization-level)
         var existing = await _context.ChatGptApiKeys
-            .FirstOrDefaultAsync(k => k.UserId == userId && 
-                                      (tenantId == null || k.TenantId == tenantId));
+            .FirstOrDefaultAsync(k => k.TenantId == tenantId);
 
         if (existing != null)
         {
             existing.EncryptedApiKey = encryptedKey;
             existing.PreferredModel = preferredModel;
             existing.LastUsedAt = DateTime.UtcNow;
+            existing.IsActive = true;
+            // Ensure UserId is set (in case it wasn't before)
+            if (string.IsNullOrEmpty(existing.UserId))
+            {
+                existing.UserId = userId;
+            }
         }
         else
         {
@@ -174,6 +207,19 @@ public class ChatGptService : IChatGptService
     public async Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null)
     {
         return await CallChatGptWithMessagesAsync(messages, apiKey, model ?? "gpt-3.5-turbo");
+    }
+
+    public async Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages)
+    {
+        if (tenantId == null)
+        {
+            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
+        }
+
+        var apiKey = await GetDecryptedApiKeyAsync(userId, tenantId);
+        var preferredModel = await GetPreferredModelAsync(tenantId);
+        
+        return await CallChatGptWithMessagesAsync(messages, apiKey, preferredModel ?? "gpt-3.5-turbo");
     }
 
     private async Task<string> CallChatGptWithMessagesAsync(List<ChatMessage> messages, string apiKey, string model)

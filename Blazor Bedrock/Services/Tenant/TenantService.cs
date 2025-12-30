@@ -62,7 +62,15 @@ public class TenantService : ITenantService
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext == null) return false;
 
-        var userId = httpContext.User?.Identity?.Name;
+        string? userId = null;
+        
+        // Try to get userId from NameIdentifier claim first
+        if (httpContext.User?.Identity?.IsAuthenticated == true)
+        {
+            userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        }
+        
+        // If still null, try to get user from UserManager
         if (string.IsNullOrEmpty(userId))
         {
             var userManager = httpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
@@ -75,17 +83,33 @@ public class TenantService : ITenantService
         var hasAccess = await UserHasAccessToTenantAsync(userId, tenantId);
         if (!hasAccess) return false;
 
-        // Store in session/cookie only if response hasn't started
-        if (!httpContext.Response.HasStarted)
+        // Always try to set session (works even if response has started in some cases)
+        try
         {
             httpContext.Session.SetInt32(TenantIdKey, tenantId);
-            httpContext.Response.Cookies.Append(TenantIdKey, tenantId.ToString(), new CookieOptions
+        }
+        catch
+        {
+            // Session might not be available, but continue anyway
+        }
+
+        // Set cookie only if response hasn't started
+        if (!httpContext.Response.HasStarted)
+        {
+            try
             {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTimeOffset.UtcNow.AddDays(30)
-            });
+                httpContext.Response.Cookies.Append(TenantIdKey, tenantId.ToString(), new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    SameSite = SameSiteMode.Strict,
+                    Expires = DateTimeOffset.UtcNow.AddDays(30)
+                });
+            }
+            catch
+            {
+                // Cookie setting failed, but session should still work
+            }
         }
 
         return true;

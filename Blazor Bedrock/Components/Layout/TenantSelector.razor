@@ -8,7 +8,6 @@
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
-@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
@@ -43,7 +42,7 @@
                 </MudMenuItem>
             }
             <MudDivider />
-            <MudMenuItem OnClick="ShowCreateOrganizationDialog">
+            <MudMenuItem OnClick="NavigateToCreateOrganization">
                 <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
                 Create New Organization
             </MudMenuItem>
@@ -63,7 +62,7 @@ else if (_isAuthenticated)
             </MudButton>
         </ActivatorContent>
         <ChildContent>
-            <MudMenuItem OnClick="ShowCreateOrganizationDialog">
+            <MudMenuItem OnClick="NavigateToCreateOrganization">
                 <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
                 Create Organization
             </MudMenuItem>
@@ -92,6 +91,27 @@ else if (_isAuthenticated)
         await UpdateAuthenticationState();
         StateHasChanged();
         await base.OnParametersSetAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Subscribe to location changes to refresh tenant list when navigating
+            NavigationManager.LocationChanged += OnLocationChanged;
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Refresh tenant list when navigating to ensure it's up to date
+        // Only refresh if we're authenticated and not currently updating
+        if (!_isUpdating && _isAuthenticated)
+        {
+            await RefreshTenantList();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
@@ -157,58 +177,66 @@ else if (_isAuthenticated)
         {
             AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         }
+        if (NavigationManager != null)
+        {
+            NavigationManager.LocationChanged -= OnLocationChanged;
+        }
     }
 
     private async Task HandleTenantChange(int tenantId)
     {
-        if (_selectedTenantId != tenantId)
+        if (_selectedTenantId == tenantId)
         {
-            await TenantService.SetCurrentTenantAsync(tenantId);
-            _selectedTenantId = tenantId;
-            await InvokeAsync(StateHasChanged);
-            // Refresh the page to update tenant context
-            await Task.Delay(100);
-            NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
-        }
-    }
-
-    private async Task ShowCreateOrganizationDialog()
-    {
-        if (_currentUser == null)
-        {
-            Snackbar.Add("Unable to identify current user. Please log out and log back in.", Severity.Error);
-            return;
+            return; // Already selected
         }
 
-        var parameters = new DialogParameters
+        try
         {
-            ["UserId"] = _currentUser.Id
-        };
-
-        var options = new DialogOptions
-        {
-            CloseOnEscapeKey = true,
-            MaxWidth = MaxWidth.Small,
-            FullWidth = true
-        };
-
-        var dialog = await DialogService.ShowAsync<CreateOrganizationDialog>("Create Organization", parameters, options);
-        var result = await dialog.Result;
-
-        if (result != null && !result.Canceled && result.Data is Tenant createdTenant)
-        {
-            // Refresh tenant list
-            if (!string.IsNullOrEmpty(_currentUser.Id))
+            var success = await TenantService.SetCurrentTenantAsync(tenantId);
+            
+            if (success)
             {
-                _userTenants = await TenantService.GetUserTenantsAsync(_currentUser.Id);
-                _selectedTenantId = createdTenant.Id;
+                _selectedTenantId = tenantId;
                 await InvokeAsync(StateHasChanged);
-                Snackbar.Add($"Organization '{createdTenant.Name}' created successfully!", Severity.Success);
+                
                 // Refresh the page to update tenant context
                 await Task.Delay(100);
                 NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
             }
+            else
+            {
+                Snackbar.Add("Failed to switch organization. You may not have access to this organization.", Severity.Error);
+                // Refresh tenant list in case something changed
+                await RefreshTenantList();
+            }
         }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error switching organization: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshTenantList()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                await DbSync.ExecuteAsync(async () =>
+                {
+                    _userTenants = await TenantService.GetUserTenantsAsync(userId);
+                    _selectedTenantId = TenantService.GetCurrentTenantId() ?? _userTenants.FirstOrDefault()?.Id;
+                });
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void NavigateToCreateOrganization()
+    {
+        NavigationManager.NavigateTo("/tenant/create-organization");
     }
 
     [Inject]

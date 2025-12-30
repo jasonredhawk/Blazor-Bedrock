@@ -1,0 +1,486 @@
+@page "/chatgpt/settings"
+@using Blazor_Bedrock.Services.ChatGpt
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IChatGptService ChatGptService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject ISnackbar Snackbar
+@inject ApplicationDbContext _context
+@inject IDatabaseSyncService DbSync
+@rendermode InteractiveServer
+
+<PageTitle>ChatGPT Settings</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">ChatGPT Settings</MudText>
+    
+    @if (_currentTenant == null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText>No organization selected. Please select an organization to configure ChatGPT settings.</MudText>
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">Organization</MudText>
+            <MudText Typo="Typo.body1" Class="mb-4">
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@_currentTenant.Name</MudChip>
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                These settings are specific to this organization. Each organization can have its own unique API key.
+            </MudText>
+        </MudPaper>
+        
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-4">API Configuration</MudText>
+            
+            @* Status Section *@
+            <MudPaper Elevation="0" Class="pa-3 mb-4" Style="background-color: var(--mud-palette-background-grey);">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@(_hasApiKey ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)" 
+                             Color="@(_hasApiKey ? Color.Success : Color.Warning)" 
+                             Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">
+                        @(_hasApiKey ? "API Key Configured" : "No API Key Configured")
+                    </MudText>
+                </div>
+                @if (_hasApiKey)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                        API key is configured and encrypted for this organization.
+                    </MudText>
+                    @if (!string.IsNullOrEmpty(_currentPreferredModel))
+                    {
+                        <div class="d-flex align-center">
+                            <MudText Typo="Typo.body2" Class="mr-2">Selected Model:</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                <strong>@_currentPreferredModel</strong>
+                            </MudChip>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Warning">
+                            No preferred model selected. Please select a model below.
+                        </MudText>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Please enter an OpenAI API key to enable ChatGPT functionality for this organization.
+                    </MudText>
+                }
+            </MudPaper>
+            
+            @* Test Connection Status *@
+            @if (_testResult != null)
+            {
+                <MudAlert Severity="@_testResult.Severity" Class="mb-4" Dismissible="true" OnClose="() => _testResult = null">
+                    <MudText Typo="Typo.body1"><strong>@_testResult.Title</strong></MudText>
+                    @if (!string.IsNullOrEmpty(_testResult.Message))
+                    {
+                        <MudText Typo="Typo.body2">@_testResult.Message</MudText>
+                    }
+                </MudAlert>
+            }
+            
+            <MudTextField @bind-Value="_apiKey" 
+                         Label="OpenAI API Key" 
+                         Variant="Variant.Outlined" 
+                         InputType="InputType.Password"
+                         HelperText="Your API key is encrypted and stored securely. Leave blank to keep existing key."
+                         Class="mb-4" />
+            
+            <MudSelect @bind-Value="_preferredModel" 
+                      Label="Preferred Model" 
+                      Variant="Variant.Outlined"
+                      T="string?"
+                      HelperText="Select the default model to use for ChatGPT conversations in this organization."
+                      Class="mb-4">
+                @if (!_availableModels.Any())
+                {
+                    <MudSelectItem Value="@((string?)null)" Disabled="true">Loading models...</MudSelectItem>
+                }
+                else
+                {
+                    @foreach (var model in _availableModels)
+                    {
+                        <MudSelectItem Value="@model">@model</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+            
+            @* Action Buttons *@
+            <div class="d-flex gap-2 flex-wrap">
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary"
+                          OnClick="SaveApiKey"
+                          Disabled="@(_isLoading || _currentTenant == null)">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Saving...</MudText>
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-1" />
+                        <MudText>Save Settings</MudText>
+                    }
+                </MudButton>
+                
+                @if (_hasApiKey)
+                {
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Info"
+                              OnClick="TestConnection"
+                              Disabled="@(_isTestingConnection || _currentTenant == null)">
+                        @if (_isTestingConnection)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Testing...</MudText>
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CloudSync" Class="mr-1" />
+                            <MudText>Test Connection</MudText>
+                        }
+                    </MudButton>
+                }
+                
+                @if (!string.IsNullOrWhiteSpace(_apiKey))
+                {
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Secondary"
+                              OnClick="TestApiKey"
+                              Disabled="@(_isTestingApiKey || _currentTenant == null)">
+                        @if (_isTestingApiKey)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Testing...</MudText>
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.VpnKey" Class="mr-1" />
+                            <MudText>Test New API Key</MudText>
+                        }
+                    </MudButton>
+                }
+            </div>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private string _apiKey = string.Empty;
+    private string? _preferredModel;
+    private string? _currentPreferredModel;
+    private List<string> _availableModels = new();
+    private bool _isLoading = false;
+    private bool _isTestingApiKey = false;
+    private bool _isTestingConnection = false;
+    private bool _hasApiKey = false;
+    private Tenant? _currentTenant;
+    private TestResult? _testResult;
+
+    private class TestResult
+    {
+        public Severity Severity { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string? Message { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentTenant();
+        await LoadAvailableModels();
+        await LoadCurrentSettings();
+    }
+
+    private async Task LoadCurrentTenant()
+    {
+        try
+        {
+            _currentTenant = await TenantService.GetCurrentTenantAsync();
+            if (_currentTenant == null)
+            {
+                Snackbar.Add("No organization selected. Please select an organization first.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading organization: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadAvailableModels()
+    {
+        // Load default models
+        _availableModels = new List<string>
+        {
+            "gpt-4o-2024-11-20",
+            "gpt-4o-mini-2024-11-20",
+            "gpt-4-turbo-2024-04-09",
+            "gpt-4-0125-preview",
+            "gpt-4",
+            "gpt-3.5-turbo-0125",
+            "gpt-3.5-turbo-16k",
+            "gpt-3.5-turbo"
+        };
+    }
+
+    private async Task LoadCurrentSettings()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (authState.User?.Identity?.IsAuthenticated == true)
+            {
+                var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (string.IsNullOrEmpty(userId) || tenantId == null)
+                {
+                    _hasApiKey = false;
+                    return;
+                }
+                
+                await DbSync.ExecuteAsync(async () =>
+                {
+                    // Prioritize tenant-specific API keys
+                    var apiKeyRecord = await _context.ChatGptApiKeys
+                        .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
+                    
+                    if (apiKeyRecord != null)
+                    {
+                        _hasApiKey = true;
+                        _currentPreferredModel = apiKeyRecord.PreferredModel;
+                        _preferredModel = apiKeyRecord.PreferredModel;
+                        
+                        // Try to load actual available models if we have an API key
+                        try
+                        {
+                            var decryptedKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
+                            var models = await ChatGptService.GetAvailableModelsAsync(decryptedKey);
+                            if (models.Any())
+                            {
+                                _availableModels = models;
+                            }
+                        }
+                        catch
+                        {
+                            // If we can't load models, use defaults
+                        }
+                    }
+                    else
+                    {
+                        _hasApiKey = false;
+                        _currentPreferredModel = null;
+                        _preferredModel = null;
+                    }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading settings: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task SaveApiKey()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (string.IsNullOrEmpty(userId))
+        {
+            Snackbar.Add("Unable to identify current user. Please log out and log back in.", Severity.Error);
+            return;
+        }
+
+        if (tenantId == null)
+        {
+            Snackbar.Add("No organization selected. Please select an organization first.", Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_apiKey) && string.IsNullOrEmpty(_preferredModel) && !_hasApiKey)
+        {
+            Snackbar.Add("Please provide an API key or select a preferred model to save.", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _testResult = null;
+        try
+        {
+            // Only update API key if one was provided
+            if (!string.IsNullOrWhiteSpace(_apiKey))
+            {
+                await ChatGptService.SaveApiKeyAsync(userId, tenantId, _apiKey, _preferredModel);
+                Snackbar.Add("API key and settings saved successfully", Severity.Success);
+                _apiKey = string.Empty;
+            }
+            else if (_hasApiKey)
+            {
+                // Just update the preferred model for existing API key
+                await DbSync.ExecuteAsync(async () =>
+                {
+                    var apiKeyRecord = await _context.ChatGptApiKeys
+                        .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
+                    
+                    if (apiKeyRecord != null)
+                    {
+                        apiKeyRecord.PreferredModel = _preferredModel;
+                        await _context.SaveChangesAsync();
+                    }
+                });
+                Snackbar.Add("Settings saved successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Please provide an API key to save.", Severity.Warning);
+                return;
+            }
+            
+            await LoadCurrentSettings();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task TestApiKey()
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            Snackbar.Add("Please enter an API key to test.", Severity.Warning);
+            return;
+        }
+
+        _isTestingApiKey = true;
+        _testResult = null;
+        try
+        {
+            var models = await ChatGptService.GetAvailableModelsAsync(_apiKey);
+            if (models.Any())
+            {
+                _testResult = new TestResult
+                {
+                    Severity = Severity.Success,
+                    Title = "API Key Test Successful",
+                    Message = $"Found {models.Count} available models. The API key is valid and ready to use."
+                };
+                _availableModels = models;
+                StateHasChanged();
+            }
+            else
+            {
+                _testResult = new TestResult
+                {
+                    Severity = Severity.Warning,
+                    Title = "API Key Test Completed",
+                    Message = "The API key test completed but no models were found. The key may be invalid or have limited access."
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _testResult = new TestResult
+            {
+                Severity = Severity.Error,
+                Title = "API Key Test Failed",
+                Message = ex.Message
+            };
+        }
+        finally
+        {
+            _isTestingApiKey = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            Snackbar.Add("Unable to test connection. Please ensure you're logged in and have an organization selected.", Severity.Error);
+            return;
+        }
+
+        if (!_hasApiKey)
+        {
+            Snackbar.Add("No API key configured. Please save an API key first.", Severity.Warning);
+            return;
+        }
+
+        _isTestingConnection = true;
+        _testResult = null;
+        try
+        {
+            var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
+            var models = await ChatGptService.GetAvailableModelsAsync(apiKey);
+            
+            if (models.Any())
+            {
+                var selectedModel = _currentPreferredModel ?? "Not selected";
+                _testResult = new TestResult
+                {
+                    Severity = Severity.Success,
+                    Title = "Connection Test Successful",
+                    Message = $"Successfully connected to OpenAI API. Found {models.Count} available models. Current preferred model: {selectedModel}"
+                };
+                
+                // Update available models if we got new ones
+                if (models.Count > _availableModels.Count || !_availableModels.SequenceEqual(models))
+                {
+                    _availableModels = models;
+                }
+            }
+            else
+            {
+                _testResult = new TestResult
+                {
+                    Severity = Severity.Warning,
+                    Title = "Connection Test Completed",
+                    Message = "Connected to OpenAI API but no models were found. The API key may have limited access."
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _testResult = new TestResult
+            {
+                Severity = Severity.Error,
+                Title = "Connection Test Failed",
+                Message = $"Failed to connect to OpenAI API: {ex.Message}"
+            };
+        }
+        finally
+        {
+            _isTestingConnection = false;
+            StateHasChanged();
+        }
+    }
+}
+

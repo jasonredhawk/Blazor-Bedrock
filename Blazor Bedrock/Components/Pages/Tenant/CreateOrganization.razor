@@ -1,0 +1,188 @@
+@page "/tenant/create-organization"
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MudBlazor
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDatabaseSyncService DbSync
+@rendermode InteractiveServer
+
+<PageTitle>Create Organization</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Create Organization</MudText>
+    
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _errorMessage = string.Empty">
+            <MudText Typo="Typo.body2"><strong>Error:</strong> @_errorMessage</MudText>
+        </MudAlert>
+    }
+
+    @if (!string.IsNullOrEmpty(_successMessage))
+    {
+        <MudAlert Severity="Severity.Success" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _successMessage = string.Empty">
+            <MudText Typo="Typo.body2">@_successMessage</MudText>
+        </MudAlert>
+    }
+    
+    <MudPaper Elevation="3" Class="pa-8">
+        <EditForm Model="@_organizationModel" OnValidSubmit="HandleSubmit" Class="mt-4">
+            <DataAnnotationsValidator />
+            
+            <MudTextField @bind-Value="_organizationModel.Name" 
+                          Label="Organization Name" 
+                          Variant="Variant.Outlined" 
+                          Required="true"
+                          RequiredError="Organization name is required"
+                          Class="mb-4" />
+            
+            <MudTextField @bind-Value="_organizationModel.Description" 
+                          Label="Description" 
+                          Variant="Variant.Outlined" 
+                          Lines="3"
+                          Class="mb-4" />
+            
+            <MudTextField @bind-Value="_organizationModel.Domain" 
+                          Label="Domain (Optional)" 
+                          Variant="Variant.Outlined"
+                          HelperText="Optional: Your organization's domain name"
+                          Class="mb-4" />
+            
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Text" 
+                           Color="Color.Default"
+                           OnClick="Cancel">
+                    Cancel
+                </MudButton>
+                <MudButton ButtonType="ButtonType.Submit" 
+                           Variant="Variant.Filled" 
+                           Color="Color.Primary"
+                           Disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">Creating...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Create Organization</MudText>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private OrganizationModel _organizationModel = new();
+    private bool _isLoading = false;
+    private string _errorMessage = string.Empty;
+    private string _successMessage = string.Empty;
+    private string? _userId;
+
+    private class OrganizationModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? Domain { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get current user ID
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            // If still null, try to get user from UserManager
+            if (string.IsNullOrEmpty(_userId))
+            {
+                await DbSync.ExecuteAsync(async () =>
+                {
+                    var user = await UserManager.GetUserAsync(authState.User);
+                    if (user != null)
+                    {
+                        _userId = user.Id;
+                    }
+                });
+            }
+        }
+
+        if (string.IsNullOrEmpty(_userId))
+        {
+            _errorMessage = "Unable to identify current user. Please log out and log back in.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private async Task HandleSubmit()
+    {
+        _errorMessage = string.Empty;
+        _successMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_organizationModel.Name))
+        {
+            _errorMessage = "Organization name is required.";
+            Snackbar.Add(_errorMessage, Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userId))
+        {
+            _errorMessage = "User ID is missing. Please log out and log back in.";
+            Snackbar.Add(_errorMessage, Severity.Error);
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var tenant = await TenantService.CreateTenantAsync(
+                _organizationModel.Name.Trim(), 
+                string.IsNullOrWhiteSpace(_organizationModel.Description) ? null : _organizationModel.Description.Trim(),
+                string.IsNullOrWhiteSpace(_organizationModel.Domain) ? null : _organizationModel.Domain.Trim(),
+                _userId
+            );
+
+            if (tenant != null)
+            {
+                _successMessage = $"Organization '{tenant.Name}' created successfully!";
+                Snackbar.Add(_successMessage, Severity.Success);
+                
+                // Wait a moment before navigating to show success message
+                await Task.Delay(1500);
+                // Force a full page reload to refresh the tenant selector
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                _errorMessage = "Failed to create organization. Please try again.";
+                Snackbar.Add(_errorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error creating organization: {ex.Message}";
+            Snackbar.Add(_errorMessage, Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}
+

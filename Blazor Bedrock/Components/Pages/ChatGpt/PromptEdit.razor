@@ -1,0 +1,187 @@
+@page "/chatgpt/prompts/create"
+@page "/chatgpt/prompts/edit/{Id:int}"
+@using Blazor_Bedrock.Services.ChatGpt
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using MudBlazor
+@inject IPromptService PromptService
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>@(_isEdit ? "Edit Prompt" : "Create Prompt")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit Prompt" : "Create New Prompt")</MudText>
+    
+    <MudPaper Elevation="2" Class="pa-4">
+        @if (_prompt != null || !_isEdit)
+        {
+            <EditForm Model="@_promptModel" OnValidSubmit="HandleSubmit">
+                <DataAnnotationsValidator />
+                
+                <MudTextField @bind-Value="_promptModel.Name" 
+                             Label="Name *" 
+                             Variant="Variant.Outlined" 
+                             Required="true"
+                             RequiredError="Name is required"
+                             Class="mb-4" />
+                
+                <MudTextField @bind-Value="_promptModel.Description" 
+                             Label="Description" 
+                             Variant="Variant.Outlined" 
+                             Lines="3"
+                             Class="mb-4" />
+                
+                <MudTextField @bind-Value="_promptModel.PromptText" 
+                             Label="Prompt Text *" 
+                             Variant="Variant.Outlined" 
+                             Lines="12"
+                             Required="true"
+                             RequiredError="Prompt text is required"
+                             HelperText="Enter your prompt template text. This defines how ChatGPT should behave and respond."
+                             Class="mb-4" />
+                
+                <MudCheckBox @bind-Checked="_promptModel.IsSystemPrompt" Label="Use as System Prompt" T="bool" Class="mb-4" />
+                <MudText Typo="Typo.caption" Class="mb-4">
+                    If checked, this prompt will be used as the system prompt in chat conversations
+                </MudText>
+                
+                <div class="d-flex gap-2 mt-4">
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Default"
+                               OnClick="NavigateBack">
+                        Cancel
+                    </MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" 
+                               Variant="Variant.Filled" 
+                               Color="Color.Primary"
+                               Disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Saving...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Save</MudText>
+                        }
+                    </MudButton>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    
+    private bool _isEdit => Id.HasValue;
+    private ChatGptPrompt? _prompt;
+    private PromptModel _promptModel = new();
+    private bool _isLoading = false;
+    private int? _currentTenantId;
+
+    private class PromptModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string PromptText { get; set; } = string.Empty;
+        public bool IsSystemPrompt { get; set; } = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentTenantId = TenantService.GetCurrentTenantId();
+
+        if (_isEdit && Id.HasValue)
+        {
+            _prompt = await PromptService.GetPromptByIdAsync(Id.Value, _currentTenantId);
+            if (_prompt != null)
+            {
+                _promptModel = new PromptModel
+                {
+                    Name = _prompt.Name,
+                    Description = _prompt.Description,
+                    PromptText = _prompt.PromptText,
+                    IsSystemPrompt = _prompt.IsSystemPrompt
+                };
+            }
+            else
+            {
+                Snackbar.Add("Prompt not found", Severity.Error);
+                Navigation.NavigateTo("/chatgpt/prompts");
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(_promptModel.Name) || string.IsNullOrWhiteSpace(_promptModel.PromptText))
+        {
+            Snackbar.Add("Name and Prompt Text are required.", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            if (_isEdit && _prompt != null && Id.HasValue)
+            {
+                var promptToUpdate = new ChatGptPrompt
+                {
+                    Id = _prompt.Id,
+                    Name = _promptModel.Name,
+                    Description = _promptModel.Description,
+                    PromptText = _promptModel.PromptText,
+                    IsSystemPrompt = _promptModel.IsSystemPrompt
+                };
+
+                var result = await PromptService.UpdatePromptAsync(Id.Value, promptToUpdate, _currentTenantId);
+                if (result)
+                {
+                    Snackbar.Add("Prompt updated successfully", Severity.Success);
+                    Navigation.NavigateTo("/chatgpt/prompts");
+                }
+                else
+                {
+                    Snackbar.Add("Error updating prompt. Prompt not found.", Severity.Error);
+                }
+            }
+            else
+            {
+                var newPrompt = new ChatGptPrompt
+                {
+                    Name = _promptModel.Name,
+                    Description = _promptModel.Description,
+                    PromptText = _promptModel.PromptText,
+                    IsSystemPrompt = _promptModel.IsSystemPrompt
+                };
+
+                await PromptService.CreatePromptAsync(newPrompt, _currentTenantId);
+                Snackbar.Add("Prompt created successfully", Severity.Success);
+                Navigation.NavigateTo("/chatgpt/prompts");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving prompt: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        Navigation.NavigateTo("/chatgpt/prompts");
+    }
+}
+
