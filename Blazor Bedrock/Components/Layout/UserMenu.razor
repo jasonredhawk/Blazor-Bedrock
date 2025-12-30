@@ -1,11 +1,13 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Services
 @using MudBlazor
 @implements IDisposable
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
+@inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 @if (_isAuthenticated && _user != null)
@@ -57,13 +59,22 @@ else
 @code {
     private bool _isAuthenticated = false;
     private ApplicationUser? _user;
+    private bool _isUpdating = false;
 
     protected override async Task OnInitializedAsync()
     {
         await UpdateAuthenticationState();
+        StateHasChanged();
         
         // Subscribe to authentication state changes
         AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await UpdateAuthenticationState();
+        StateHasChanged();
+        await base.OnParametersSetAsync();
     }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
@@ -74,20 +85,59 @@ else
 
     private async Task UpdateAuthenticationState()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        _isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
+        // Prevent concurrent execution
+        if (_isUpdating)
+            return;
 
-        if (_isAuthenticated)
+        try
         {
-            var userId = authState.User!.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrEmpty(userId))
+            _isUpdating = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var wasAuthenticated = _isAuthenticated;
+            _isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
+
+            if (_isAuthenticated)
             {
-                _user = await UserManager.FindByIdAsync(userId);
+                var userId = authState.User!.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    // Wrap database operations in sync service
+                    await DbSync.ExecuteAsync(async () =>
+                    {
+                        _user = await UserManager.FindByIdAsync(userId);
+                    });
+                }
+                else
+                {
+                    _user = null;
+                }
+            }
+            else
+            {
+                _user = null;
+            }
+            
+            // Force UI update if authentication state changed
+            if (wasAuthenticated != _isAuthenticated)
+            {
+                StateHasChanged();
             }
         }
-        else
+        catch (Exception ex)
         {
+            // Ignore disposed object exceptions - component might be disposing
+            if (ex is ObjectDisposedException)
+            {
+                return;
+            }
+            // Log error for debugging (only if not disposed)
+            Console.WriteLine($"Error updating authentication state: {ex.Message}");
+            _isAuthenticated = false;
             _user = null;
+        }
+        finally
+        {
+            _isUpdating = false;
         }
     }
 
@@ -111,7 +161,8 @@ else
 
     private void HandleLogout()
     {
-        Navigation.NavigateTo("/auth/logout");
+        // Redirect to server-side logout endpoint
+        Navigation.NavigateTo("/auth/logout-post", forceLoad: true);
     }
 }
 

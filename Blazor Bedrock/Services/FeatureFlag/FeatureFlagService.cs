@@ -1,5 +1,6 @@
 using Blazor_Bedrock.Data;
 using Blazor_Bedrock.Data.Models;
+using Blazor_Bedrock.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using FeatureFlagModel = Blazor_Bedrock.Data.Models.FeatureFlag;
@@ -18,12 +19,14 @@ public class FeatureFlagService : IFeatureFlagService
 {
     private readonly ApplicationDbContext _context;
     private readonly IMemoryCache _cache;
+    private readonly IDatabaseSyncService _dbSync;
     private const string CacheKey = "FeatureFlags";
 
-    public FeatureFlagService(ApplicationDbContext context, IMemoryCache cache)
+    public FeatureFlagService(ApplicationDbContext context, IMemoryCache cache, IDatabaseSyncService dbSync)
     {
         _context = context;
         _cache = cache;
+        _dbSync = dbSync;
     }
 
     public async Task<bool> IsEnabledAsync(string featureName)
@@ -46,23 +49,29 @@ public class FeatureFlagService : IFeatureFlagService
 
     public async Task SetFlagAsync(string featureName, bool isEnabled)
     {
-        var flag = await _context.FeatureFlags
-            .FirstOrDefaultAsync(f => f.Name.Equals(featureName, StringComparison.OrdinalIgnoreCase));
-
-        if (flag != null)
+        await _dbSync.ExecuteAsync(async () =>
         {
-            flag.IsEnabled = isEnabled;
-            flag.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            _cache.Remove(CacheKey);
-        }
+            var flag = await _context.FeatureFlags
+                .FirstOrDefaultAsync(f => f.Name.Equals(featureName, StringComparison.OrdinalIgnoreCase));
+
+            if (flag != null)
+            {
+                flag.IsEnabled = isEnabled;
+                flag.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                _cache.Remove(CacheKey);
+            }
+        });
     }
 
     private async Task<List<FeatureFlagModel>> GetCachedFlagsAsync()
     {
         if (!_cache.TryGetValue(CacheKey, out List<FeatureFlagModel>? flags))
         {
-            flags = await _context.FeatureFlags.ToListAsync();
+            flags = await _dbSync.ExecuteAsync(async () =>
+            {
+                return await _context.FeatureFlags.ToListAsync();
+            });
             _cache.Set(CacheKey, flags, TimeSpan.FromMinutes(5));
         }
         return flags ?? new List<FeatureFlagModel>();

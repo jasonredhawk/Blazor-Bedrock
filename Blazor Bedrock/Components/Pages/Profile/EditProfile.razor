@@ -1,6 +1,7 @@
 @page "/profile/edit"
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -11,6 +12,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 <PageTitle>Edit Profile</PageTitle>
@@ -108,16 +110,19 @@
             var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrEmpty(userId))
             {
-                _user = await UserManager.FindByIdAsync(userId);
-                if (_user != null)
+                await DbSync.ExecuteAsync(async () =>
                 {
-                    _profileModel = new ProfileModel
+                    _user = await UserManager.FindByIdAsync(userId);
+                    if (_user != null)
                     {
-                        FirstName = _user.FirstName ?? string.Empty,
-                        LastName = _user.LastName ?? string.Empty,
-                        Email = _user.Email ?? string.Empty
-                    };
-                }
+                        _profileModel = new ProfileModel
+                        {
+                            FirstName = _user.FirstName ?? string.Empty,
+                            LastName = _user.LastName ?? string.Empty,
+                            Email = _user.Email ?? string.Empty
+                        };
+                    }
+                });
             }
         }
     }
@@ -132,7 +137,11 @@
             _user.FirstName = _profileModel.FirstName;
             _user.LastName = _profileModel.LastName;
             
-            var result = await UserManager.UpdateAsync(_user);
+            var result = await DbSync.ExecuteAsync(async () =>
+            {
+                return await UserManager.UpdateAsync(_user);
+            });
+            
             if (result.Succeeded)
             {
                 Snackbar.Add("Profile updated successfully", Severity.Success);

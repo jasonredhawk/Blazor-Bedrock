@@ -1,10 +1,39 @@
 ﻿@page "/"
 @using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IDatabaseSyncService DbSync
+@rendermode InteractiveServer
 
 <PageTitle>Home</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudText Typo="Typo.h3" Class="mb-4">Welcome to Blazor Bedrock</MudText>
+    
+    @if (_authState != null)
+    {
+        <MudAlert Severity="@(_authState.User?.Identity?.IsAuthenticated == true ? Severity.Success : Severity.Info)" Class="mb-4">
+            <MudText Typo="Typo.body2">
+                <strong>Authentication Status:</strong> 
+                @if (_authState.User?.Identity?.IsAuthenticated == true)
+                {
+                    <text>Authenticated as @_authState.User.Identity.Name</text>
+                    @if (_currentUser != null)
+                    {
+                        <text> (@_currentUser.FirstName @_currentUser.LastName - @_currentUser.Email)</text>
+                    }
+                }
+                else
+                {
+                    <text>Not Authenticated</text>
+                }
+            </MudText>
+        </MudAlert>
+    }
     
     <MudGrid>
         <MudItem xs="12" md="6">
@@ -36,3 +65,25 @@
         </MudItem>
     </MudGrid>
 </MudContainer>
+
+@code {
+    private AuthenticationState? _authState;
+    private ApplicationUser? _currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        
+        if (_authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = _authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                await DbSync.ExecuteAsync(async () =>
+                {
+                    _currentUser = await UserManager.FindByIdAsync(userId);
+                });
+            }
+        }
+    }
+}

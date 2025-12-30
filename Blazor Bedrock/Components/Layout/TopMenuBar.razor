@@ -55,6 +55,7 @@
     
     private List<MenuItem> _menuItems = new();
     private bool _drawerOpen = false;
+    private bool _isUpdating = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -72,20 +73,52 @@
 
     private async Task UpdateMenuItems()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        if (authState.User?.Identity?.IsAuthenticated == true)
+        // Prevent concurrent execution
+        if (_isUpdating)
+            return;
+
+        try
         {
-            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var tenantId = TenantService.GetCurrentTenantId();
-            
-            if (!string.IsNullOrEmpty(userId))
+            _isUpdating = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (authState.User?.Identity?.IsAuthenticated == true)
             {
-                _menuItems = await MenuService.GetMenuItemsAsync(userId, tenantId);
+                var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    _menuItems = await MenuService.GetMenuItemsAsync(userId, tenantId);
+                }
+            }
+            else
+            {
+                // Show login menu item for unauthenticated users
+                _menuItems = new List<MenuItem>
+                {
+                    new MenuItem
+                    {
+                        Title = "Home",
+                        Href = "/",
+                        Icon = Icons.Material.Filled.Home
+                    },
+                    new MenuItem
+                    {
+                        Title = "Login",
+                        Href = "/auth/login",
+                        Icon = Icons.Material.Filled.Login
+                    }
+                };
             }
         }
-        else
+        catch (Exception ex)
         {
-            // Show login menu item for unauthenticated users
+            // Ignore disposed object exceptions - component might be disposing
+            if (ex is ObjectDisposedException)
+            {
+                return;
+            }
+            // Set default menu on error
             _menuItems = new List<MenuItem>
             {
                 new MenuItem
@@ -93,14 +126,12 @@
                     Title = "Home",
                     Href = "/",
                     Icon = Icons.Material.Filled.Home
-                },
-                new MenuItem
-                {
-                    Title = "Login",
-                    Href = "/auth/login",
-                    Icon = Icons.Material.Filled.Login
                 }
             };
+        }
+        finally
+        {
+            _isUpdating = false;
         }
     }
 

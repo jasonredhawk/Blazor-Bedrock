@@ -1,0 +1,98 @@
+@using Blazor_Bedrock.Services.Tenant
+@using MudBlazor
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" 
+                     Label="Organization Name" 
+                     Variant="Variant.Outlined" 
+                     Required="true" 
+                     RequiredError="Organization name is required"
+                     Class="mb-4" />
+        
+        <MudTextField @bind-Value="_description" 
+                     Label="Description" 
+                     Variant="Variant.Outlined" 
+                     Lines="3"
+                     Class="mb-4" />
+        
+        <MudTextField @bind-Value="_domain" 
+                     Label="Domain (Optional)" 
+                     Variant="Variant.Outlined"
+                     HelperText="Optional: Your organization's domain name"
+                     Class="mb-4" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create" Disabled="@_isLoading">
+            @if (_isLoading)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">Creating...</MudText>
+            }
+            else
+            {
+                <MudText>Create</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string? UserId { get; set; }
+
+    private string _name = string.Empty;
+    private string? _description;
+    private string? _domain;
+    private bool _isLoading = false;
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            Snackbar.Add("Organization name is required.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            Snackbar.Add("User ID is missing. Please log out and log back in.", Severity.Error);
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var tenant = await TenantService.CreateTenantAsync(
+                _name.Trim(), 
+                string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                string.IsNullOrWhiteSpace(_domain) ? null : _domain.Trim(),
+                UserId
+            );
+
+            if (tenant != null)
+            {
+                MudDialog.Close(DialogResult.Ok(tenant));
+            }
+            else
+            {
+                Snackbar.Add("Failed to create organization. Please try again.", Severity.Error);
+                _isLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating organization: {ex.Message}", Severity.Error);
+            _isLoading = false;
+        }
+    }
+}

@@ -1,6 +1,7 @@
 using Blazor_Bedrock.Components;
 using Blazor_Bedrock.Data;
 using Blazor_Bedrock.Data.Models;
+using Blazor_Bedrock.Services;
 using Blazor_Bedrock.Services.Tenant;
 using Blazor_Bedrock.Services.FeatureFlag;
 using Blazor_Bedrock.Services.Auth;
@@ -97,6 +98,11 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.AccessDeniedPath = "/auth/access-denied";
     options.ExpireTimeSpan = TimeSpan.FromDays(30);
     options.SlidingExpiration = true;
+    // Cookie settings for proper authentication
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax; // Lax works better with redirects
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // Allow HTTP in development
+    options.Cookie.Name = ".AspNetCore.Identity.Application";
 });
 
 // External Authentication - Google
@@ -146,6 +152,9 @@ builder.Services.AddSession(options =>
 
 // HTTP Context Accessor for tenant resolution
 builder.Services.AddHttpContextAccessor();
+
+// Database synchronization service (singleton to share semaphore across all requests)
+builder.Services.AddSingleton<IDatabaseSyncService, DatabaseSyncService>();
 
 // Application Services
 builder.Services.AddScoped<IFeatureFlagService, FeatureFlagService>();
@@ -216,6 +225,54 @@ app.UseMiddleware<TenantMiddleware>();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Login endpoint for handling authentication via form POST (allows proper cookie setting)
+app.MapPost("/auth/login-post", async (HttpContext context, IIdentityService identityService) =>
+{
+    var email = context.Request.Form["email"].ToString();
+    var password = context.Request.Form["password"].ToString();
+    var rememberMe = context.Request.Form["rememberMe"].ToString() == "true";
+    
+    if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+    {
+        context.Response.Redirect("/auth/login?error=Email and password are required");
+        return;
+    }
+    
+    var result = await identityService.SignInAsync(email, password, rememberMe);
+    
+    if (result.Succeeded)
+    {
+        context.Response.Redirect("/");
+    }
+    else if (result.IsLockedOut)
+    {
+        context.Response.Redirect("/auth/login?error=Account is locked out");
+    }
+    else if (result.IsNotAllowed)
+    {
+        context.Response.Redirect("/auth/login?error=Account is not allowed");
+    }
+    else
+    {
+        context.Response.Redirect("/auth/login?error=Invalid email or password");
+    }
+}).AllowAnonymous();
+
+// Logout endpoint for handling sign out (allows proper cookie clearing)
+app.MapGet("/auth/logout-post", async (HttpContext context, IIdentityService identityService) =>
+{
+    await identityService.SignOutAsync();
+    
+    // Clear tenant session/cookies
+    context.Session.Clear();
+    if (context.Request.Cookies.ContainsKey("CurrentTenantId"))
+    {
+        context.Response.Cookies.Delete("CurrentTenantId");
+    }
+    
+    context.Response.Redirect("/auth/login");
+}).AllowAnonymous();
 
 // Health check endpoint for Cloud Run
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));

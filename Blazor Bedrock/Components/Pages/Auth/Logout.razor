@@ -1,16 +1,25 @@
 @page "/auth/logout"
-@using Blazor_Bedrock.Services.Auth
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 @attribute [AllowAnonymous]
-@inject IIdentityService IdentityService
-@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
+<MudContainer>
+    <MudPaper Class="pa-4 mt-8" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-4">Logging out...</MudText>
+        <MudProgressCircular Indeterminate="true" />
+    </MudPaper>
+</MudContainer>
+
 @code {
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await IdentityService.SignOutAsync();
-        Navigation.NavigateTo("/auth/login");
+        if (firstRender)
+        {
+            // Redirect to server-side logout endpoint which handles cookie clearing properly
+            await JSRuntime.InvokeVoidAsync("location.replace", "/auth/logout-post");
+        }
     }
 }
 

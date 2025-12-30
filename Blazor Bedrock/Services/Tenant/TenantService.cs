@@ -1,5 +1,6 @@
 using Blazor_Bedrock.Data;
 using Blazor_Bedrock.Data.Models;
+using Blazor_Bedrock.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,7 @@ public interface ITenantService
     Task<List<TenantModel>> GetUserTenantsAsync(string userId);
     Task<bool> SetCurrentTenantAsync(int tenantId);
     Task<bool> UserHasAccessToTenantAsync(string userId, int tenantId);
+    Task<TenantModel?> CreateTenantAsync(string name, string? description, string? domain, string userId);
     int? GetCurrentTenantId();
 }
 
@@ -20,12 +22,14 @@ public class TenantService : ITenantService
 {
     private readonly ApplicationDbContext _context;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IDatabaseSyncService _dbSync;
     private const string TenantIdKey = "CurrentTenantId";
 
-    public TenantService(ApplicationDbContext context, IHttpContextAccessor httpContextAccessor)
+    public TenantService(ApplicationDbContext context, IHttpContextAccessor httpContextAccessor, IDatabaseSyncService dbSync)
     {
         _context = context;
         _httpContextAccessor = httpContextAccessor;
+        _dbSync = dbSync;
     }
 
     public async Task<TenantModel?> GetCurrentTenantAsync()
@@ -33,18 +37,24 @@ public class TenantService : ITenantService
         var tenantId = GetCurrentTenantId();
         if (tenantId == null) return null;
 
-        return await _context.Tenants
-            .FirstOrDefaultAsync(t => t.Id == tenantId);
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.Tenants
+                .FirstOrDefaultAsync(t => t.Id == tenantId);
+        });
     }
 
     public async Task<List<TenantModel>> GetUserTenantsAsync(string userId)
     {
-        return await _context.UserTenants
-            .Where(ut => ut.UserId == userId && ut.IsActive)
-            .Include(ut => ut.Tenant)
-            .Select(ut => ut.Tenant)
-            .Where(t => t.IsActive)
-            .ToListAsync();
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.UserTenants
+                .Where(ut => ut.UserId == userId && ut.IsActive)
+                .Include(ut => ut.Tenant)
+                .Select(ut => ut.Tenant)
+                .Where(t => t.IsActive)
+                .ToListAsync();
+        });
     }
 
     public async Task<bool> SetCurrentTenantAsync(int tenantId)
@@ -83,8 +93,45 @@ public class TenantService : ITenantService
 
     public async Task<bool> UserHasAccessToTenantAsync(string userId, int tenantId)
     {
-        return await _context.UserTenants
-            .AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive);
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.UserTenants
+                .AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId && ut.IsActive);
+        });
+    }
+
+    public async Task<TenantModel?> CreateTenantAsync(string name, string? description, string? domain, string userId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var tenant = new TenantModel
+            {
+                Name = name,
+                Description = description,
+                Domain = domain,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Tenants.Add(tenant);
+            await _context.SaveChangesAsync();
+
+            // Link user to the new tenant
+            var userTenant = new UserTenant
+            {
+                UserId = userId,
+                TenantId = tenant.Id,
+                IsActive = true
+            };
+
+            _context.UserTenants.Add(userTenant);
+            await _context.SaveChangesAsync();
+
+            // Set as current tenant (note: this will use the semaphore again, but that's ok)
+            await SetCurrentTenantAsync(tenant.Id);
+
+            return tenant;
+        });
     }
 
     public int? GetCurrentTenantId()

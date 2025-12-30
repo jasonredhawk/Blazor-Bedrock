@@ -4,10 +4,12 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.WebUtilities
 @using MudBlazor
 @attribute [AllowAnonymous]
 @inject IIdentityService IdentityService
 @inject IFeatureFlagService FeatureFlagService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
@@ -31,15 +33,14 @@
             </MudAlert>
         }
         
-        <EditForm Model="@_loginModel" OnValidSubmit="HandleLogin">
-            <DataAnnotationsValidator />
-            
+        <form method="post" action="/auth/login-post" id="loginForm">
             <MudTextField @bind-Value="_loginModel.Email" 
                           Label="Email" 
                           Variant="Variant.Outlined" 
                           InputType="InputType.Email"
                           Required="true"
                           RequiredError="Email is required"
+                          For="@(() => _loginModel.Email)"
                           Class="mb-4" />
             
             <MudTextField @bind-Value="_loginModel.Password" 
@@ -48,15 +49,21 @@
                           InputType="InputType.Password"
                           Required="true"
                           RequiredError="Password is required"
+                          For="@(() => _loginModel.Password)"
                           Class="mb-4" />
             
             <MudCheckBox @bind-Checked="_loginModel.RememberMe" Label="Remember me" T="bool" Class="mb-4" />
+            
+            <input type="hidden" name="email" value="@_loginModel.Email" />
+            <input type="hidden" name="password" value="@_loginModel.Password" />
+            <input type="hidden" name="rememberMe" value="@_loginModel.RememberMe" />
             
             <MudButton ButtonType="ButtonType.Submit" 
                        Variant="Variant.Filled" 
                        Color="Color.Primary" 
                        FullWidth="true"
-                       Disabled="@_isLoading">
+                       Disabled="@_isLoading"
+                       OnClick="HandleFormSubmit">
                 @if (_isLoading)
                 {
                     <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
@@ -67,7 +74,7 @@
                     <MudText>Login</MudText>
                 }
             </MudButton>
-        </EditForm>
+        </form>
         
         <MudDivider Class="my-4" />
         
@@ -113,7 +120,18 @@
         public bool RememberMe { get; set; } = false;
     }
 
-    private async Task HandleLogin()
+    protected override void OnInitialized()
+    {
+        // Check for error query parameter
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var queryParams = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (queryParams.TryGetValue("error", out var error))
+        {
+            _errorMessage = error.ToString();
+        }
+    }
+
+    private async Task HandleFormSubmit()
     {
         _errorMessage = string.Empty;
         _successMessage = string.Empty;
@@ -133,72 +151,11 @@
         }
 
         _isLoading = true;
-        try
-        {
-            var result = await IdentityService.SignInAsync(
-                _loginModel.Email, 
-                _loginModel.Password, 
-                _loginModel.RememberMe);
-
-            if (result.Succeeded)
-            {
-                _successMessage = $"Login successful! Welcome back, {_loginModel.Email}.";
-                Snackbar.Add(_successMessage, Severity.Success);
-                StateHasChanged(); // Update UI to show success message
-                
-                // Wait a bit to ensure authentication cookie is set
-                await Task.Delay(300);
-                
-                // Use JavaScript redirect to avoid header conflicts
-                // This happens client-side after the server response is complete
-                await JSRuntime.InvokeVoidAsync("location.replace", "/");
-            }
-            else if (result.IsLockedOut)
-            {
-                _errorMessage = "Account is locked out due to too many failed login attempts. Please try again later.";
-                Snackbar.Add(_errorMessage, Severity.Warning);
-            }
-            else if (result.RequiresTwoFactor)
-            {
-                _errorMessage = "Two-factor authentication is required for this account.";
-                Snackbar.Add(_errorMessage, Severity.Info);
-            }
-            else if (result.IsNotAllowed)
-            {
-                _errorMessage = "Login is not allowed for this account. The account may be inactive or email verification may be required.";
-                Snackbar.Add(_errorMessage, Severity.Warning);
-            }
-            else
-            {
-                _errorMessage = $"Invalid email or password for '{_loginModel.Email}'. Please check your credentials and try again.";
-                Snackbar.Add(_errorMessage, Severity.Error);
-            }
-        }
-        catch (InvalidOperationException ioEx) when (ioEx.Message.Contains("Headers are read-only") || ioEx.Message.Contains("response has already started"))
-        {
-            // This can happen in Blazor Server when the response has started streaming
-            // The sign-in might have partially succeeded (cookie may have been set)
-            // Treat as success and redirect - if cookie wasn't set, user will be redirected back to login
-            _successMessage = $"Login successful! Redirecting...";
-            Snackbar.Add(_successMessage, Severity.Success);
-            StateHasChanged();
-            await Task.Delay(300);
-            await JSRuntime.InvokeVoidAsync("location.replace", "/");
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"An error occurred during login: {ex.Message}";
-            if (ex.InnerException != null)
-            {
-                _errorMessage += $" Inner exception: {ex.InnerException.Message}";
-                Snackbar.Add($"Inner exception: {ex.InnerException.Message}", Severity.Error);
-            }
-            Snackbar.Add(_errorMessage, Severity.Error);
-        }
-        finally
-        {
-            _isLoading = false;
-        }
+        StateHasChanged();
+        
+        // Let the form submit naturally - it will POST to /auth/login endpoint
+        // The endpoint will set the cookie and redirect
+        await Task.CompletedTask;
     }
 }
 

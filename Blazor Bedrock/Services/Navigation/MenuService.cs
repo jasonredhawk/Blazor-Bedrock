@@ -16,126 +16,140 @@ public class MenuService : IMenuService
     private readonly IFeatureFlagService _featureFlagService;
     private readonly IPermissionService _permissionService;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IDatabaseSyncService _dbSync;
 
     public MenuService(
         IFeatureFlagService featureFlagService,
         IPermissionService permissionService,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        IDatabaseSyncService dbSync)
     {
         _featureFlagService = featureFlagService;
         _permissionService = permissionService;
         _userManager = userManager;
+        _dbSync = dbSync;
     }
 
     public async Task<List<MenuItem>> GetMenuItemsAsync(string userId, int? tenantId)
     {
-        var menuItems = new List<MenuItem>();
-        var user = await _userManager.FindByIdAsync(userId);
-        var isAdmin = user != null && await _userManager.IsInRoleAsync(user, "Admin");
-
-        // Home
-        menuItems.Add(new MenuItem
+        // Synchronize all database operations to prevent concurrent access
+        return await _dbSync.ExecuteAsync(async () =>
         {
-            Title = "Home",
-            Href = "/",
-            Icon = Icons.Material.Filled.Home
-        });
-
-        // Settings Menu (Admin only)
-        if (isAdmin && tenantId.HasValue)
-        {
-            var settingsMenu = new MenuItem
+            var menuItems = new List<MenuItem>();
+            
+            // Ensure these operations complete sequentially
+            var user = await _userManager.FindByIdAsync(userId);
+            var isAdmin = false;
+            if (user != null)
             {
-                Title = "Settings",
-                Icon = Icons.Material.Filled.Settings,
-                Children = new List<MenuItem>()
-            };
+                // Wait for this to fully complete before proceeding
+                isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            }
 
-            settingsMenu.Children.Add(new MenuItem
+            // Home
+            menuItems.Add(new MenuItem
             {
-                Title = "Users",
-                Href = "/admin/users",
-                Icon = Icons.Material.Filled.People
+                Title = "Home",
+                Href = "/",
+                Icon = Icons.Material.Filled.Home
             });
 
-            settingsMenu.Children.Add(new MenuItem
+            // Settings Menu (Admin only)
+            if (isAdmin && tenantId.HasValue)
             {
-                Title = "Roles",
-                Href = "/admin/roles",
-                Icon = Icons.Material.Filled.Security
-            });
+                var settingsMenu = new MenuItem
+                {
+                    Title = "Settings",
+                    Icon = Icons.Material.Filled.Settings,
+                    Children = new List<MenuItem>()
+                };
 
-            // Feature Settings (if enabled)
-            if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
-            {
                 settingsMenu.Children.Add(new MenuItem
                 {
-                    Title = "Feature Settings",
-                    Href = "/admin/feature-settings",
-                    Icon = Icons.Material.Filled.ToggleOn
+                    Title = "Users",
+                    Href = "/admin/users",
+                    Icon = Icons.Material.Filled.People
+                });
+
+                settingsMenu.Children.Add(new MenuItem
+                {
+                    Title = "Roles",
+                    Href = "/admin/roles",
+                    Icon = Icons.Material.Filled.Security
+                });
+
+                // Feature Settings (if enabled)
+                if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
+                {
+                    settingsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Feature Settings",
+                        Href = "/admin/feature-settings",
+                        Icon = Icons.Material.Filled.ToggleOn
+                    });
+                }
+
+                menuItems.Add(settingsMenu);
+            }
+
+            // ChatGPT Menu (if enabled)
+            if (await _featureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
+            {
+                var chatGptMenu = new MenuItem
+                {
+                    Title = "ChatGPT",
+                    Icon = Icons.Material.Filled.Chat,
+                    Children = new List<MenuItem>()
+                };
+
+                chatGptMenu.Children.Add(new MenuItem
+                {
+                    Title = "Settings",
+                    Href = "/chatgpt/settings",
+                    Icon = Icons.Material.Filled.Settings
+                });
+
+                chatGptMenu.Children.Add(new MenuItem
+                {
+                    Title = "Prompts",
+                    Href = "/chatgpt/prompts",
+                    Icon = Icons.Material.Filled.Description
+                });
+
+                chatGptMenu.Children.Add(new MenuItem
+                {
+                    Title = "Chat",
+                    Href = "/chatgpt/chat",
+                    Icon = Icons.Material.Filled.Forum
+                });
+
+                menuItems.Add(chatGptMenu);
+            }
+
+            // Stripe (if enabled)
+            if (await _featureFlagService.IsEnabledAsync("Stripe_Enabled") && tenantId.HasValue)
+            {
+                menuItems.Add(new MenuItem
+                {
+                    Title = "Payments",
+                    Href = "/stripe/subscriptions",
+                    Icon = Icons.Material.Filled.Payment
                 });
             }
 
-            menuItems.Add(settingsMenu);
-        }
-
-        // ChatGPT Menu (if enabled)
-        if (await _featureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
-        {
-            var chatGptMenu = new MenuItem
+            // SuperAdmin - Migrations
+            if (isAdmin && await _featureFlagService.IsEnabledAsync("Migrations_Enabled"))
             {
-                Title = "ChatGPT",
-                Icon = Icons.Material.Filled.Chat,
-                Children = new List<MenuItem>()
-            };
+                menuItems.Add(new MenuItem
+                {
+                    Title = "Migrations",
+                    Href = "/superadmin/migrations",
+                    Icon = Icons.Material.Filled.Storage
+                });
+            }
 
-            chatGptMenu.Children.Add(new MenuItem
-            {
-                Title = "Settings",
-                Href = "/chatgpt/settings",
-                Icon = Icons.Material.Filled.Settings
-            });
-
-            chatGptMenu.Children.Add(new MenuItem
-            {
-                Title = "Prompts",
-                Href = "/chatgpt/prompts",
-                Icon = Icons.Material.Filled.Description
-            });
-
-            chatGptMenu.Children.Add(new MenuItem
-            {
-                Title = "Chat",
-                Href = "/chatgpt/chat",
-                Icon = Icons.Material.Filled.Forum
-            });
-
-            menuItems.Add(chatGptMenu);
-        }
-
-        // Stripe (if enabled)
-        if (await _featureFlagService.IsEnabledAsync("Stripe_Enabled") && tenantId.HasValue)
-        {
-            menuItems.Add(new MenuItem
-            {
-                Title = "Payments",
-                Href = "/stripe/subscriptions",
-                Icon = Icons.Material.Filled.Payment
-            });
-        }
-
-        // SuperAdmin - Migrations
-        if (isAdmin && await _featureFlagService.IsEnabledAsync("Migrations_Enabled"))
-        {
-            menuItems.Add(new MenuItem
-            {
-                Title = "Migrations",
-                Href = "/superadmin/migrations",
-                Icon = Icons.Material.Filled.Storage
-            });
-        }
-
-        return menuItems;
+            return menuItems;
+        });
     }
 }
 
