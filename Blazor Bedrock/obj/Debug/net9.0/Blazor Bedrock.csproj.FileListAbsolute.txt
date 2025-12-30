@@ -144,7 +144,6 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\tzxjg6is5z-{0}-du7z45fy1o-du7z45fy1o.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\0wz98yz2xy-{0}-u9015k2po7-u9015k2po7.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\kua4xanf86-{0}-4kywy7iv6g-4kywy7iv6g.gz
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\s2rxag71yp-{0}-ro83sy2jia-ro83sy2jia.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\u42bg6uye7-{0}-gd84vadkxe-gd84vadkxe.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\wk4hc0aejv-{0}-gd84vadkxe-gd84vadkxe.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\staticwebassets.build.json
@@ -160,3 +159,4 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\ref\Blazor_Bedrock.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\Blazor Bedrock.sourcelink.json
+C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\s2rxag71yp-{0}-6ndidpt6zy-6ndidpt6zy.gz

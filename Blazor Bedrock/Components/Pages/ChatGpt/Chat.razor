@@ -1,6 +1,7 @@
 @page "/chatgpt/chat"
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
@@ -14,114 +15,319 @@
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject ApplicationDbContext _context
+@inject IDatabaseSyncService DbSync
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 <PageTitle>ChatGPT Chat</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">ChatGPT Chat</MudText>
+<style>
+    .chat-container {
+        height: calc(100vh - 200px);
+        min-height: 600px;
+    }
     
-    <MudPaper Elevation="2" Class="pa-4">
-        @if (!_hasApiKey)
-        {
-            <MudAlert Severity="Severity.Warning" Class="mb-4">
-                Please configure your API key in settings first.
-            </MudAlert>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NavigateToSettings">
-                Configure API Key
-            </MudButton>
-        }
-        else
-        {
-            <div class="d-flex gap-2 mb-4">
-                <MudSelect @bind-Value="_selectedModel" 
-                           Label="Model" 
-                           Variant="Variant.Outlined"
-                           T="string?"
-                           Style="min-width: 200px;">
-                    @foreach (var model in _availableModels)
-                    {
-                        <MudSelectItem Value="@model">@model</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudButton Variant="Variant.Outlined" OnClick="LoadConversations">
-                    Load Conversations
-                </MudButton>
-            </div>
+    .conversation-sidebar {
+        background: var(--mud-palette-surface);
+        border-right: 1px solid var(--mud-palette-divider);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .conversation-item {
+        padding: 12px 16px;
+        margin: 4px 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: left;
+    }
+    
+    .conversation-item:hover {
+        background: var(--mud-palette-action-hover);
+    }
+    
+    .conversation-item.active {
+        background: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+    }
+    
+    .message-bubble {
+        max-width: 75%;
+        padding: 12px 16px;
+        border-radius: 18px;
+        margin-bottom: 12px;
+        word-wrap: break-word;
+        line-height: 1.5;
+    }
+    
+    .message-user {
+        background: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+        margin-left: auto;
+        border-bottom-right-radius: 4px;
+    }
+    
+    .message-assistant {
+        background: var(--mud-palette-surface);
+        color: var(--mud-palette-text-primary);
+        border: 1px solid var(--mud-palette-divider);
+        margin-right: auto;
+        border-bottom-left-radius: 4px;
+    }
+    
+    .message-container {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 16px;
+    }
+    
+    .message-header {
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary);
+        margin-bottom: 4px;
+        padding: 0 4px;
+    }
+    
+    .chat-input-area {
+        border-top: 1px solid var(--mud-palette-divider);
+        padding: 16px;
+        background: var(--mud-palette-background);
+    }
+    
+    .messages-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        background: var(--mud-palette-background-grey);
+    }
+    
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--mud-palette-text-secondary);
+    }
+</style>
 
-            <MudGrid>
-                <MudItem xs="12" md="4">
-                    <MudPaper Elevation="1" Class="pa-2" Style="max-height: 600px; overflow-y: auto;">
-                        <MudText Typo="Typo.h6" Class="mb-2">Conversations</MudText>
-                        @foreach (var conv in _conversations)
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 120px);">
+    @if (!_hasApiKey)
+    {
+        <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+            <MudPaper Elevation="3" Class="pa-6 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Large" Color="Color.Warning" Class="mb-4" Style="font-size: 64px;" />
+                <MudText Typo="Typo.h5" Class="mb-3">ChatGPT Not Configured</MudText>
+                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+                    Please configure your OpenAI API key in settings to start chatting.
+                </MudText>
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          Size="Size.Large"
+                          StartIcon="@Icons.Material.Filled.Settings"
+                          OnClick="NavigateToSettings">
+                    Configure API Key
+                </MudButton>
+            </MudPaper>
+        </MudContainer>
+    }
+    else
+    {
+        <MudGrid Class="ma-0 chat-container" Style="height: 100%;">
+            @* Sidebar *@
+            <MudItem xs="12" md="3" Class="pa-0">
+                <MudPaper Elevation="0" Class="conversation-sidebar">
+                    <div style="padding: 16px; border-bottom: 1px solid var(--mud-palette-divider);">
+                        <div class="d-flex align-center justify-space-between mb-2">
+                            <MudText Typo="Typo.h6">Conversations</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Add" 
+                                         Size="Size.Small"
+                                         Color="Color.Primary"
+                                         OnClick="CreateNewConversation"
+                                         Title="New Conversation" />
+                        </div>
+                        @if (!string.IsNullOrEmpty(_preferredModel))
                         {
-                            <MudButton Variant="@(conv.Id == _currentConversationId ? Variant.Filled : Variant.Text)"
-                                       Color="Color.Primary"
-                                       FullWidth="true"
-                                       Justify="Justify.FlexStart"
-                                       OnClick="() => LoadConversation(conv.Id)"
-                                       Class="mb-1">
-                                @conv.Title
-                            </MudButton>
+                            <MudChip Size="Size.Small" 
+                                   Color="Color.Info" 
+                                   Variant="Variant.Text"
+                                   T="string">
+                                @_preferredModel
+                            </MudChip>
                         }
-                        <MudButton Variant="Variant.Outlined" 
-                                   Color="Color.Primary" 
-                                   FullWidth="true"
-                                   StartIcon="@Icons.Material.Filled.Add"
-                                   OnClick="CreateNewConversation"
-                                   Class="mt-2">
-                            New Conversation
-                        </MudButton>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" md="8">
-                    <MudPaper Elevation="1" Class="pa-2" Style="height: 600px; display: flex; flex-direction: column;">
-                        <MudScrollContainer Style="flex: 1; overflow-y: auto; margin-bottom: 10px;">
-                            @foreach (var message in _messages)
+                    </div>
+                    
+                    <MudScrollContainer Style="flex: 1; overflow-y: auto;">
+                        @if (_conversations.Any())
+                        {
+                            @foreach (var conv in _conversations)
                             {
-                                <div class="mb-3">
-                                    <MudChip Size="Size.Small" Color="Color.Primary" T="string">@message.Role</MudChip>
-                                    <MudText Typo="Typo.body1" Class="mt-1">@message.Content</MudText>
+                                <div class="conversation-item @(conv.Id == _currentConversationId ? "active" : "")"
+                                     @onclick="() => LoadConversation(conv.Id)">
+                                    <div class="d-flex align-center">
+                                        <MudIcon Icon="@Icons.Material.Filled.ChatBubble" 
+                                               Size="Size.Small" 
+                                               Class="mr-2" />
+                                        <div style="flex: 1; min-width: 0;">
+                                            <MudText Typo="Typo.body2" 
+                                                   Style="@GetConversationItemStyle(conv.Id)">
+                                                @conv.Title
+                                            </MudText>
+                                            @if (conv.UpdatedAt.HasValue)
+                                            {
+                                                <MudText Typo="Typo.caption" 
+                                                       Color="Color.Secondary"
+                                                       Style="font-size: 0.7rem;">
+                                                    @GetRelativeTime(conv.UpdatedAt.Value)
+                                                </MudText>
+                                            }
+                                        </div>
+                                    </div>
                                 </div>
                             }
-                        </MudScrollContainer>
-                        <MudTextField @bind-Value="_messageText"
-                                       Label="Type your message..."
-                                       Variant="Variant.Outlined"
-                                       Lines="3"
-                                       OnKeyDown="@(async (e) => { if (e.Key == "Enter" && !e.ShiftKey) await SendMessage(); })" />
-                        <MudButton Variant="Variant.Filled" 
-                                   Color="Color.Primary" 
-                                   FullWidth="true"
-                                   OnClick="SendMessage"
-                                   Disabled="@_isLoading"
-                                   Class="mt-2">
-                            @if (_isLoading)
+                        }
+                        else
+                        {
+                            <div class="text-center pa-4" style="color: var(--mud-palette-text-secondary);">
+                                <MudText Typo="Typo.body2">No conversations yet</MudText>
+                                <MudText Typo="Typo.caption">Start a new conversation to begin</MudText>
+                            </div>
+                        }
+                    </MudScrollContainer>
+                </MudPaper>
+            </MudItem>
+            
+            @* Main Chat Area *@
+            <MudItem xs="12" md="9" Class="pa-0">
+                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column;">
+                    @* Chat Header *@
+                    <div style="padding: 16px 20px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface);">
+                        <div class="d-flex align-center justify-space-between">
+                            <div>
+                                <MudText Typo="Typo.h6">
+                                    @(_currentConversationId.HasValue ? GetCurrentConversationTitle() : "New Conversation")
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(_preferredModel))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Model: @_preferredModel
+                                    </MudText>
+                                }
+                            </div>
+                            @if (_currentConversationId.HasValue && _messages.Any())
                             {
-                                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                                <MudText Class="ms-2">Sending...</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" 
+                                             Size="Size.Small"
+                                             Color="Color.Error"
+                                             OnClick="ClearCurrentConversation"
+                                             Title="Clear Conversation" />
                             }
-                            else
+                        </div>
+                    </div>
+                    
+                    @* Messages Area *@
+                    <div class="messages-container" @ref="_messagesContainer">
+                        @if (!_messages.Any())
+                        {
+                            <div class="empty-state">
+                                <MudIcon Icon="@Icons.Material.Filled.Chat" 
+                                       Size="Size.Large" 
+                                       Color="Color.Secondary" 
+                                       Style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;" />
+                                <MudText Typo="Typo.h6" Color="Color.Secondary">Start a conversation</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                    Type a message below to begin chatting with ChatGPT
+                                </MudText>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var message in _messages)
                             {
-                                <MudText>Send</MudText>
+                                <div class="message-container">
+                                    <div class="message-header">
+                                        @if (message.Role == "user")
+                                        {
+                                            <span><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="font-size: 14px;" /> You</span>
+                                        }
+                                        else
+                                        {
+                                            <span><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" Style="font-size: 14px;" /> Assistant</span>
+                                        }
+                                        <span style="margin-left: 8px;">@message.CreatedAt.ToString("HH:mm")</span>
+                                    </div>
+                                    <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")">
+                                        <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@message.Content</MudText>
+                                    </div>
+                                </div>
                             }
-                        </MudButton>
-                    </MudPaper>
-                </MudItem>
-            </MudGrid>
-        }
-    </MudPaper>
+                        }
+                        
+                        @if (_isLoading)
+                        {
+                            <div class="message-container">
+                                <div class="message-header">
+                                    <span><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" Style="font-size: 14px;" /> Assistant</span>
+                                </div>
+                                <div class="message-bubble message-assistant">
+                                    <div class="d-flex align-center">
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">Thinking...</MudText>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        <div id="messages-end"></div>
+                    </div>
+                    
+                    @* Input Area *@
+                    <div class="chat-input-area" id="chat-input-container">
+                        <div style="position: relative;">
+                            <textarea id="chat-message-textarea"
+                                     placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                                     rows="3"
+                                     disabled="@_isLoading"
+                                     @bind="_messageText"
+                                     @bind:event="oninput"
+                                     @onkeydown="@HandleKeyDown"
+                                     style="width: 100%; padding: 16px 50px 16px 16px; border: 1px solid var(--mud-palette-divider); border-radius: 4px; outline: none; resize: vertical; min-height: 80px; font-family: inherit; font-size: 0.875rem;"
+                                     class="mud-input-root-text"></textarea>
+                            <div style="position: absolute; right: 8px; bottom: 8px;">
+                                <MudIconButton Icon="@Icons.Material.Filled.Send" 
+                                             Color="Color.Primary"
+                                             Disabled="@(_isLoading || string.IsNullOrWhiteSpace(_messageText))"
+                                             OnClick="SendMessage"
+                                             Size="Size.Medium" />
+                            </div>
+                        </div>
+                        <div class="d-flex align-center justify-space-between mt-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @_messageText.Length characters
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Enter to send • Shift+Enter for new line
+                            </MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
 </MudContainer>
 
 @code {
     private bool _hasApiKey = false;
-    private List<string> _availableModels = new();
-    private string? _selectedModel;
+    private string? _preferredModel;
     private List<ChatGptConversation> _conversations = new();
     private int? _currentConversationId;
     private List<ChatGptMessage> _messages = new();
     private string _messageText = string.Empty;
     private bool _isLoading = false;
+    private MudTextField<string>? _messageTextField;
+    private ElementReference _messagesContainer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -131,14 +337,13 @@
             var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var tenantId = TenantService.GetCurrentTenantId();
             
-            if (!string.IsNullOrEmpty(userId))
+            if (!string.IsNullOrEmpty(userId) && tenantId != null)
             {
                 try
                 {
                     var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
                     _hasApiKey = true;
-                    _availableModels = await ChatGptService.GetAvailableModelsAsync(apiKey);
-                    _selectedModel = _availableModels.FirstOrDefault();
+                    _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
                     await LoadConversations();
                 }
                 catch
@@ -147,6 +352,120 @@
                 }
             }
         }
+    }
+
+    private Microsoft.JSInterop.DotNetObjectReference<Chat>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _dotNetRef = Microsoft.JSInterop.DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating DotNetObjectReference: {ex.Message}");
+            }
+        }
+        
+        // Always try to setup the handler (in case textarea was recreated)
+        if (_dotNetRef != null)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("setupChatEnterKey", _dotNetRef);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting up Enter key handler: {ex.Message}");
+            }
+        }
+        
+        // Scroll to bottom after messages update
+        await ScrollToBottom();
+    }
+
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_isLoading && !string.IsNullOrWhiteSpace(_messageText))
+        {
+            await SendMessage();
+        }
+    }
+
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task HandleEnterKey()
+    {
+        if (!_isLoading && !string.IsNullOrWhiteSpace(_messageText))
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                (function() {
+                    var container = document.querySelector('.messages-container');
+                    if (container) {
+                        container.scrollTo({
+                            top: container.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                    }
+                })()
+            ");
+        }
+        catch { }
+    }
+
+    private string GetConversationItemStyle(int conversationId)
+    {
+        var fontWeight = conversationId == _currentConversationId ? "600" : "400";
+        return $"font-weight: {fontWeight}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+    }
+
+    private string GetRelativeTime(DateTime dateTime)
+    {
+        var timeSpan = DateTime.UtcNow - dateTime;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "Just now";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes}m ago";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours}h ago";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays}d ago";
+        
+        return dateTime.ToString("MMM d, yyyy");
+    }
+
+    private string GetCurrentConversationTitle()
+    {
+        var conv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId);
+        return conv?.Title ?? "Conversation";
+    }
+
+    private async Task ClearCurrentConversation()
+    {
+        if (_currentConversationId.HasValue)
+        {
+            _messages.Clear();
+            _currentConversationId = null;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
     }
 
     private async Task LoadConversations()
@@ -158,14 +477,19 @@
         if (!string.IsNullOrEmpty(userId))
         {
             _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            StateHasChanged();
         }
     }
 
     private async Task LoadConversation(int conversationId)
     {
         _currentConversationId = conversationId;
-        _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        await DbSync.ExecuteAsync(async () =>
+        {
+            _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        });
         StateHasChanged();
+        await ScrollToBottom();
     }
 
     private async Task CreateNewConversation()
@@ -174,18 +498,19 @@
         var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var tenantId = TenantService.GetCurrentTenantId();
         
-        if (!string.IsNullOrEmpty(userId))
+        if (!string.IsNullOrEmpty(userId) && tenantId != null)
         {
-            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _selectedModel);
+            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel);
             _currentConversationId = conversation.Id;
             _messages = new();
             await LoadConversations();
+            StateHasChanged();
         }
     }
 
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(_messageText)) return;
+        if (string.IsNullOrWhiteSpace(_messageText) || _isLoading) return;
 
         _isLoading = true;
         StateHasChanged();
@@ -195,16 +520,18 @@
             var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var tenantId = TenantService.GetCurrentTenantId();
             
-            if (string.IsNullOrEmpty(userId)) return;
-
-            // Get API key
-            var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                Snackbar.Add("Unable to identify user or organization. Please log out and log back in.", Severity.Error);
+                return;
+            }
 
             if (!_currentConversationId.HasValue)
             {
-                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _selectedModel);
+                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel);
                 _currentConversationId = newConversation.Id;
                 _messages = new List<ChatGptMessage>();
+                await LoadConversations();
             }
 
             // Build conversation history from existing messages
@@ -221,10 +548,11 @@
             }
 
             // Add the new user message to conversation
+            var userMessageText = _messageText;
             conversationMessages.Add(new ChatMessage
             {
                 Role = "user",
-                Content = _messageText
+                Content = userMessageText
             });
 
             // Save user message to database
@@ -232,13 +560,24 @@
             {
                 ConversationId = _currentConversationId.Value,
                 Role = "user",
-                Content = _messageText
+                Content = userMessageText
             };
-            _context.ChatGptMessages.Add(userMessage);
+            
+            await DbSync.ExecuteAsync(async () =>
+            {
+                _context.ChatGptMessages.Add(userMessage);
+                await _context.SaveChangesAsync();
+            });
+            
             _messages.Add(userMessage);
+            
+            // Clear input immediately for better UX
+            _messageText = string.Empty;
+            StateHasChanged();
+            await ScrollToBottom();
 
-            // Send full conversation history to ChatGPT
-            var response = await ChatGptService.SendConversationMessageAsync(conversationMessages, apiKey, _selectedModel);
+            // Send full conversation history to ChatGPT (automatically gets API key and model from settings)
+            var response = await ChatGptService.SendConversationMessageAsync(userId, tenantId, conversationMessages);
 
             // Save assistant response to database
             var assistantMessage = new ChatGptMessage
@@ -247,19 +586,25 @@
                 Role = "assistant",
                 Content = response
             };
-            _context.ChatGptMessages.Add(assistantMessage);
-            _messages.Add(assistantMessage);
-
-            // Update conversation timestamp
-            var existingConversation = await _context.ChatGptConversations.FindAsync(_currentConversationId.Value);
-            if (existingConversation != null)
+            
+            await DbSync.ExecuteAsync(async () =>
             {
-                existingConversation.UpdatedAt = DateTime.UtcNow;
-            }
-
-            await _context.SaveChangesAsync();
-            _messageText = string.Empty;
+                _context.ChatGptMessages.Add(assistantMessage);
+                
+                // Update conversation timestamp
+                var existingConversation = await _context.ChatGptConversations.FindAsync(_currentConversationId.Value);
+                if (existingConversation != null)
+                {
+                    existingConversation.UpdatedAt = DateTime.UtcNow;
+                }
+                
+                await _context.SaveChangesAsync();
+            });
+            
+            _messages.Add(assistantMessage);
+            await LoadConversations();
             StateHasChanged();
+            await ScrollToBottom();
         }
         catch (Exception ex)
         {
@@ -277,4 +622,3 @@
         Navigation.NavigateTo("/chatgpt/settings");
     }
 }
-

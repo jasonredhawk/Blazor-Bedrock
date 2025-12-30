@@ -51,3 +51,45 @@ window.applicationLogger = {
     }
 };
 
+// Simple Enter key handler for chat
+window.setupChatEnterKey = function (dotNetRef) {
+    // Remove any existing interval
+    if (window.chatEnterKeyInterval) {
+        clearInterval(window.chatEnterKeyInterval);
+    }
+    
+    // Simple function to attach handler
+    function attachHandler() {
+        const container = document.getElementById('chat-input-container');
+        if (!container) return;
+        
+        const textarea = container.querySelector('textarea');
+        if (!textarea) return;
+        
+        // Remove old handler if exists
+        if (textarea.dataset.handlerAttached === 'true') {
+            textarea.removeEventListener('keydown', textarea._enterKeyHandler);
+        }
+        
+        // Create new handler
+        textarea._enterKeyHandler = function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                dotNetRef.invokeMethodAsync('HandleEnterKey').catch(function(err) {
+                    console.error('Error calling HandleEnterKey:', err);
+                });
+                return false;
+            }
+        };
+        
+        textarea.addEventListener('keydown', textarea._enterKeyHandler, true);
+        textarea.dataset.handlerAttached = 'true';
+    }
+    
+    // Try immediately and on interval
+    attachHandler();
+    window.chatEnterKeyInterval = setInterval(attachHandler, 300);
+};
+
