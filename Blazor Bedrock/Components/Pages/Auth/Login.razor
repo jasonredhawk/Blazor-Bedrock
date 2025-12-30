@@ -5,107 +5,92 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.WebUtilities
-@using MudBlazor
 @attribute [AllowAnonymous]
 @inject IIdentityService IdentityService
 @inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
-    <MudPaper Elevation="3" Class="pa-8">
-        <MudText Typo="Typo.h4" Class="mb-4">Login</MudText>
-        
-        @if (!string.IsNullOrEmpty(_errorMessage))
-        {
-            <MudAlert Severity="Severity.Error" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _errorMessage = string.Empty">
-                <MudText Typo="Typo.body2"><strong>Login Error:</strong> @_errorMessage</MudText>
-            </MudAlert>
-        }
+<div class="container mt-5" style="max-width: 500px;">
+    <div class="card shadow">
+        <div class="card-body p-5">
+            <h4 class="mb-4">Login</h4>
+            
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+                    <strong>Login Error:</strong> @_errorMessage
+                    <button type="button" class="btn-close" @onclick="() => _errorMessage = string.Empty" aria-label="Close"></button>
+                </div>
+            }
 
-        @if (!string.IsNullOrEmpty(_successMessage))
-        {
-            <MudAlert Severity="Severity.Success" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _successMessage = string.Empty">
-                <MudText Typo="Typo.body2">@_successMessage</MudText>
-            </MudAlert>
-        }
-        
-        <form method="post" action="/auth/login-post" id="loginForm">
-            <MudTextField @bind-Value="_loginModel.Email" 
-                          Label="Email" 
-                          Variant="Variant.Outlined" 
-                          InputType="InputType.Email"
-                          Required="true"
-                          RequiredError="Email is required"
-                          For="@(() => _loginModel.Email)"
-                          Class="mb-4" />
+            @if (!string.IsNullOrEmpty(_successMessage))
+            {
+                <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+                    @_successMessage
+                    <button type="button" class="btn-close" @onclick="() => _successMessage = string.Empty" aria-label="Close"></button>
+                </div>
+            }
             
-            <MudTextField @bind-Value="_loginModel.Password" 
-                          Label="Password" 
-                          Variant="Variant.Outlined" 
-                          InputType="InputType.Password"
-                          Required="true"
-                          RequiredError="Password is required"
-                          For="@(() => _loginModel.Password)"
-                          Class="mb-4" />
+            <form method="post" action="/auth/login-post" id="loginForm">
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" @bind="_loginModel.Email" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" @bind="_loginModel.Password" required />
+                </div>
+                
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="rememberMe" @bind="_loginModel.RememberMe" />
+                    <label class="form-check-label" for="rememberMe">Remember me</label>
+                </div>
+                
+                <input type="hidden" name="email" value="@_loginModel.Email" />
+                <input type="hidden" name="password" value="@_loginModel.Password" />
+                <input type="hidden" name="rememberMe" value="@_loginModel.RememberMe" />
+                
+                <button type="submit" class="btn btn-primary w-100" disabled="@_isLoading" @onclick="HandleFormSubmit">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Logging in...</span>
+                    }
+                    else
+                    {
+                        <span>Login</span>
+                    }
+                </button>
+            </form>
             
-            <MudCheckBox @bind-Checked="_loginModel.RememberMe" Label="Remember me" T="bool" Class="mb-4" />
+            <hr class="my-4" />
             
-            <input type="hidden" name="email" value="@_loginModel.Email" />
-            <input type="hidden" name="password" value="@_loginModel.Password" />
-            <input type="hidden" name="rememberMe" value="@_loginModel.RememberMe" />
+            <FeatureGate FeatureName="Auth_Google">
+                <a href="/auth/external/google" class="btn btn-outline-primary w-100 mb-2">
+                    <i class="bi bi-google me-2"></i>
+                    Sign in with Google
+                </a>
+            </FeatureGate>
             
-            <MudButton ButtonType="ButtonType.Submit" 
-                       Variant="Variant.Filled" 
-                       Color="Color.Primary" 
-                       FullWidth="true"
-                       Disabled="@_isLoading"
-                       OnClick="HandleFormSubmit">
-                @if (_isLoading)
-                {
-                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                    <MudText Class="ms-2">Logging in...</MudText>
-                }
-                else
-                {
-                    <MudText>Login</MudText>
-                }
-            </MudButton>
-        </form>
-        
-        <MudDivider Class="my-4" />
-        
-        <FeatureGate FeatureName="Auth_Google">
-            <MudButton Variant="Variant.Outlined" 
-                       Color="Color.Primary" 
-                       FullWidth="true"
-                       StartIcon="@Icons.Material.Filled.AccountCircle"
-                       Href="/auth/external/google"
-                       Class="mb-2">
-                Sign in with Google
-            </MudButton>
-        </FeatureGate>
-        
-        <FeatureGate FeatureName="Auth_Facebook">
-            <MudButton Variant="Variant.Outlined" 
-                       Color="Color.Primary" 
-                       FullWidth="true"
-                       StartIcon="@Icons.Material.Filled.Public"
-                       Href="/auth/external/facebook"
-                       Class="mb-2">
-                Sign in with Facebook
-            </MudButton>
-        </FeatureGate>
-        
-        <MudText Typo="Typo.body2" Class="mt-4 text-center">
-            Don't have an account? 
-            <MudLink Href="/auth/create-user-tenant">Create one here</MudLink>
-        </MudText>
-    </MudPaper>
-</MudContainer>
+            <FeatureGate FeatureName="Auth_Facebook">
+                <a href="/auth/external/facebook" class="btn btn-outline-primary w-100 mb-2">
+                    <i class="bi bi-facebook me-2"></i>
+                    Sign in with Facebook
+                </a>
+            </FeatureGate>
+            
+            <p class="mt-4 text-center text-muted">
+                Don't have an account? 
+                <a href="/auth/create-user-tenant">Create one here</a>
+            </p>
+        </div>
+    </div>
+</div>
 
 @code {
     private LoginModel _loginModel = new();
@@ -139,14 +124,14 @@
         if (string.IsNullOrWhiteSpace(_loginModel.Email))
         {
             _errorMessage = "Email is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_loginModel.Password))
         {
             _errorMessage = "Password is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
@@ -158,4 +143,3 @@
         await Task.CompletedTask;
     }
 }
-

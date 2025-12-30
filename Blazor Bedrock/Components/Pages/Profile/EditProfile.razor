@@ -3,56 +3,48 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 <PageTitle>Edit Profile</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Edit Profile</MudText>
+<div class="container mt-4" style="max-width: 600px;">
+    <h4 class="mb-4">Edit Profile</h4>
     
-    <MudTabs Elevation="0" Rounded="true" Color="Color.Primary">
-        <MudTabPanel Text="Personal Information">
-            <MudPaper Elevation="2" Class="pa-4 mt-4">
-                @if (_user != null)
-                {
-                    <EditForm Model="@_profileModel" OnValidSubmit="HandleProfileSubmit">
-                        <DataAnnotationsValidator />
-                        
-                        <MudTextField @bind-Value="_profileModel.FirstName" 
-                                      Label="First Name" 
-                                      Variant="Variant.Outlined" 
-                                      Class="mb-4" />
-                        
-                        <MudTextField @bind-Value="_profileModel.LastName" 
-                                      Label="Last Name" 
-                                      Variant="Variant.Outlined" 
-                                      Class="mb-4" />
-                        
-                        <MudTextField @bind-Value="_profileModel.Email" 
-                                      Label="Email" 
-                                      Variant="Variant.Outlined" 
-                                      InputType="InputType.Email"
-                                      Disabled="true"
-                                      Class="mb-4" />
-                        
-                        <MudButton ButtonType="ButtonType.Submit" 
-                                   Variant="Variant.Filled" 
-                                   Color="Color.Primary"
-                                   Disabled="@_isLoading">
-                            Save Changes
-                        </MudButton>
-                    </EditForm>
-                }
-            </MudPaper>
-        </MudTabPanel>
-    </MudTabs>
-</MudContainer>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_user != null)
+            {
+                <EditForm Model="@_profileModel" OnValidSubmit="HandleProfileSubmit">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="mb-3">
+                        <label for="firstName" class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="firstName" @bind="_profileModel.FirstName" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="lastName" class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="lastName" @bind="_profileModel.LastName" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" @bind="_profileModel.Email" disabled />
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                        Save Changes
+                    </button>
+                </EditForm>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     private ApplicationUser? _user;
@@ -108,16 +100,16 @@
             
             if (result.Succeeded)
             {
-                Snackbar.Add("Profile updated successfully", Severity.Success);
+                await NotificationService.ShowSuccessAsync("Profile updated successfully");
             }
             else
             {
-                Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
         finally
         {
@@ -125,4 +117,3 @@
         }
     }
 }
-

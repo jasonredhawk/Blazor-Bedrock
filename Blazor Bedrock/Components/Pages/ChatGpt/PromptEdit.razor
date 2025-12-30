@@ -4,80 +4,75 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Forms
-@using MudBlazor
 @inject IPromptService PromptService
 @inject ITenantService TenantService
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @rendermode InteractiveServer
 
 <PageTitle>@(_isEdit ? "Edit Prompt" : "Create Prompt")</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit Prompt" : "Create New Prompt")</MudText>
+<div class="container mt-4" style="max-width: 800px;">
+    <h4 class="mb-4">@(_isEdit ? "Edit Prompt" : "Create New Prompt")</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        @if (_prompt != null || !_isEdit)
-        {
-            <EditForm Model="@_promptModel" OnValidSubmit="HandleSubmit">
-                <DataAnnotationsValidator />
-                
-                <MudTextField @bind-Value="_promptModel.Name" 
-                             Label="Name *" 
-                             Variant="Variant.Outlined" 
-                             Required="true"
-                             RequiredError="Name is required"
-                             Class="mb-4" />
-                
-                <MudTextField @bind-Value="_promptModel.Description" 
-                             Label="Description" 
-                             Variant="Variant.Outlined" 
-                             Lines="3"
-                             Class="mb-4" />
-                
-                <MudTextField @bind-Value="_promptModel.PromptText" 
-                             Label="Prompt Text *" 
-                             Variant="Variant.Outlined" 
-                             Lines="12"
-                             Required="true"
-                             RequiredError="Prompt text is required"
-                             HelperText="Enter your prompt template text. This defines how ChatGPT should behave and respond."
-                             Class="mb-4" />
-                
-                <MudCheckBox @bind-Checked="_promptModel.IsSystemPrompt" Label="Use as System Prompt" T="bool" Class="mb-4" />
-                <MudText Typo="Typo.caption" Class="mb-4">
-                    If checked, this prompt will be used as the system prompt in chat conversations
-                </MudText>
-                
-                <div class="d-flex gap-2 mt-4">
-                    <MudButton Variant="Variant.Text" 
-                               Color="Color.Default"
-                               OnClick="NavigateBack">
-                        Cancel
-                    </MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" 
-                               Variant="Variant.Filled" 
-                               Color="Color.Primary"
-                               Disabled="@_isLoading">
-                        @if (_isLoading)
-                        {
-                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                            <MudText Class="ms-2">Saving...</MudText>
-                        }
-                        else
-                        {
-                            <MudText>Save</MudText>
-                        }
-                    </MudButton>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_prompt != null || !_isEdit)
+            {
+                <EditForm Model="@_promptModel" OnValidSubmit="HandleSubmit">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="name" @bind="_promptModel.Name" required />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3" @bind="_promptModel.Description"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="promptText" class="form-label">Prompt Text *</label>
+                        <textarea class="form-control" id="promptText" rows="12" @bind="_promptModel.PromptText" required></textarea>
+                        <div class="form-text">Enter your prompt template text. This defines how ChatGPT should behave and respond.</div>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="isSystemPrompt" @bind="_promptModel.IsSystemPrompt" />
+                        <label class="form-check-label" for="isSystemPrompt">Use as System Prompt</label>
+                    </div>
+                    <small class="text-muted d-block mb-4">
+                        If checked, this prompt will be used as the system prompt in chat conversations
+                    </small>
+                    
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="button" class="btn btn-secondary" @onclick="NavigateBack">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                            @if (_isLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Save</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                 </div>
-            </EditForm>
-        }
-        else
-        {
-            <MudProgressCircular Indeterminate="true" />
-        }
-    </MudPaper>
-</MudContainer>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     [Parameter] public int? Id { get; set; }
@@ -115,7 +110,7 @@
             }
             else
             {
-                Snackbar.Add("Prompt not found", Severity.Error);
+                await NotificationService.ShowErrorAsync("Prompt not found");
                 Navigation.NavigateTo("/chatgpt/prompts");
             }
         }
@@ -125,7 +120,7 @@
     {
         if (string.IsNullOrWhiteSpace(_promptModel.Name) || string.IsNullOrWhiteSpace(_promptModel.PromptText))
         {
-            Snackbar.Add("Name and Prompt Text are required.", Severity.Warning);
+            await NotificationService.ShowWarningAsync("Name and Prompt Text are required.");
             return;
         }
 
@@ -146,12 +141,12 @@
                 var result = await PromptService.UpdatePromptAsync(Id.Value, promptToUpdate, _currentTenantId);
                 if (result)
                 {
-                    Snackbar.Add("Prompt updated successfully", Severity.Success);
+                    await NotificationService.ShowSuccessAsync("Prompt updated successfully");
                     Navigation.NavigateTo("/chatgpt/prompts");
                 }
                 else
                 {
-                    Snackbar.Add("Error updating prompt. Prompt not found.", Severity.Error);
+                    await NotificationService.ShowErrorAsync("Error updating prompt. Prompt not found.");
                 }
             }
             else
@@ -165,13 +160,13 @@
                 };
 
                 await PromptService.CreatePromptAsync(newPrompt, _currentTenantId);
-                Snackbar.Add("Prompt created successfully", Severity.Success);
+                await NotificationService.ShowSuccessAsync("Prompt created successfully");
                 Navigation.NavigateTo("/chatgpt/prompts");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error saving prompt: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error saving prompt: {ex.Message}");
         }
         finally
         {
@@ -184,4 +179,3 @@
         Navigation.NavigateTo("/chatgpt/prompts");
     }
 }
-

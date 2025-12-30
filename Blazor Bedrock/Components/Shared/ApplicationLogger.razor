@@ -1,6 +1,5 @@
 @using Blazor_Bedrock.Services.Logger
 @using Microsoft.JSInterop
-@using MudBlazor
 @inject IApplicationLoggerService LoggerService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
@@ -8,97 +7,90 @@
 
 @if (_isVisible)
 {
-    <MudPaper Elevation="10" 
-              Class="application-logger" 
-              Style="@GetLoggerStyle()">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="pa-2" Style="border-bottom: 1px solid var(--mud-palette-divider);">
-            <MudText Typo="Typo.body2" Class="ml-2">Application Logger (@_logs.Count)</MudText>
+    <div class="application-logger border-top bg-white shadow-lg" style="@GetLoggerStyle()">
+        <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+            <span class="ms-2">Application Logger (@_logs.Count)</span>
             <div>
-                <MudIconButton Icon="@Icons.Material.Filled.FilterList" 
-                               Size="Size.Small" 
-                               OnClick="ToggleFilter" 
-                               Color="@(_showFilter ? Color.Primary : Color.Default)" />
-                <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" 
-                               Size="Size.Small" 
-                               OnClick="ToggleExpanded" />
-                <MudIconButton Icon="@Icons.Material.Filled.Clear" 
-                               Size="Size.Small" 
-                               OnClick="ClearLogs" />
-                <MudIconButton Icon="@Icons.Material.Filled.Close" 
-                               Size="Size.Small" 
-                               OnClick="HideLogger" />
+                <button class="btn btn-sm btn-outline-primary me-1" @onclick="ToggleFilter" title="Toggle Filter">
+                    <i class="bi bi-funnel @(_showFilter ? "text-primary" : "")"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="ToggleExpanded" title="Toggle Expand">
+                    <i class="bi bi-chevron-@(_isExpanded ? "down" : "up")"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-warning me-1" @onclick="ClearLogs" title="Clear Logs">
+                    <i class="bi bi-trash"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" @onclick="HideLogger" title="Hide Logger">
+                    <i class="bi bi-x"></i>
+                </button>
             </div>
-        </MudStack>
+        </div>
         
         @if (_showFilter)
         {
-            <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2" Style="border-bottom: 1px solid var(--mud-palette-divider);">
-                <MudSelect @bind-Value="_selectedLevel" 
-                           Label="Log Level" 
-                           Variant="Variant.Outlined" 
-                           Dense="true"
-                           Style="width: 150px;"
-                           T="LogLevel?">
-                    <MudSelectItem Value="@((LogLevel?)null)">All</MudSelectItem>
-                    <MudSelectItem Value="@LogLevel.Information">Information</MudSelectItem>
-                    <MudSelectItem Value="@LogLevel.Warning">Warning</MudSelectItem>
-                    <MudSelectItem Value="@LogLevel.Error">Error</MudSelectItem>
-                    <MudSelectItem Value="@LogLevel.Debug">Debug</MudSelectItem>
-                </MudSelect>
-                <MudTextField @bind-Value="_searchText" 
-                              Label="Search" 
-                              Variant="Variant.Outlined" 
-                              Dense="true"
-                              Immediate="true"
-                              Style="width: 200px;"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search" />
-            </MudStack>
+            <div class="d-flex align-items-center p-2 border-bottom gap-2">
+                <div style="width: 150px;">
+                    <select class="form-select form-select-sm" @bind="_selectedLevel">
+                        <option value="">All</option>
+                        <option value="@LogLevel.Information">Information</option>
+                        <option value="@LogLevel.Warning">Warning</option>
+                        <option value="@LogLevel.Error">Error</option>
+                        <option value="@LogLevel.Debug">Debug</option>
+                    </select>
+                </div>
+                <div class="input-group input-group-sm" style="width: 200px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" placeholder="Search" @bind="_searchText" @bind:event="oninput" />
+                </div>
+            </div>
         }
         
         @if (_isExpanded)
         {
-            <MudScrollContainer Style="height: calc(100% - 100px); overflow-y: auto;">
-                <MudTable Items="@FilteredLogs" Dense="true" Hover="true" Striped="true">
-                    <ColGroup>
-                        <col style="width: 150px;" />
-                        <col style="width: 100px;" />
-                        <col style="width: 150px;" />
-                        <col />
-                    </ColGroup>
-                    <HeaderContent>
-                        <MudTh>Timestamp</MudTh>
-                        <MudTh>Level</MudTh>
-                        <MudTh>Category</MudTh>
-                        <MudTh>Message</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Timestamp">@context.Timestamp.ToString("HH:mm:ss.fff")</MudTd>
-                        <MudTd DataLabel="Level">
-                            <MudChip Size="Size.Small" 
-                                     Color="@GetLevelColor(context.Level)" 
-                                     Variant="Variant.Filled"
-                                     T="string">
-                                @context.Level
-                            </MudChip>
-                        </MudTd>
-                        <MudTd DataLabel="Category">@context.Category</MudTd>
-                        <MudTd DataLabel="Message">
-                            <MudText Typo="Typo.body2">@context.Message</MudText>
-                            @if (!string.IsNullOrEmpty(context.Exception))
+            <div style="height: calc(100% - 100px); overflow-y: auto;">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover table-striped mb-0">
+                        <colgroup>
+                            <col style="width: 150px;" />
+                            <col style="width: 100px;" />
+                            <col style="width: 150px;" />
+                            <col />
+                        </colgroup>
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Level</th>
+                                <th>Category</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in FilteredLogs)
                             {
-                                <MudExpansionPanels>
-                                    <MudExpansionPanel Text="Exception Details">
-                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap; font-family: monospace;">@context.Exception</MudText>
-                                    </MudExpansionPanel>
-                                </MudExpansionPanels>
+                                <tr>
+                                    <td>@log.Timestamp.ToString("HH:mm:ss.fff")</td>
+                                    <td>
+                                        <span class="badge @GetLevelBadgeClass(log.Level)">@log.Level</span>
+                                    </td>
+                                    <td>@log.Category</td>
+                                    <td>
+                                        <div>@log.Message</div>
+                                        @if (!string.IsNullOrEmpty(log.Exception))
+                                        {
+                                            <details class="mt-1">
+                                                <summary class="text-muted small">Exception Details</summary>
+                                                <pre class="small bg-light p-2 mt-1 mb-0" style="white-space: pre-wrap; font-family: monospace;">@log.Exception</pre>
+                                            </details>
+                                        }
+                                    </td>
+                                </tr>
                             }
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            </MudScrollContainer>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         }
-    </MudPaper>
+    </div>
 }
 
 @code {
@@ -178,22 +170,22 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private Color GetLevelColor(LogLevel level)
+    private string GetLevelBadgeClass(LogLevel level)
     {
         return level switch
         {
-            LogLevel.Information => Color.Info,
-            LogLevel.Warning => Color.Warning,
-            LogLevel.Error => Color.Error,
-            LogLevel.Debug => Color.Default,
-            _ => Color.Default
+            LogLevel.Information => "bg-info",
+            LogLevel.Warning => "bg-warning",
+            LogLevel.Error => "bg-danger",
+            LogLevel.Debug => "bg-secondary",
+            _ => "bg-secondary"
         };
     }
 
     private string GetLoggerStyle()
     {
         var height = _isExpanded ? "400px" : "50px";
-        return $"position: fixed; bottom: 0; left: 0; right: 0; height: {height}; z-index: 9999; background-color: var(--mud-palette-background); border-top: 1px solid var(--mud-palette-divider);";
+        return $"position: fixed; bottom: 0; left: 0; right: 0; height: {height}; z-index: 9999;";
     }
 
     public async ValueTask DisposeAsync()
@@ -202,4 +194,3 @@
         _objRef?.Dispose();
     }
 }
-

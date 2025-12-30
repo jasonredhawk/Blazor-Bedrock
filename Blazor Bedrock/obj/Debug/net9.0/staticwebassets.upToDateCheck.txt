@@ -1,4 +1,6 @@
 wwwroot\app.css
 wwwroot\js\applicationLogger.js
+wwwroot\js\toast.js
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\app.css
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\js\applicationLogger.js
+C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\js\toast.js

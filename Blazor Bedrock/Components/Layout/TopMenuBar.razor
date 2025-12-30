@@ -1,7 +1,6 @@
 @using Blazor_Bedrock.Services.Navigation
 @using Blazor_Bedrock.Services.Tenant
 @using Microsoft.AspNetCore.Components.Authorization
-@using MudBlazor
 @implements IDisposable
 @inject IMenuService MenuService
 @inject ITenantService TenantService
@@ -9,57 +8,63 @@
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 
-<MudAppBar Elevation="2" Color="Color.Primary">
-    <MudText Typo="Typo.h6" Class="ml-4">@ProjectTitle</MudText>
-    
-    <div class="d-flex align-center ml-4" style="flex: 1;">
-        @foreach (var item in _menuItems)
-        {
-            @if (item.Children != null && item.Children.Any())
-            {
-                <MudMenu Icon="@item.Icon" Color="Color.Inherit" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
-                    <ActivatorContent>
-                        <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-1" Style="text-transform: none;">
-                            @if (!string.IsNullOrEmpty(item.Icon))
-                            {
-                                <MudIcon Icon="@item.Icon" Size="Size.Small" Class="mr-1" />
-                            }
-                            <MudText Typo="Typo.body1">@item.Title</MudText>
-                            <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
-                        </MudButton>
-                    </ActivatorContent>
-                    <ChildContent>
-                        @foreach (var child in item.Children)
-                        {
-                            <MudMenuItem OnClick="() => NavigateTo(child.Href)">
-                                @if (!string.IsNullOrEmpty(child.Icon))
-                                {
-                                    <MudIcon Icon="@child.Icon" Size="Size.Small" Class="mr-2" />
-                                }
-                                @child.Title
-                            </MudMenuItem>
-                        }
-                    </ChildContent>
-                </MudMenu>
-            }
-            else if (!string.IsNullOrEmpty(item.Href))
-            {
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-1" Style="text-transform: none;" Href="@item.Href">
-                    @if (!string.IsNullOrEmpty(item.Icon))
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">@ProjectTitle</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                @foreach (var item in _menuItems)
+                {
+                    @if (item.Children != null && item.Children.Any())
                     {
-                        <MudIcon Icon="@item.Icon" Size="Size.Small" Class="mr-1" />
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown-@item.Title" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                @if (!string.IsNullOrEmpty(item.Icon))
+                                {
+                                    <i class="@item.Icon me-1"></i>
+                                }
+                                @item.Title
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="navbarDropdown-@item.Title">
+                                @foreach (var child in item.Children)
+                                {
+                                    <li>
+                                        <a class="dropdown-item" href="@child.Href" @onclick="() => NavigateTo(child.Href)">
+                                            @if (!string.IsNullOrEmpty(child.Icon))
+                                            {
+                                                <i class="@child.Icon me-2"></i>
+                                            }
+                                            @child.Title
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </li>
                     }
-                    <MudText Typo="Typo.body1">@item.Title</MudText>
-                </MudButton>
-            }
-        }
+                    else if (!string.IsNullOrEmpty(item.Href))
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="@item.Href">
+                                @if (!string.IsNullOrEmpty(item.Icon))
+                                {
+                                    <i class="@item.Icon me-1"></i>
+                                }
+                                @item.Title
+                            </a>
+                        </li>
+                    }
+                }
+            </ul>
+            <ul class="navbar-nav">
+                <TenantSelector />
+                <UserMenu />
+            </ul>
+        </div>
     </div>
-    
-    <MudSpacer />
-    
-    <TenantSelector />
-    <UserMenu />
-</MudAppBar>
+</nav>
 
 @code {
     [Parameter] public string ProjectTitle { get; set; } = "Blazor Bedrock";
@@ -153,4 +158,3 @@
         }
     }
 }
-

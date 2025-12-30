@@ -4,34 +4,31 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Blazor_Bedrock.Data.Models
-@using MudBlazor
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject IDialogService DialogService
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 @if (_showPrompt)
 {
-    <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-16">
-        <MudPaper Elevation="3" Class="pa-8">
-            <MudText Typo="Typo.h4" Class="mb-4">Organization Required</MudText>
-            <MudText Typo="Typo.body1" Class="mb-4">
-                You need to create an organization to access the application features. 
-                Please create an organization to continue.
-            </MudText>
-            <MudButton Variant="Variant.Filled" 
-                       Color="Color.Primary" 
-                       StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="ShowCreateDialog"
-                       Class="mt-4">
-                Create Organization
-            </MudButton>
-        </MudPaper>
-    </MudContainer>
+    <div class="container mt-5" style="max-width: 600px;">
+        <div class="card shadow">
+            <div class="card-body p-5">
+                <h4 class="mb-4">Organization Required</h4>
+                <p class="mb-4">
+                    You need to create an organization to access the application features. 
+                    Please create an organization to continue.
+                </p>
+                <button class="btn btn-primary mt-4" @onclick="NavigateToCreateOrganization">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create Organization
+                </button>
+            </div>
+        </div>
+    </div>
 }
 else
 {
@@ -89,48 +86,8 @@ else
         _isChecking = false;
     }
 
-    private async Task ShowCreateDialog()
+    private void NavigateToCreateOrganization()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        if (authState.User?.Identity?.IsAuthenticated != true)
-        {
-            Navigation.NavigateTo("/auth/login");
-            return;
-        }
-
-        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-        {
-            var user = await UserManager.GetUserAsync(authState.User);
-            userId = user?.Id;
-        }
-
-        if (string.IsNullOrEmpty(userId))
-        {
-            Snackbar.Add("Unable to identify user. Please log out and log back in.", Severity.Error);
-            return;
-        }
-
-        var parameters = new DialogParameters
-        {
-            ["UserId"] = userId
-        };
-
-        var options = new DialogOptions
-        {
-            CloseOnEscapeKey = false,
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true
-        };
-
-        var dialog = await DialogService.ShowAsync<CreateOrganizationDialog>("Create Organization", parameters, options);
-        var result = await dialog.Result;
-
-        if (!result.Canceled && result.Data != null)
-        {
-            // Organization created, refresh the check
-            await CheckOrganizationAsync();
-            StateHasChanged();
-        }
+        Navigation.NavigateTo("/tenant/create-organization");
     }
 }

@@ -1,51 +1,52 @@
 @using Blazor_Bedrock.Services.Tenant
-@using MudBlazor
 @inject ITenantService TenantService
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 
-<MudDialog>
-    <TitleContent>
-        <MudText Typo="Typo.h6">Create Organization</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudTextField @bind-Value="_name" 
-                     Label="Organization Name" 
-                     Variant="Variant.Outlined" 
-                     Required="true" 
-                     RequiredError="Organization name is required"
-                     Class="mb-4" />
-        
-        <MudTextField @bind-Value="_description" 
-                     Label="Description" 
-                     Variant="Variant.Outlined" 
-                     Lines="3"
-                     Class="mb-4" />
-        
-        <MudTextField @bind-Value="_domain" 
-                     Label="Domain (Optional)" 
-                     Variant="Variant.Outlined"
-                     HelperText="Optional: Your organization's domain name"
-                     Class="mb-4" />
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create" Disabled="@_isLoading">
-            @if (_isLoading)
-            {
-                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                <MudText Class="ms-2">Creating...</MudText>
-            }
-            else
-            {
-                <MudText>Create</MudText>
-            }
-        </MudButton>
-    </DialogActions>
-</MudDialog>
+<div class="modal fade" id="createOrgModal" tabindex="-1" aria-labelledby="createOrgModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createOrgModalLabel">Create Organization</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="orgName" class="form-label">Organization Name</label>
+                    <input type="text" class="form-control" id="orgName" @bind="_name" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" rows="3" @bind="_description"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="domain" class="form-label">Domain (Optional)</label>
+                    <input type="text" class="form-control" id="domain" @bind="_domain" />
+                    <div class="form-text">Optional: Your organization's domain name</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="Create" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Creating...</span>
+                    }
+                    else
+                    {
+                        <span>Create</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code {
-    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public string? UserId { get; set; }
+    [Parameter] public EventCallback OnCreated { get; set; }
 
     private string _name = string.Empty;
     private string? _description;
@@ -54,20 +55,22 @@
 
     private void Cancel()
     {
-        MudDialog.Cancel();
+        _name = string.Empty;
+        _description = null;
+        _domain = null;
     }
 
     private async Task Create()
     {
         if (string.IsNullOrWhiteSpace(_name))
         {
-            Snackbar.Add("Organization name is required.", Severity.Warning);
+            await NotificationService.ShowWarningAsync("Organization name is required.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(UserId))
         {
-            Snackbar.Add("User ID is missing. Please log out and log back in.", Severity.Error);
+            await NotificationService.ShowErrorAsync("User ID is missing. Please log out and log back in.");
             return;
         }
 
@@ -84,17 +87,21 @@
 
             if (tenant != null)
             {
-                MudDialog.Close(DialogResult.Ok(tenant));
+                await NotificationService.ShowSuccessAsync("Organization created successfully!");
+                await OnCreated.InvokeAsync();
+                // Close modal via JavaScript
+                await Task.Delay(100);
+                Cancel();
             }
             else
             {
-                Snackbar.Add("Failed to create organization. Please try again.", Severity.Error);
+                await NotificationService.ShowErrorAsync("Failed to create organization. Please try again.");
                 _isLoading = false;
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error creating organization: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error creating organization: {ex.Message}");
             _isLoading = false;
         }
     }

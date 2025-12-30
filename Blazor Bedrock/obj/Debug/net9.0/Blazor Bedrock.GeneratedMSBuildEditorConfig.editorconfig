@@ -1,7 +1,4 @@
 is_global = true
-build_property.MudDebugAnalyzer = 
-build_property.MudAllowedAttributePattern = 
-build_property.MudAllowedAttributeList = 
 build_property.TargetFramework = net9.0
 build_property.TargetFramework = net9.0
 build_property.TargetPlatformMinVersion = 
@@ -131,10 +128,6 @@ build_metadata.AdditionalFiles.CssScope =
 
 [C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/FeatureGate.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcRmVhdHVyZUdhdGUucmF6b3I=
-build_metadata.AdditionalFiles.CssScope = 
-
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/MudProviders.razor]
-build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcTXVkUHJvdmlkZXJzLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/OrganizationRequired.razor]

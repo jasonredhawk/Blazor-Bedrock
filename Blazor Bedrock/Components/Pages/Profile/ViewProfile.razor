@@ -3,7 +3,6 @@
 @using Blazor_Bedrock.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -12,48 +11,54 @@
 
 <PageTitle>Profile</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">My Profile</MudText>
+<div class="container mt-4" style="max-width: 800px;">
+    <h4 class="mb-4">My Profile</h4>
     
     @if (_user != null)
     {
-        <MudPaper Elevation="2" Class="pa-4">
-            <MudGrid>
-                <MudItem xs="12">
-                    <MudText Typo="Typo.h6">Personal Information</MudText>
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudText Typo="Typo.body2" Class="font-weight-bold">First Name</MudText>
-                    <MudText Typo="Typo.body1">@(_user.FirstName ?? "Not set")</MudText>
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudText Typo="Typo.body2" Class="font-weight-bold">Last Name</MudText>
-                    <MudText Typo="Typo.body1">@(_user.LastName ?? "Not set")</MudText>
-                </MudItem>
-                <MudItem xs="12">
-                    <MudText Typo="Typo.body2" Class="font-weight-bold">Email</MudText>
-                    <MudText Typo="Typo.body1">@_user.Email</MudText>
-                </MudItem>
-                <MudItem xs="12">
-                    <MudText Typo="Typo.body2" Class="font-weight-bold">Status</MudText>
-                    <MudChip Size="Size.Small" 
-                             Color="@(_user.IsActive ? Color.Success : Color.Error)" 
-                             Variant="Variant.Filled"
-                             T="string">
-                        @(_user.IsActive ? "Active" : "Inactive")
-                    </MudChip>
-                </MudItem>
-                <MudItem xs="12" Class="mt-4">
-                    <MudButton Variant="Variant.Filled" 
-                               Color="Color.Primary"
-                               OnClick="NavigateToEdit">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h6 class="mb-3">Personal Information</h6>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>First Name</strong>
+                        <p>@(_user.FirstName ?? "Not set")</p>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Last Name</strong>
+                        <p>@(_user.LastName ?? "Not set")</p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <strong>Email</strong>
+                        <p>@_user.Email</p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <strong>Status</strong>
+                        <p>
+                            @if (_user.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">Inactive</span>
+                            }
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <button class="btn btn-primary" @onclick="NavigateToEdit">
                         Edit Profile
-                    </MudButton>
-                </MudItem>
-            </MudGrid>
-        </MudPaper>
+                    </button>
+                </div>
+            </div>
+        </div>
     }
-</MudContainer>
+</div>
 
 @code {
     private ApplicationUser? _user;
@@ -79,4 +84,3 @@
         Navigation.NavigateTo("/profile/edit");
     }
 }
-

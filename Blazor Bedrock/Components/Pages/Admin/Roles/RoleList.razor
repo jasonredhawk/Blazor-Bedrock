@@ -5,78 +5,85 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using MudBlazor
 @inject IRoleService RoleService
 @inject ITenantService TenantService
 @inject IPermissionService PermissionService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @rendermode InteractiveServer
 
 <PageTitle>Role Management</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Role Management</MudText>
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Role Management</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        <div class="d-flex justify-space-between align-center mb-4">
-            <MudTextField @bind-Value="_searchText" 
-                          Placeholder="Search roles..." 
-                          Variant="Variant.Outlined" 
-                          Immediate="true"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
-                          Style="max-width: 300px;" />
-            <PermissionGate PermissionName="Roles.Add">
-                <MudButton Variant="Variant.Filled" 
-                           Color="Color.Primary" 
-                           StartIcon="@Icons.Material.Filled.Add"
-                           OnClick="NavigateToCreate">
-                    Add Role
-                </MudButton>
-            </PermissionGate>
-        </div>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="input-group" style="max-width: 300px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" placeholder="Search roles..." @bind="_searchText" @bind:event="oninput" />
+                </div>
+                <PermissionGate PermissionName="Roles.Add">
+                    <button class="btn btn-primary" @onclick="NavigateToCreate">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Add Role
+                    </button>
+                </PermissionGate>
+            </div>
 
-        <MudTable Items="@FilteredRoles" Hover="true" Striped="true" Dense="true">
-            <HeaderContent>
-                <MudTh>Name</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh>Type</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Name">@context.Name</MudTd>
-                <MudTd DataLabel="Description">@context.Description</MudTd>
-                <MudTd DataLabel="Type">
-                    <MudChip Size="Size.Small" 
-                             Color="@(context.IsSystemRole ? Color.Warning : Color.Default)" 
-                             Variant="Variant.Filled"
-                             T="string">
-                        @(context.IsSystemRole ? "System" : "Custom")
-                    </MudChip>
-                </MudTd>
-                <MudTd DataLabel="Actions">
-                    <PermissionGate PermissionName="Roles.Edit">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                       Color="Color.Primary" 
-                                       Size="Size.Small"
-                                       OnClick="() => NavigateToEdit(context.Id)" />
-                    </PermissionGate>
-                    @if (!context.IsSystemRole)
-                    {
-                        <PermissionGate PermissionName="Roles.Delete">
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                           Color="Color.Error" 
-                                           Size="Size.Small"
-                                           OnClick="() => DeleteRole(context.Id)" />
-                        </PermissionGate>
-                    }
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-    </MudPaper>
-</MudContainer>
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var role in FilteredRoles)
+                        {
+                            <tr>
+                                <td>@role.Name</td>
+                                <td>@role.Description</td>
+                                <td>
+                                    @if (role.IsSystemRole)
+                                    {
+                                        <span class="badge bg-warning">System</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Custom</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <PermissionGate PermissionName="Roles.Edit">
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => NavigateToEdit(role.Id)" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        </PermissionGate>
+                                        @if (!role.IsSystemRole)
+                                        {
+                                            <PermissionGate PermissionName="Roles.Delete">
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteRole(role.Id)" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </PermissionGate>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code {
     private List<ApplicationRole> _roles = new();
@@ -111,7 +118,7 @@
                 _canView = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, "Roles.View");
                 if (!_canView)
                 {
-                    Snackbar.Add("You do not have permission to view roles.", Severity.Error);
+                    await NotificationService.ShowErrorAsync("You do not have permission to view roles.");
                     Navigation.NavigateTo("/");
                     return;
                 }
@@ -152,13 +159,12 @@
         var result = await RoleService.DeleteRoleAsync(roleId);
         if (result.Succeeded)
         {
-            Snackbar.Add("Role deleted successfully", Severity.Success);
+            await NotificationService.ShowSuccessAsync("Role deleted successfully");
             await LoadRolesAsync();
         }
         else
         {
-            Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
         }
     }
 }
-

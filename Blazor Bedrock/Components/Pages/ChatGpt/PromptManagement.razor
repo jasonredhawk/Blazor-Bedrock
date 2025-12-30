@@ -5,12 +5,11 @@
 @using Blazor_Bedrock.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @inject IPromptService PromptService
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IDatabaseSyncService DbSync
 @inject IJSRuntime JSRuntime
@@ -18,90 +17,101 @@
 
 <PageTitle>ChatGPT Prompt Management</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Prompt Templates</MudText>
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Prompt Templates</h4>
     
-    <MudPaper Elevation="2" Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">
-            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />
-            About Prompt Templates
-        </MudText>
-        <MudText Typo="Typo.body2" Class="mb-2">
-            <strong>Prompt Templates work like CustomGPT instructions.</strong> They define how ChatGPT should behave and respond to your questions.
-        </MudText>
-        <MudText Typo="Typo.body2" Class="mb-0">
-            <strong>Key Points:</strong>
-        </MudText>
-        <ul>
-            <li>Use templates to set response style (e.g., "always answer in point form")</li>
-            <li>Define analysis approach (e.g., "provide correlation percentages")</li>
-            <li>Set tone and format (e.g., "use technical language", "include citations")</li>
-            <li>System prompts are used automatically in chat conversations</li>
-        </ul>
-    </MudPaper>
-
-    <MudPaper Elevation="2" Class="pa-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <MudText Typo="Typo.h6">Prompts</MudText>
-            <MudButton Variant="Variant.Filled" 
-                      Color="Color.Primary" 
-                      StartIcon="@Icons.Material.Filled.Add"
-                      OnClick="NavigateToCreate">
-                Create New Prompt
-            </MudButton>
+    <div class="card shadow mb-4">
+        <div class="card-body p-4">
+            <h6 class="mb-2">
+                <i class="bi bi-info-circle me-2"></i>
+                About Prompt Templates
+            </h6>
+            <p class="mb-2">
+                <strong>Prompt Templates work like CustomGPT instructions.</strong> They define how ChatGPT should behave and respond to your questions.
+            </p>
+            <p class="mb-0"><strong>Key Points:</strong></p>
+            <ul>
+                <li>Use templates to set response style (e.g., "always answer in point form")</li>
+                <li>Define analysis approach (e.g., "provide correlation percentages")</li>
+                <li>Set tone and format (e.g., "use technical language", "include citations")</li>
+                <li>System prompts are used automatically in chat conversations</li>
+            </ul>
         </div>
+    </div>
 
-        @if (prompts == null)
-        {
-            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
-        }
-        else if (!prompts.Any())
-        {
-            <MudAlert Severity="Severity.Info">
-                <strong>No prompts created yet.</strong> Click "Create New Prompt" to get started.
-            </MudAlert>
-        }
-        else
-        {
-            <MudTable Items="prompts" Hover="true" Dense="false" Striped="true">
-                <HeaderContent>
-                    <MudTh>Name</MudTh>
-                    <MudTh>Description</MudTh>
-                    <MudTh>System Prompt</MudTh>
-                    <MudTh>Created</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Name">
-                        <strong>@context.Name</strong>
-                    </MudTd>
-                    <MudTd DataLabel="Description">
-                        @(context.Description ?? "-")
-                    </MudTd>
-                    <MudTd DataLabel="System Prompt">
-                        @if (context.IsSystemPrompt)
-                        {
-                            <MudChip Size="Size.Small" Color="Color.Success" T="string">Yes</MudChip>
-                        }
-                        else
-                        {
-                            <MudChip Size="Size.Small" Color="Color.Default" T="string">No</MudChip>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="Created">
-                        @context.CreatedAt.ToString("yyyy-MM-dd")
-                    </MudTd>
-                    <MudTd DataLabel="Actions">
-                        <MudButtonGroup Variant="Variant.Text" Color="Color.Primary" Size="Size.Small">
-                            <MudButton StartIcon="@Icons.Material.Filled.Edit" OnClick="() => NavigateToEdit(context.Id)">Edit</MudButton>
-                            <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => DeletePrompt(context.Id)">Delete</MudButton>
-                        </MudButtonGroup>
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
-        }
-    </MudPaper>
-</MudContainer>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h6>Prompts</h6>
+                <button class="btn btn-primary" @onclick="NavigateToCreate">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create New Prompt
+                </button>
+            </div>
+
+            @if (prompts == null)
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (!prompts.Any())
+            {
+                <div class="alert alert-info">
+                    <strong>No prompts created yet.</strong> Click "Create New Prompt" to get started.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>System Prompt</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var prompt in prompts)
+                            {
+                                <tr>
+                                    <td><strong>@prompt.Name</strong></td>
+                                    <td>@(prompt.Description ?? "-")</td>
+                                    <td>
+                                        @if (prompt.IsSystemPrompt)
+                                        {
+                                            <span class="badge bg-success">Yes</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">No</span>
+                                        }
+                                    </td>
+                                    <td>@prompt.CreatedAt.ToString("yyyy-MM-dd")</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => NavigateToEdit(prompt.Id)">
+                                                <i class="bi bi-pencil me-1"></i>Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePrompt(prompt.Id)">
+                                                <i class="bi bi-trash me-1"></i>Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     private List<ChatGptPrompt>? prompts;
@@ -140,18 +150,17 @@
             var result = await PromptService.DeletePromptAsync(id, currentTenantId);
             if (result)
             {
-                Snackbar.Add("Prompt deleted successfully", Severity.Success);
+                await NotificationService.ShowSuccessAsync("Prompt deleted successfully");
                 await LoadData();
             }
             else
             {
-                Snackbar.Add("Error deleting prompt. Prompt not found.", Severity.Error);
+                await NotificationService.ShowErrorAsync("Error deleting prompt. Prompt not found.");
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error deleting prompt: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error deleting prompt: {ex.Message}");
         }
     }
 }
-

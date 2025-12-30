@@ -3,86 +3,77 @@
 @using Blazor_Bedrock.Services.Auth
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
-@using MudBlazor
 @attribute [AllowAnonymous]
 @inject IIdentityService IdentityService
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @rendermode InteractiveServer
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-16">
-    <MudPaper Elevation="3" Class="pa-8">
-        <MudText Typo="Typo.h4" Class="mb-4">Create Account</MudText>
-        
-        @if (!string.IsNullOrEmpty(_errorMessage))
-        {
-            <MudAlert Severity="Severity.Error" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _errorMessage = string.Empty">
-                <MudText Typo="Typo.body2"><strong>Error:</strong> @_errorMessage</MudText>
-            </MudAlert>
-        }
+<div class="container mt-5" style="max-width: 500px;">
+    <div class="card shadow">
+        <div class="card-body p-5">
+            <h4 class="mb-4">Create Account</h4>
+            
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+                    <strong>Error:</strong> @_errorMessage
+                    <button type="button" class="btn-close" @onclick="() => _errorMessage = string.Empty" aria-label="Close"></button>
+                </div>
+            }
 
-        @if (!string.IsNullOrEmpty(_successMessage))
-        {
-            <MudAlert Severity="Severity.Success" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _successMessage = string.Empty">
-                <MudText Typo="Typo.body2">@_successMessage</MudText>
-            </MudAlert>
-        }
-        
-        <EditForm Model="@_userModel" OnValidSubmit="HandleUserSubmit" Class="mt-4">
-            <DataAnnotationsValidator />
+            @if (!string.IsNullOrEmpty(_successMessage))
+            {
+                <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+                    @_successMessage
+                    <button type="button" class="btn-close" @onclick="() => _successMessage = string.Empty" aria-label="Close"></button>
+                </div>
+            }
             
-            <MudTextField @bind-Value="_userModel.FirstName" 
-                          Label="First Name" 
-                          Variant="Variant.Outlined" 
-                          Required="true"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_userModel.LastName" 
-                          Label="Last Name" 
-                          Variant="Variant.Outlined" 
-                          Required="true"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_userModel.Email" 
-                          Label="Email" 
-                          Variant="Variant.Outlined" 
-                          InputType="InputType.Email"
-                          Required="true"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_userModel.Password" 
-                          Label="Password" 
-                          Variant="Variant.Outlined" 
-                          InputType="InputType.Password"
-                          Required="true"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_userModel.ConfirmPassword" 
-                          Label="Confirm Password" 
-                          Variant="Variant.Outlined" 
-                          InputType="InputType.Password"
-                          Required="true"
-                          Class="mb-4" />
-            
-            <MudButton ButtonType="ButtonType.Submit" 
-                       Variant="Variant.Filled" 
-                       Color="Color.Primary"
-                       Disabled="@_isLoading"
-                       FullWidth="true">
-                @if (_isLoading)
-                {
-                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                    <MudText Class="ms-2">Creating Account...</MudText>
-                }
-                else
-                {
-                    <MudText>Create Account</MudText>
-                }
-            </MudButton>
-        </EditForm>
-    </MudPaper>
-</MudContainer>
+            <EditForm Model="@_userModel" OnValidSubmit="HandleUserSubmit">
+                <DataAnnotationsValidator />
+                
+                <div class="mb-3">
+                    <label for="firstName" class="form-label">First Name</label>
+                    <input type="text" class="form-control" id="firstName" @bind="_userModel.FirstName" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="lastName" class="form-label">Last Name</label>
+                    <input type="text" class="form-control" id="lastName" @bind="_userModel.LastName" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" @bind="_userModel.Email" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" @bind="_userModel.Password" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="confirmPassword" class="form-label">Confirm Password</label>
+                    <input type="password" class="form-control" id="confirmPassword" @bind="_userModel.ConfirmPassword" required />
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Creating Account...</span>
+                    }
+                    else
+                    {
+                        <span>Create Account</span>
+                    }
+                </button>
+            </EditForm>
+        </div>
+    </div>
+</div>
 
 @code {
     private UserModel _userModel = new();
@@ -107,42 +98,42 @@
         if (string.IsNullOrWhiteSpace(_userModel.FirstName))
         {
             _errorMessage = "First name is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_userModel.LastName))
         {
             _errorMessage = "Last name is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_userModel.Email))
         {
             _errorMessage = "Email is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_userModel.Password))
         {
             _errorMessage = "Password is required.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (_userModel.Password != _userModel.ConfirmPassword)
         {
             _errorMessage = "Passwords do not match.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
         if (_userModel.Password.Length < 8)
         {
             _errorMessage = "Password must be at least 8 characters long.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
@@ -154,7 +145,7 @@
             if (existingUser != null)
             {
                 _errorMessage = $"A user with email '{_userModel.Email}' already exists.";
-                Snackbar.Add(_errorMessage, Severity.Error);
+                await NotificationService.ShowErrorAsync(_errorMessage);
                 _isLoading = false;
                 return;
             }
@@ -174,7 +165,7 @@
             if (result.Succeeded)
             {
                 _successMessage = $"Account created successfully! Redirecting to login...";
-                Snackbar.Add("Account created successfully!", Severity.Success);
+                await NotificationService.ShowSuccessAsync("Account created successfully!");
                 
                 // Wait a moment before navigating to show success message
                 await Task.Delay(1500);
@@ -188,11 +179,8 @@
                 
                 foreach (var error in result.Errors)
                 {
-                    Snackbar.Add($"Error: {error.Description} (Code: {error.Code})", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"Error: {error.Description} (Code: {error.Code})");
                 }
-                
-                // Also show a summary
-                Snackbar.Add($"Failed to create account. Errors: {_errorMessage}", Severity.Error);
             }
         }
         catch (Exception ex)
@@ -201,9 +189,9 @@
             if (ex.InnerException != null)
             {
                 _errorMessage += $" Inner exception: {ex.InnerException.Message}";
-                Snackbar.Add($"Inner exception: {ex.InnerException.Message}", Severity.Error);
+                await NotificationService.ShowErrorAsync($"Inner exception: {ex.InnerException.Message}");
             }
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
         }
         finally
         {
@@ -211,4 +199,3 @@
         }
     }
 }
-

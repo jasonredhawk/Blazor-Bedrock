@@ -5,79 +5,84 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using MudBlazor
 @inject IUserService UserService
 @inject ITenantService TenantService
 @inject IPermissionService PermissionService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @rendermode InteractiveServer
 
 <PageTitle>User Management</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">User Management</MudText>
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">User Management</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        <div class="d-flex justify-space-between align-center mb-4">
-            <MudTextField @bind-Value="_searchText" 
-                          Placeholder="Search users..." 
-                          Variant="Variant.Outlined" 
-                          Immediate="true"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
-                          Style="max-width: 300px;" />
-            <PermissionGate PermissionName="Users.Add">
-                <MudButton Variant="Variant.Filled" 
-                           Color="Color.Primary" 
-                           StartIcon="@Icons.Material.Filled.Add"
-                           OnClick="NavigateToCreate">
-                    Add User
-                </MudButton>
-            </PermissionGate>
-        </div>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="input-group" style="max-width: 300px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" placeholder="Search users..." @bind="_searchText" @bind:event="oninput" />
+                </div>
+                <PermissionGate PermissionName="Users.Add">
+                    <button class="btn btn-primary" @onclick="NavigateToCreate">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Add User
+                    </button>
+                </PermissionGate>
+            </div>
 
-        <MudTable Items="@FilteredUsers" Hover="true" Striped="true" Dense="true">
-            <HeaderContent>
-                <MudTh>Name</MudTh>
-                <MudTh>Email</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh>Last Login</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Name">@context.FirstName @context.LastName</MudTd>
-                <MudTd DataLabel="Email">@context.Email</MudTd>
-                <MudTd DataLabel="Status">
-                    <MudChip Size="Size.Small" 
-                             Color="@(context.IsActive ? Color.Success : Color.Error)" 
-                             Variant="Variant.Filled"
-                             T="string">
-                        @(context.IsActive ? "Active" : "Inactive")
-                    </MudChip>
-                </MudTd>
-                <MudTd DataLabel="Last Login">
-                    @(context.LastLoginAt?.ToString("g") ?? "Never")
-                </MudTd>
-                <MudTd DataLabel="Actions">
-                    <PermissionGate PermissionName="Users.Edit">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                       Color="Color.Primary" 
-                                       Size="Size.Small"
-                                       OnClick="() => NavigateToEdit(context.Id)" />
-                    </PermissionGate>
-                    <PermissionGate PermissionName="Users.Delete">
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                       Color="Color.Error" 
-                                       Size="Size.Small"
-                                       OnClick="() => DeleteUser(context.Id)" />
-                    </PermissionGate>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-    </MudPaper>
-</MudContainer>
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Last Login</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in FilteredUsers)
+                        {
+                            <tr>
+                                <td>@user.FirstName @user.LastName</td>
+                                <td>@user.Email</td>
+                                <td>
+                                    @if (user.IsActive)
+                                    {
+                                        <span class="badge bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Inactive</span>
+                                    }
+                                </td>
+                                <td>@(user.LastLoginAt?.ToString("g") ?? "Never")</td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <PermissionGate PermissionName="Users.Edit">
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => NavigateToEdit(user.Id)" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        </PermissionGate>
+                                        <PermissionGate PermissionName="Users.Delete">
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteUser(user.Id)" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </PermissionGate>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code {
     private List<ApplicationUser> _users = new();
@@ -113,7 +118,7 @@
                 _canView = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, "Users.View");
                 if (!_canView)
                 {
-                    Snackbar.Add("You do not have permission to view users.", Severity.Error);
+                    await NotificationService.ShowErrorAsync("You do not have permission to view users.");
                     Navigation.NavigateTo("/");
                     return;
                 }
@@ -157,13 +162,12 @@
         var result = await UserService.DeleteUserAsync(userId);
         if (result.Succeeded)
         {
-            Snackbar.Add("User deleted successfully", Severity.Success);
+            await NotificationService.ShowSuccessAsync("User deleted successfully");
             await LoadUsersAsync();
         }
         else
         {
-            Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
         }
     }
 }
-

@@ -4,7 +4,6 @@ using Blazor_Bedrock.Services.FeatureFlag;
 using Blazor_Bedrock.Services.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using MudBlazor;
 
 namespace Blazor_Bedrock.Services.Navigation;
 
@@ -70,7 +69,7 @@ public class MenuService : IMenuService
             {
                 Title = "Home",
                 Href = "/",
-                Icon = Icons.Material.Filled.Home
+                Icon = "bi bi-house"
             });
 
             // If no tenant, only show Home menu
@@ -85,7 +84,7 @@ public class MenuService : IMenuService
                 var settingsMenu = new MenuItem
                 {
                     Title = "Settings",
-                    Icon = Icons.Material.Filled.Settings,
+                    Icon = "bi bi-gear",
                     Children = new List<MenuItem>()
                 };
 
@@ -96,14 +95,14 @@ public class MenuService : IMenuService
                     {
                         Title = "Users",
                         Href = "/admin/users",
-                        Icon = Icons.Material.Filled.People
+                        Icon = "bi bi-people"
                     });
 
                     settingsMenu.Children.Add(new MenuItem
                     {
                         Title = "Roles",
                         Href = "/admin/roles",
-                        Icon = Icons.Material.Filled.Security
+                        Icon = "bi bi-shield-check"
                     });
 
                     // Feature Settings (if enabled)
@@ -113,7 +112,7 @@ public class MenuService : IMenuService
                         {
                             Title = "Feature Settings",
                             Href = "/admin/feature-settings",
-                            Icon = Icons.Material.Filled.ToggleOn
+                            Icon = "bi bi-toggle-on"
                         });
                     }
                 }
@@ -127,7 +126,7 @@ public class MenuService : IMenuService
                         {
                             Title = "Users",
                             Href = "/admin/users",
-                            Icon = Icons.Material.Filled.People
+                            Icon = "bi bi-people"
                         });
                     }
 
@@ -138,7 +137,7 @@ public class MenuService : IMenuService
                         {
                             Title = "Roles",
                             Href = "/admin/roles",
-                            Icon = Icons.Material.Filled.Security
+                            Icon = "bi bi-shield-check"
                         });
                     }
                 }
@@ -155,7 +154,7 @@ public class MenuService : IMenuService
                 var chatGptMenu = new MenuItem
                 {
                     Title = "ChatGPT",
-                    Icon = Icons.Material.Filled.Chat,
+                    Icon = "bi bi-chat-dots",
                     Children = new List<MenuItem>()
                 };
 
@@ -166,21 +165,21 @@ public class MenuService : IMenuService
                     {
                         Title = "Settings",
                         Href = "/chatgpt/settings",
-                        Icon = Icons.Material.Filled.Settings
+                        Icon = "bi bi-gear"
                     });
 
                     chatGptMenu.Children.Add(new MenuItem
                     {
                         Title = "Prompts",
                         Href = "/chatgpt/prompts",
-                        Icon = Icons.Material.Filled.Description
+                        Icon = "bi bi-file-text"
                     });
 
                     chatGptMenu.Children.Add(new MenuItem
                     {
                         Title = "Chat",
                         Href = "/chatgpt/chat",
-                        Icon = Icons.Material.Filled.Forum
+                        Icon = "bi bi-chat-dots"
                     });
                 }
                 else
@@ -196,7 +195,7 @@ public class MenuService : IMenuService
                             {
                                 Title = "Settings",
                                 Href = "/chatgpt/settings",
-                                Icon = Icons.Material.Filled.Settings
+                                Icon = "bi bi-gear"
                             });
                         }
 
@@ -207,7 +206,7 @@ public class MenuService : IMenuService
                             {
                                 Title = "Prompts",
                                 Href = "/chatgpt/prompts",
-                                Icon = Icons.Material.Filled.Description
+                                Icon = "bi bi-file-text"
                             });
                         }
 
@@ -218,7 +217,7 @@ public class MenuService : IMenuService
                             {
                                 Title = "Chat",
                                 Href = "/chatgpt/chat",
-                                Icon = Icons.Material.Filled.Forum
+                                Icon = "bi bi-chat-dots"
                             });
                         }
                     }
@@ -238,7 +237,7 @@ public class MenuService : IMenuService
                 {
                     Title = "Payments",
                     Href = "/stripe/subscriptions",
-                    Icon = Icons.Material.Filled.Payment
+                    Icon = "bi bi-credit-card"
                 });
             }
 
@@ -249,7 +248,7 @@ public class MenuService : IMenuService
                 {
                     Title = "Migrations",
                     Href = "/superadmin/migrations",
-                    Icon = Icons.Material.Filled.Storage
+                    Icon = "bi bi-database"
                 });
             }
 

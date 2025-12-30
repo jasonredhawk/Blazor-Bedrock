@@ -4,11 +4,12 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.RoleManagement
 @using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.Logger
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
+@using Microsoft.Extensions.Logging
 @inject IUserService UserService
 @inject IRoleService RoleService
 @inject ITenantService TenantService
@@ -16,96 +17,95 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
+@inject ILogger<UserEdit> Logger
+@inject IApplicationLoggerService AppLogger
 @rendermode InteractiveServer
 
 <PageTitle>@(_isEdit ? "Edit User" : "Create User")</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit User" : "Create User")</MudText>
+<div class="container mt-4" style="max-width: 800px;">
+    <h4 class="mb-4">@(_isEdit ? "Edit User" : "Create User")</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        @if ((_user != null || !_isEdit) && _availableRoles.Any())
-        {
-            <EditForm Model="@_userModel" OnValidSubmit="HandleSubmit">
-                <DataAnnotationsValidator />
-                
-                <MudTextField @bind-Value="_userModel.FirstName" 
-                              Label="First Name" 
-                              Variant="Variant.Outlined" 
-                              Required="true"
-                              Class="mb-4" />
-                
-                <MudTextField @bind-Value="_userModel.LastName" 
-                              Label="Last Name" 
-                              Variant="Variant.Outlined" 
-                              Required="true"
-                              Class="mb-4" />
-                
-                <MudTextField @bind-Value="_userModel.Email" 
-                              Label="Email" 
-                              Variant="Variant.Outlined" 
-                              InputType="InputType.Email"
-                              Required="true"
-                              Disabled="@_isEdit"
-                              Class="mb-4" />
-                
-                @if (!_isEdit)
-                {
-                    <MudTextField @bind-Value="_userModel.Password" 
-                                  Label="Password" 
-                                  Variant="Variant.Outlined" 
-                                  InputType="InputType.Password"
-                                  Required="true"
-                                  Class="mb-4" />
-                }
-                
-                <MudCheckBox @bind-Checked="_userModel.IsActive" Label="Active" T="bool" Class="mb-4" />
-                
-                <MudText Typo="Typo.h6" Class="mb-2">Roles</MudText>
-                <div class="mb-4">
-                    @foreach (var role in _availableRoles)
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_isInitialized && (_user != null || !_isEdit) && _availableRoles.Any())
+            {
+                <EditForm Model="@_userModel" OnValidSubmit="HandleSubmit">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="mb-3">
+                        <label for="firstName" class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="firstName" @bind="_userModel.FirstName" required />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="lastName" class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="lastName" @bind="_userModel.LastName" required />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" @bind="_userModel.Email" required disabled="@_isEdit" />
+                    </div>
+                    
+                    @if (!_isEdit)
                     {
-                        var roleId = role.Id;
-                        var isChecked = _selectedRoles.Contains(roleId);
-                        <MudCheckBox @key="@roleId"
-                                     Checked="@isChecked" 
-                                     CheckedChanged="@((bool isCheckedValue) => OnRoleCheckedChanged(roleId, isCheckedValue))"
-                                     Label="@role.Name"
-                                     T="bool"
-                                     Class="mb-2" />
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" @bind="_userModel.Password" required />
+                        </div>
                     }
-                </div>
-                
-                <div class="d-flex gap-2 mt-4">
-                    <MudButton Variant="Variant.Text" 
-                               Color="Color.Default"
-                               OnClick="NavigateBack">
-                        Cancel
-                    </MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" 
-                               Variant="Variant.Filled" 
-                               Color="Color.Primary"
-                               Disabled="@_isLoading">
-                        @if (_isLoading)
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="isActive" @bind="_userModel.IsActive" />
+                        <label class="form-check-label" for="isActive">Active</label>
+                    </div>
+                    
+                    <h6 class="mb-2">Roles</h6>
+                    <div class="mb-4">
+                        @foreach (var role in _availableRoles)
                         {
-                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                            <MudText Class="ms-2">Saving...</MudText>
+                            var roleId = role.Id;
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" 
+                                       id="role-@roleId" 
+                                       checked="@IsRoleChecked(roleId)"
+                                       @onchange="@((ChangeEventArgs e) => SetRoleChecked(roleId, e.Value?.ToString() == "True"))" />
+                                <label class="form-check-label" for="role-@roleId">
+                                    @role.Name
+                                </label>
+                            </div>
                         }
-                        else
-                        {
-                            <MudText>Save</MudText>
-                        }
-                    </MudButton>
+                    </div>
+                    
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="button" class="btn btn-secondary" @onclick="NavigateBack">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                            @if (_isLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Save</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                 </div>
-            </EditForm>
-        }
-        else
-        {
-            <MudProgressCircular Indeterminate="true" />
-        }
-    </MudPaper>
-</MudContainer>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     [Parameter] public string? UserId { get; set; }
@@ -114,8 +114,9 @@
     private ApplicationUser? _user;
     private UserModel _userModel = new();
     private List<ApplicationRole> _availableRoles = new();
-    private HashSet<string> _selectedRoles = new();
+    private HashSet<string> _selectedRoleIds = new HashSet<string>();
     private bool _isLoading = false;
+    private bool _isInitialized = false;
 
     private class UserModel
     {
@@ -124,6 +125,24 @@
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
+    }
+
+    private bool IsRoleChecked(string roleId)
+    {
+        return _selectedRoleIds.Contains(roleId);
+    }
+
+    private void SetRoleChecked(string roleId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            _selectedRoleIds.Add(roleId);
+        }
+        else
+        {
+            _selectedRoleIds.Remove(roleId);
+        }
+        StateHasChanged();
     }
 
     protected override async Task OnInitializedAsync()
@@ -142,7 +161,7 @@
                 
                 if (!hasPermission)
                 {
-                    Snackbar.Add($"You do not have permission to {(_isEdit ? "edit" : "add")} users.", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"You do not have permission to {(_isEdit ? "edit" : "add")} users.");
                     Navigation.NavigateTo("/admin/users");
                     return;
                 }
@@ -162,32 +181,141 @@
         var tenantIdForData = TenantService.GetCurrentTenantId();
         if (!tenantIdForData.HasValue)
         {
-            Snackbar.Add("No tenant selected", Severity.Error);
+            await NotificationService.ShowErrorAsync("No tenant selected");
             Navigation.NavigateTo("/");
             return;
         }
 
+        // Load available roles first
+        Logger.LogInformation("[UserEdit] Loading available roles for tenant {TenantId}", tenantIdForData.Value);
         _availableRoles = await RoleService.GetRolesAsync(tenantIdForData);
+        Logger.LogInformation("[UserEdit] Loaded {Count} available roles: {Roles}", 
+            _availableRoles.Count, 
+            string.Join(", ", _availableRoles.Select(r => $"{r.Name}({r.Id})")));
+        AppLogger.Log(LogLevel.Information, $"UserEdit: Loaded {_availableRoles.Count} available roles", "UserEdit");
+        
+        // Initialize selected role IDs
+        _selectedRoleIds.Clear();
 
         if (_isEdit && !string.IsNullOrEmpty(UserId))
         {
+            Logger.LogInformation("[UserEdit] Loading user data for UserId: {UserId}", UserId);
+            // Load user data
             _user = await UserService.GetUserAsync(UserId);
             if (_user != null)
             {
+                Logger.LogInformation("[UserEdit] User loaded: {Email}, IsActive: {IsActive}", _user.Email, _user.IsActive);
+                AppLogger.Log(LogLevel.Information, $"UserEdit: User loaded - Email: {_user.Email}, IsActive: {_user.IsActive}", "UserEdit");
+                
+                // Set user model with explicit IsActive value
                 _userModel = new UserModel
                 {
                     FirstName = _user.FirstName ?? string.Empty,
                     LastName = _user.LastName ?? string.Empty,
                     Email = _user.Email ?? string.Empty,
-                    IsActive = _user.IsActive
+                    IsActive = _user.IsActive // This should be true if user is active
                 };
+                Logger.LogInformation("[UserEdit] User loaded - IsActive from DB: {DbIsActive}, UserModel.IsActive: {ModelIsActive}", 
+                    _user.IsActive, _userModel.IsActive);
+                AppLogger.Log(LogLevel.Information, 
+                    $"UserEdit: User loaded - IsActive from DB: {_user.IsActive}, UserModel.IsActive: {_userModel.IsActive}", 
+                    "UserEdit");
+                
+                // Force state update to ensure checkbox reflects the value
+                StateHasChanged();
 
+                // Load user's roles from database - this is the critical query
+                Logger.LogInformation("[UserEdit] Loading user roles for UserId: {UserId}, TenantId: {TenantId}", UserId, tenantIdForData.Value);
                 var userRoles = await UserService.GetUserRolesAsync(UserId, tenantIdForData.Value);
-                _selectedRoles = new HashSet<string>(userRoles.Select(r => r.Id));
+                
+                Logger.LogInformation("[UserEdit] Loaded {Count} user roles: {Roles}", 
+                    userRoles.Count, 
+                    string.Join(", ", userRoles.Select(r => $"{r.Name}({r.Id})")));
+                AppLogger.Log(LogLevel.Information, $"UserEdit: Loaded {userRoles.Count} user roles from database", "UserEdit");
+                
+                // Set selected role IDs
+                _selectedRoleIds = userRoles
+                    .Where(r => !string.IsNullOrEmpty(r.Id))
+                    .Select(r => r.Id)
+                    .ToHashSet();
+                    
+                Logger.LogInformation("[UserEdit] Selected role IDs set: {RoleIds}", 
+                    string.Join(", ", _selectedRoleIds));
+                AppLogger.Log(LogLevel.Information, 
+                    $"UserEdit: Selected role IDs initialized with {_selectedRoleIds.Count} roles", 
+                    "UserEdit");
+                
+                // Force state update
+                StateHasChanged();
+            }
+            else
+            {
+                Logger.LogWarning("[UserEdit] User not found for UserId: {UserId}", UserId);
+                AppLogger.Log(LogLevel.Warning, $"UserEdit: User not found for UserId: {UserId}", "UserEdit");
+                // User not found - all roles unchecked
+                _selectedRoleIds.Clear();
             }
         }
+        else
+        {
+            Logger.LogInformation("[UserEdit] Creating new user - all roles unchecked");
+            // For new users, all roles are unchecked (already initialized above)
+            _selectedRoleIds.Clear();
+        }
         
+        Logger.LogInformation("[UserEdit] Final state - Selected roles: {Count}, UserModel.IsActive: {IsActive}, IsInitialized: {IsInitialized}", 
+            _selectedRoleIds.Count, _userModel.IsActive, _isInitialized);
+        
+        // Log selected roles
+        foreach (var roleId in _selectedRoleIds)
+        {
+            var role = _availableRoles.FirstOrDefault(r => r.Id == roleId);
+            Logger.LogInformation("[UserEdit] Selected role: {RoleName} ({RoleId})", role?.Name ?? "Unknown", roleId);
+        }
+        
+        AppLogger.Log(LogLevel.Information, 
+            $"UserEdit: Initialization complete - {_selectedRoleIds.Count} roles selected, UserModel.IsActive: {_userModel.IsActive}", 
+            "UserEdit");
+        
+        _isInitialized = true;
+        
+        Logger.LogInformation("[UserEdit] About to call StateHasChanged - Selected roles: {Count}", _selectedRoleIds.Count);
         StateHasChanged();
+        
+        Logger.LogInformation("[UserEdit] StateHasChanged called, component should re-render");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _isInitialized)
+        {
+            Logger.LogInformation("[UserEdit.OnAfterRenderAsync] First render after initialization");
+            Logger.LogInformation("[UserEdit.OnAfterRenderAsync] UserModel.IsActive: {IsActive}", _userModel.IsActive);
+            Logger.LogInformation("[UserEdit.OnAfterRenderAsync] Available roles count: {Count}", _availableRoles.Count);
+            Logger.LogInformation("[UserEdit.OnAfterRenderAsync] Selected roles count: {Count}", _selectedRoleIds.Count);
+            
+            foreach (var role in _availableRoles)
+            {
+                var isChecked = IsRoleChecked(role.Id);
+                Logger.LogInformation("[UserEdit.OnAfterRenderAsync] Role '{RoleName}' (ID: {RoleId}) - IsChecked: {IsChecked}", 
+                    role.Name, role.Id, isChecked);
+                AppLogger.Log(LogLevel.Information, 
+                    $"UserEdit.OnAfterRenderAsync: Role '{role.Name}' (ID: {role.Id}) - IsChecked: {isChecked}", 
+                    "UserEdit");
+            }
+            
+            // If checkboxes aren't showing correctly, force another state update
+            if (_selectedRoleIds.Any())
+            {
+                Logger.LogInformation("[UserEdit.OnAfterRenderAsync] Forcing StateHasChanged because we have selected roles");
+                StateHasChanged();
+            }
+            
+            AppLogger.Log(LogLevel.Information, 
+                $"UserEdit.OnAfterRenderAsync: First render - UserModel.IsActive: {_userModel.IsActive}, Selected roles: {string.Join(", ", _selectedRoleIds.Select(id => _availableRoles.FirstOrDefault(r => r.Id == id)?.Name ?? "Unknown"))}", 
+                "UserEdit");
+        }
+        await base.OnAfterRenderAsync(firstRender);
     }
 
     private async Task HandleSubmit()
@@ -198,7 +326,7 @@
             var tenantId = TenantService.GetCurrentTenantId();
             if (!tenantId.HasValue)
             {
-                Snackbar.Add("No tenant selected", Severity.Error);
+                await NotificationService.ShowErrorAsync("No tenant selected");
                 return;
             }
 
@@ -211,41 +339,59 @@
                 var result = await UserService.UpdateUserAsync(_user);
                 if (result.Succeeded)
                 {
+                    Logger.LogInformation("[UserEdit.HandleSubmit] User updated, now updating roles. Selected roles count: {Count}", _selectedRoleIds.Count);
+                    
                     // Update roles - get current roles first
                     var currentRoles = await UserService.GetUserRolesAsync(_user.Id, tenantId.Value);
                     var currentRoleIds = currentRoles.Select(r => r.Id).ToHashSet();
                     
-                    // Create a copy of selected roles to avoid modification during iteration
-                    var selectedRolesCopy = new HashSet<string>(_selectedRoles);
+                    Logger.LogInformation("[UserEdit.HandleSubmit] Current roles in DB: {RoleIds}", string.Join(", ", currentRoleIds));
+                    Logger.LogInformation("[UserEdit.HandleSubmit] Selected roles from UI: {RoleIds}", string.Join(", ", _selectedRoleIds));
 
                     // Remove roles that are no longer selected
-                    var rolesToRemove = currentRoles.Where(r => !selectedRolesCopy.Contains(r.Id)).ToList();
+                    var rolesToRemove = currentRoles.Where(r => !_selectedRoleIds.Contains(r.Id)).ToList();
+                    Logger.LogInformation("[UserEdit.HandleSubmit] Roles to remove: {Count}", rolesToRemove.Count);
                     foreach (var role in rolesToRemove)
                     {
+                        Logger.LogInformation("[UserEdit.HandleSubmit] Removing role: {RoleName} ({RoleId})", role.Name, role.Id);
                         var removeResult = await UserService.RemoveRoleFromUserAsync(_user.Id, role.Id, tenantId.Value);
                         if (!removeResult)
                         {
-                            Snackbar.Add($"Failed to remove role: {role.Name}", Severity.Warning);
+                            Logger.LogWarning("[UserEdit.HandleSubmit] Failed to remove role: {RoleName}", role.Name);
+                            await NotificationService.ShowWarningAsync($"Failed to remove role: {role.Name}");
+                        }
+                        else
+                        {
+                            Logger.LogInformation("[UserEdit.HandleSubmit] Successfully removed role: {RoleName}", role.Name);
                         }
                     }
 
                     // Add new roles that are selected but not currently assigned
-                    var rolesToAdd = selectedRolesCopy.Where(id => !currentRoleIds.Contains(id)).ToList();
+                    var rolesToAdd = _selectedRoleIds.Where(id => !currentRoleIds.Contains(id)).ToList();
+                    Logger.LogInformation("[UserEdit.HandleSubmit] Roles to add: {Count}", rolesToAdd.Count);
                     foreach (var roleId in rolesToAdd)
                     {
+                        var role = _availableRoles.FirstOrDefault(r => r.Id == roleId);
+                        Logger.LogInformation("[UserEdit.HandleSubmit] Adding role: {RoleName} ({RoleId})", role?.Name ?? "Unknown", roleId);
                         var addResult = await UserService.AssignRoleToUserAsync(_user.Id, roleId, tenantId.Value);
                         if (!addResult)
                         {
-                            Snackbar.Add($"Failed to assign role", Severity.Warning);
+                            Logger.LogWarning("[UserEdit.HandleSubmit] Failed to assign role: {RoleId}", roleId);
+                            await NotificationService.ShowWarningAsync($"Failed to assign role");
+                        }
+                        else
+                        {
+                            Logger.LogInformation("[UserEdit.HandleSubmit] Successfully added role: {RoleName}", role?.Name ?? "Unknown");
                         }
                     }
 
-                    Snackbar.Add("User updated successfully", Severity.Success);
+                    Logger.LogInformation("[UserEdit.HandleSubmit] Role update complete. Navigating to user list.");
+                    await NotificationService.ShowSuccessAsync("User updated successfully");
                     Navigation.NavigateTo("/admin/users");
                 }
                 else
                 {
-                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
                 }
             }
             else
@@ -263,24 +409,24 @@
                 var result = await UserService.CreateUserAsync(user, _userModel.Password, tenantId.Value);
                 if (result.Succeeded)
                 {
-                    // Assign roles
-                    foreach (var roleId in _selectedRoles)
+                    // Assign roles from selected role IDs
+                    foreach (var roleId in _selectedRoleIds)
                     {
                         await UserService.AssignRoleToUserAsync(user.Id, roleId, tenantId.Value);
                     }
 
-                    Snackbar.Add("User created successfully", Severity.Success);
+                    await NotificationService.ShowSuccessAsync("User created successfully");
                     Navigation.NavigateTo("/admin/users");
                 }
                 else
                 {
-                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
         finally
         {
@@ -293,22 +439,4 @@
         Navigation.NavigateTo("/admin/users");
     }
 
-    private bool GetRoleCheckedState(string roleId)
-    {
-        return _selectedRoles.Contains(roleId);
-    }
-
-    private void OnRoleCheckedChanged(string roleId, bool isChecked)
-    {
-        if (isChecked)
-        {
-            _selectedRoles.Add(roleId);
-        }
-        else
-        {
-            _selectedRoles.Remove(roleId);
-        }
-        StateHasChanged();
-    }
 }
-

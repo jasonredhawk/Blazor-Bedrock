@@ -24,12 +24,7 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Humanizer.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.Facebook.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.Google.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Authorization.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Components.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Components.Forms.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Components.Web.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Identity.EntityFrameworkCore.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.AspNetCore.Metadata.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Bcl.AsyncInterfaces.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Build.Locator.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.CodeAnalysis.dll
@@ -42,19 +37,10 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.EntityFrameworkCore.Abstractions.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.EntityFrameworkCore.Design.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.EntityFrameworkCore.Relational.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.DependencyInjection.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.DependencyModel.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.Localization.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.Localization.Abstractions.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.Logging.Abstractions.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.Options.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Extensions.Primitives.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.IO.RecyclableMemoryStream.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.JSInterop.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Microsoft.Win32.SystemEvents.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Mono.TextTemplating.dll
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\MudBlazor.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\MySqlConnector.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Newtonsoft.Json.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Pomelo.EntityFrameworkCore.MySql.dll
@@ -141,8 +127,6 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\scopedcss\Components\Layout\MainLayout.razor.rz.scp.css
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\scopedcss\bundle\Blazor_Bedrock.styles.css
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\scopedcss\projectbundle\Blazor_Bedrock.bundle.scp.css
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\tzxjg6is5z-{0}-du7z45fy1o-du7z45fy1o.gz
-C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\0wz98yz2xy-{0}-u9015k2po7-u9015k2po7.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\kua4xanf86-{0}-4kywy7iv6g-4kywy7iv6g.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\u42bg6uye7-{0}-gd84vadkxe-gd84vadkxe.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\wk4hc0aejv-{0}-gd84vadkxe-gd84vadkxe.gz
@@ -160,3 +144,4 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\Blazor Bedrock.sourcelink.json
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\s2rxag71yp-{0}-b2j44qu8ly-b2j44qu8ly.gz
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt
+C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\8rkrwa2eva-{0}-a7swhfzuha-a7swhfzuha.gz

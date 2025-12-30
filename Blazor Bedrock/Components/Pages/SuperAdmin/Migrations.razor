@@ -3,105 +3,96 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using MudBlazor
 @attribute [Authorize(Roles = "Admin")]
 @inject IMigrationService MigrationService
 @inject AuthenticationStateProvider AuthStateProvider
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
 <PageTitle>Migration Management</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Migration Management</MudText>
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Migration Management</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        <MudButton Variant="Variant.Filled" 
-                   Color="Color.Primary" 
-                   StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenCreateDialog"
-                   Class="mb-4">
-            Create Migration
-        </MudButton>
+    <div class="card shadow">
+        <div class="card-body p-4">
+            <button class="btn btn-primary mb-4" @onclick="OpenCreateDialog">
+                <i class="bi bi-plus-circle me-2"></i>
+                Create Migration
+            </button>
 
-        <MudGrid>
-            @foreach (var migration in _migrations)
-            {
-                <MudItem xs="12" md="6" lg="4">
-                    <MudCard Elevation="2">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6">@migration.Name</MudText>
-                            <MudText Typo="Typo.body2" Class="mt-2">@migration.Description</MudText>
-                            <MudText Typo="Typo.caption" Class="mt-2">Version: @migration.Version</MudText>
-                            <MudChip Size="Size.Small" 
-                                     Color="@GetStatusColor(migration.Status)" 
-                                     Variant="Variant.Filled"
-                                     T="string"
-                                     Class="mt-2">
-                                @migration.Status
-                            </MudChip>
-                            @if (migration.ExecutedAt.HasValue)
-                            {
-                                <MudText Typo="Typo.caption" Class="mt-2">
-                                    Executed: @migration.ExecutedAt.Value.ToString("g")
-                                </MudText>
-                            }
-                        </MudCardContent>
-                        <MudCardActions>
-                            <MudButton Size="Size.Small" 
-                                       Variant="Variant.Text"
-                                       OnClick="() => ViewMigration(migration.Id)">
-                                View
-                            </MudButton>
-                            @if (migration.Status == MigrationStatus.Pending)
-                            {
-                                <MudButton Size="Size.Small" 
-                                           Variant="Variant.Filled"
-                                           Color="Color.Success"
-                                           OnClick="() => ExecuteMigration(migration.Id)">
-                                    Execute
-                                </MudButton>
-                            }
-                        </MudCardActions>
-                    </MudCard>
-                </MudItem>
-            }
-        </MudGrid>
-    </MudPaper>
-</MudContainer>
+            <div class="row">
+                @foreach (var migration in _migrations)
+                {
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6>@migration.Name</h6>
+                                <p class="card-text">@migration.Description</p>
+                                <small class="text-muted">Version: @migration.Version</small>
+                                <p class="mt-2">
+                                    <span class="badge @GetStatusBadgeClass(migration.Status)">@migration.Status</span>
+                                </p>
+                                @if (migration.ExecutedAt.HasValue)
+                                {
+                                    <small class="text-muted d-block mt-2">
+                                        Executed: @migration.ExecutedAt.Value.ToString("g")
+                                    </small>
+                                }
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => ViewMigration(migration.Id)">
+                                    View
+                                </button>
+                                @if (migration.Status == MigrationStatus.Pending)
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => ExecuteMigration(migration.Id)">
+                                        Execute
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
 
-<MudDialog @bind-IsVisible="_showCreateDialog">
-    <TitleContent>
-        <MudText Typo="Typo.h6">Create Migration</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudTextField @bind-Value="_newMigration.Name" 
-                      Label="Name" 
-                      Variant="Variant.Outlined" 
-                      Required="true"
-                      Class="mb-4" />
-        <MudTextField @bind-Value="_newMigration.Description" 
-                      Label="Description" 
-                      Variant="Variant.Outlined" 
-                      Lines="3"
-                      Class="mb-4" />
-        <MudTextField @bind-Value="_newMigration.Version" 
-                      Label="Version" 
-                      Variant="Variant.Outlined" 
-                      Required="true"
-                      Class="mb-4" />
-        <MudTextField @bind-Value="_newMigration.SqlScript" 
-                      Label="SQL Script" 
-                      Variant="Variant.Outlined" 
-                      Lines="10"
-                      Required="true"
-                      Class="mb-4" />
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseCreateDialog">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateMigration">Create</MudButton>
-    </DialogActions>
-</MudDialog>
+<!-- Create Migration Modal -->
+<div class="modal fade" id="createMigrationModal" tabindex="-1" aria-labelledby="createMigrationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createMigrationModalLabel">Create Migration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="migrationName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="migrationName" @bind="_newMigration.Name" required />
+                </div>
+                <div class="mb-3">
+                    <label for="migrationDescription" class="form-label">Description</label>
+                    <textarea class="form-control" id="migrationDescription" rows="3" @bind="_newMigration.Description"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="migrationVersion" class="form-label">Version</label>
+                    <input type="text" class="form-control" id="migrationVersion" @bind="_newMigration.Version" required />
+                </div>
+                <div class="mb-3">
+                    <label for="migrationSql" class="form-label">SQL Script</label>
+                    <textarea class="form-control" id="migrationSql" rows="10" @bind="_newMigration.SqlScript" required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @onclick="CloseCreateDialog">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="CreateMigration">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code {
     private List<MigrationEntry> _migrations = new();
@@ -121,6 +112,14 @@
         await LoadMigrationsAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_showCreateDialog)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('createMigrationModal')).show()");
+        }
+    }
+
     private async Task LoadMigrationsAsync()
     {
         _migrations = await MigrationService.GetAllMigrationsAsync();
@@ -130,11 +129,13 @@
     {
         _newMigration = new MigrationModel();
         _showCreateDialog = true;
+        StateHasChanged();
     }
 
-    private void CloseCreateDialog()
+    private async Task CloseCreateDialog()
     {
         _showCreateDialog = false;
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('createMigrationModal'))?.hide()");
     }
 
     private async Task CreateMigration()
@@ -147,13 +148,14 @@
                 _newMigration.Version,
                 _newMigration.SqlScript);
             
-            Snackbar.Add("Migration created successfully", Severity.Success);
+            await NotificationService.ShowSuccessAsync("Migration created successfully");
             _showCreateDialog = false;
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('createMigrationModal'))?.hide()");
             await LoadMigrationsAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
     }
 
@@ -167,17 +169,17 @@
             var success = await MigrationService.ExecuteMigrationAsync(migrationId, executedBy);
             if (success)
             {
-                Snackbar.Add("Migration executed successfully", Severity.Success);
+                await NotificationService.ShowSuccessAsync("Migration executed successfully");
             }
             else
             {
-                Snackbar.Add("Migration execution failed", Severity.Error);
+                await NotificationService.ShowErrorAsync("Migration execution failed");
             }
             await LoadMigrationsAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
     }
 
@@ -186,16 +188,15 @@
         // Could open a dialog to view full migration details
     }
 
-    private Color GetStatusColor(MigrationStatus status)
+    private string GetStatusBadgeClass(MigrationStatus status)
     {
         return status switch
         {
-            MigrationStatus.Pending => Color.Default,
-            MigrationStatus.Running => Color.Info,
-            MigrationStatus.Completed => Color.Success,
-            MigrationStatus.Failed => Color.Error,
-            _ => Color.Default
+            MigrationStatus.Pending => "bg-secondary",
+            MigrationStatus.Running => "bg-info",
+            MigrationStatus.Completed => "bg-success",
+            MigrationStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
         };
     }
 }
-

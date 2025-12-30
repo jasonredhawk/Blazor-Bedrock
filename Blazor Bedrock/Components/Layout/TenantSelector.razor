@@ -3,71 +3,66 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @implements IDisposable
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject IDatabaseSyncService DbSync
+@inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
 @if (_isAuthenticated && _userTenants.Any())
 {
     var currentTenant = _userTenants.FirstOrDefault(t => t.Id == _selectedTenantId);
-    <MudMenu Icon="@Icons.Material.Filled.Business" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-        <ActivatorContent>
-            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-2" Style="text-transform: none;">
-                <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Class="mr-1" />
-                <MudText Typo="Typo.body1" Class="mr-2">
-                    @(currentTenant?.Name ?? "Select Organization")
-                </MudText>
-                <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
-            </MudButton>
-        </ActivatorContent>
-        <ChildContent>
-            <MudMenuItem>
-                <MudText Typo="Typo.body2" Class="px-4 py-2">
-                    <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" Size="Size.Small" />
+    <div class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle text-white" href="#" id="tenantMenuDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-building me-1"></i>
+            @(currentTenant?.Name ?? "Select Organization")
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="tenantMenuDropdown">
+            <li>
+                <h6 class="dropdown-header">
+                    <i class="bi bi-building me-2"></i>
                     Organizations
-                </MudText>
-            </MudMenuItem>
-            <MudDivider />
+                </h6>
+            </li>
+            <li><hr class="dropdown-divider"></li>
             @foreach (var tenant in _userTenants)
             {
-                <MudMenuItem OnClick="() => HandleTenantChange(tenant.Id)" Class="@(tenant.Id == _selectedTenantId ? "mud-primary-text" : "")">
-                    <MudIcon Icon="@(tenant.Id == _selectedTenantId ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)" 
-                             Size="Size.Small" Class="mr-2" />
-                    @tenant.Name
-                </MudMenuItem>
+                <li>
+                    <a class="dropdown-item @(tenant.Id == _selectedTenantId ? "active" : "")" href="#" @onclick="() => HandleTenantChange(tenant.Id)">
+                        <i class="bi @(tenant.Id == _selectedTenantId ? "bi-check-circle-fill" : "bi-circle") me-2"></i>
+                        @tenant.Name
+                    </a>
+                </li>
             }
-            <MudDivider />
-            <MudMenuItem OnClick="NavigateToCreateOrganization">
-                <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
-                Create New Organization
-            </MudMenuItem>
-        </ChildContent>
-    </MudMenu>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <a class="dropdown-item" href="/tenant/create-organization" @onclick="NavigateToCreateOrganization">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create New Organization
+                </a>
+            </li>
+        </ul>
+    </div>
 }
 else if (_isAuthenticated)
 {
-    <MudMenu Icon="@Icons.Material.Filled.Business" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-        <ActivatorContent>
-            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-2" Style="text-transform: none;">
-                <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Class="mr-1" />
-                <MudText Typo="Typo.body1" Class="mr-2">
-                    No Organization
-                </MudText>
-                <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
-            </MudButton>
-        </ActivatorContent>
-        <ChildContent>
-            <MudMenuItem OnClick="NavigateToCreateOrganization">
-                <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
-                Create Organization
-            </MudMenuItem>
-        </ChildContent>
-    </MudMenu>
+    <div class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle text-white" href="#" id="tenantMenuDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-building me-1"></i>
+            No Organization
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="tenantMenuDropdown">
+            <li>
+                <a class="dropdown-item" href="/tenant/create-organization" @onclick="NavigateToCreateOrganization">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create Organization
+                </a>
+            </li>
+        </ul>
+    </div>
 }
 
 @code {
@@ -205,14 +200,14 @@ else if (_isAuthenticated)
             }
             else
             {
-                Snackbar.Add("Failed to switch organization. You may not have access to this organization.", Severity.Error);
+                await NotificationService.ShowErrorAsync("Failed to switch organization. You may not have access to this organization.");
                 // Refresh tenant list in case something changed
                 await RefreshTenantList();
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error switching organization: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error switching organization: {ex.Message}");
         }
     }
 
@@ -238,7 +233,4 @@ else if (_isAuthenticated)
     {
         NavigationManager.NavigateTo("/tenant/create-organization");
     }
-
-    [Inject]
-    private NavigationManager NavigationManager { get; set; } = null!;
 }

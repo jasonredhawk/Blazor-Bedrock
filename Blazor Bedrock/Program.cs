@@ -15,7 +15,7 @@ using Blazor_Bedrock.Services.Stripe;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using MudBlazor.Services;
+using Blazor_Bedrock.Services.Notification;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -131,12 +131,8 @@ if (!string.IsNullOrEmpty(facebookAppId) && !string.IsNullOrEmpty(facebookAppSec
         });
 }
 
-// MudBlazor Services
-builder.Services.AddMudServices(options =>
-{
-    // Configure popover options to handle provider registration
-    options.PopoverOptions.ThrowOnDuplicateProvider = false;
-});
+// Notification Service
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Memory Cache
 builder.Services.AddMemoryCache();

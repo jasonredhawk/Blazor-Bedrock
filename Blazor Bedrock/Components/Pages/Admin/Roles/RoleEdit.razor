@@ -6,84 +6,90 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using MudBlazor
 @inject IRoleService RoleService
 @inject IPermissionService PermissionService
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @rendermode InteractiveServer
 
 <PageTitle>@(_isEdit ? "Edit Role" : "Create Role")</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit Role" : "Create Role")</MudText>
+<div class="container mt-4" style="max-width: 800px;">
+    <h4 class="mb-4">@(_isEdit ? "Edit Role" : "Create Role")</h4>
     
-    <MudPaper Elevation="2" Class="pa-4">
-        @if (_role != null || !_isEdit)
-        {
-            <EditForm Model="@_roleModel" OnValidSubmit="HandleSubmit">
-                <DataAnnotationsValidator />
-                
-                <MudTextField @bind-Value="_roleModel.Name" 
-                              Label="Role Name" 
-                              Variant="Variant.Outlined" 
-                              Required="true"
-                              Disabled="@(_isEdit && _role?.IsSystemRole == true)"
-                              Class="mb-4" />
-                
-                <MudTextField @bind-Value="_roleModel.Description" 
-                              Label="Description" 
-                              Variant="Variant.Outlined" 
-                              Lines="3"
-                              Class="mb-4" />
-                
-                <MudText Typo="Typo.h6" Class="mb-2">Permissions</MudText>
-                <MudCheckBoxGroup SelectedValues="_selectedPermissions" SelectedValuesChanged="OnSelectedPermissionsChanged" T="int">
-                    @foreach (var category in _permissionsByCategory)
-                    {
-                        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">@category.Key</MudText>
-                        @foreach (var permission in category.Value)
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_role != null || !_isEdit)
+            {
+                <EditForm Model="@_roleModel" OnValidSubmit="HandleSubmit">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="mb-3">
+                        <label for="roleName" class="form-label">Role Name</label>
+                        <input type="text" class="form-control" id="roleName" @bind="_roleModel.Name" required disabled="@(_isEdit && _role?.IsSystemRole == true)" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3" @bind="_roleModel.Description"></textarea>
+                    </div>
+                    
+                    <h6 class="mb-2">Permissions</h6>
+                    <div class="mb-4" style="max-height: 400px; overflow-y: auto;">
+                        @foreach (var category in _permissionsByCategory)
                         {
-                            <MudCheckBox Value="@permission.Id" T="int">@permission.Name</MudCheckBox>
-                            @if (!string.IsNullOrEmpty(permission.Description))
+                            <div class="mb-3">
+                                <h6 class="text-muted small mb-2">@category.Key</h6>
+                                @foreach (var permission in category.Value)
+                                {
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" 
+                                               type="checkbox" 
+                                               id="permission-@permission.Id" 
+                                               checked="@IsPermissionSelected(permission.Id)"
+                                               @onchange="@((ChangeEventArgs e) => TogglePermission(permission.Id, e.Value?.ToString() == "True"))" />
+                                        <label class="form-check-label" for="permission-@permission.Id">
+                                            @permission.Name
+                                            @if (!string.IsNullOrEmpty(permission.Description))
+                                            {
+                                                <small class="text-muted d-block ms-4">@permission.Description</small>
+                                            }
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="button" class="btn btn-secondary" @onclick="NavigateBack">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                            @if (_isLoading)
                             {
-                                <MudText Typo="Typo.caption" Class="ml-8 mb-1">@permission.Description</MudText>
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                <span>Saving...</span>
                             }
-                        }
-                    }
-                </MudCheckBoxGroup>
-                
-                <div class="d-flex gap-2 mt-4">
-                    <MudButton Variant="Variant.Text" 
-                               Color="Color.Default"
-                               OnClick="NavigateBack">
-                        Cancel
-                    </MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" 
-                               Variant="Variant.Filled" 
-                               Color="Color.Primary"
-                               Disabled="@_isLoading">
-                        @if (_isLoading)
-                        {
-                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                            <MudText Class="ms-2">Saving...</MudText>
-                        }
-                        else
-                        {
-                            <MudText>Save</MudText>
-                        }
-                    </MudButton>
+                            else
+                            {
+                                <span>Save</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                 </div>
-            </EditForm>
-        }
-        else
-        {
-            <MudProgressCircular Indeterminate="true" />
-        }
-    </MudPaper>
-</MudContainer>
+            }
+        </div>
+    </div>
+</div>
 
 @code {
     [Parameter] public string? RoleId { get; set; }
@@ -102,6 +108,24 @@
         public string? Description { get; set; }
     }
 
+    private bool IsPermissionSelected(int permissionId)
+    {
+        return _selectedPermissions.Contains(permissionId);
+    }
+
+    private void TogglePermission(int permissionId, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedPermissions.Add(permissionId);
+        }
+        else
+        {
+            _selectedPermissions.Remove(permissionId);
+        }
+        StateHasChanged();
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // Check permission
@@ -118,7 +142,7 @@
                 
                 if (!hasPermission)
                 {
-                    Snackbar.Add($"You do not have permission to {(_isEdit ? "edit" : "add")} roles.", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"You do not have permission to {(_isEdit ? "edit" : "add")} roles.");
                     Navigation.NavigateTo("/admin/roles");
                     return;
                 }
@@ -188,12 +212,12 @@
                         await RoleService.AssignPermissionToRoleAsync(_role.Id, permissionId);
                     }
 
-                    Snackbar.Add("Role updated successfully", Severity.Success);
+                    await NotificationService.ShowSuccessAsync("Role updated successfully");
                     Navigation.NavigateTo("/admin/roles");
                 }
                 else
                 {
-                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
                 }
             }
             else
@@ -216,18 +240,18 @@
                         await RoleService.AssignPermissionToRoleAsync(role.Id, permissionId);
                     }
 
-                    Snackbar.Add("Role created successfully", Severity.Success);
+                    await NotificationService.ShowSuccessAsync("Role created successfully");
                     Navigation.NavigateTo("/admin/roles");
                 }
                 else
                 {
-                    Snackbar.Add($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+                    await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
         finally
         {
@@ -239,10 +263,4 @@
     {
         Navigation.NavigateTo("/admin/roles");
     }
-
-    private void OnSelectedPermissionsChanged(HashSet<int> selectedPermissions)
-    {
-        _selectedPermissions = selectedPermissions;
-    }
 }
-

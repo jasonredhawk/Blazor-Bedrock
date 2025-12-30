@@ -5,81 +5,74 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 <PageTitle>Create Organization</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Create Organization</MudText>
+<div class="container mt-4" style="max-width: 600px;">
+    <h4 class="mb-4">Create Organization</h4>
     
     @if (!string.IsNullOrEmpty(_errorMessage))
     {
-        <MudAlert Severity="Severity.Error" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _errorMessage = string.Empty">
-            <MudText Typo="Typo.body2"><strong>Error:</strong> @_errorMessage</MudText>
-        </MudAlert>
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+            <strong>Error:</strong> @_errorMessage
+            <button type="button" class="btn-close" @onclick="() => _errorMessage = string.Empty" aria-label="Close"></button>
+        </div>
     }
 
     @if (!string.IsNullOrEmpty(_successMessage))
     {
-        <MudAlert Severity="Severity.Success" Class="mb-4" Dismissible="true" OnCloseButtonClick="() => _successMessage = string.Empty">
-            <MudText Typo="Typo.body2">@_successMessage</MudText>
-        </MudAlert>
+        <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+            @_successMessage
+            <button type="button" class="btn-close" @onclick="() => _successMessage = string.Empty" aria-label="Close"></button>
+        </div>
     }
     
-    <MudPaper Elevation="3" Class="pa-8">
-        <EditForm Model="@_organizationModel" OnValidSubmit="HandleSubmit" Class="mt-4">
-            <DataAnnotationsValidator />
-            
-            <MudTextField @bind-Value="_organizationModel.Name" 
-                          Label="Organization Name" 
-                          Variant="Variant.Outlined" 
-                          Required="true"
-                          RequiredError="Organization name is required"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_organizationModel.Description" 
-                          Label="Description" 
-                          Variant="Variant.Outlined" 
-                          Lines="3"
-                          Class="mb-4" />
-            
-            <MudTextField @bind-Value="_organizationModel.Domain" 
-                          Label="Domain (Optional)" 
-                          Variant="Variant.Outlined"
-                          HelperText="Optional: Your organization's domain name"
-                          Class="mb-4" />
-            
-            <div class="d-flex gap-2">
-                <MudButton Variant="Variant.Text" 
-                           Color="Color.Default"
-                           OnClick="Cancel">
-                    Cancel
-                </MudButton>
-                <MudButton ButtonType="ButtonType.Submit" 
-                           Variant="Variant.Filled" 
-                           Color="Color.Primary"
-                           Disabled="@_isLoading">
-                    @if (_isLoading)
-                    {
-                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                        <MudText Class="ms-2">Creating...</MudText>
-                    }
-                    else
-                    {
-                        <MudText>Create Organization</MudText>
-                    }
-                </MudButton>
-            </div>
-        </EditForm>
-    </MudPaper>
-</MudContainer>
+    <div class="card shadow">
+        <div class="card-body p-5">
+            <EditForm Model="@_organizationModel" OnValidSubmit="HandleSubmit">
+                <DataAnnotationsValidator />
+                
+                <div class="mb-3">
+                    <label for="orgName" class="form-label">Organization Name</label>
+                    <input type="text" class="form-control" id="orgName" @bind="_organizationModel.Name" required />
+                </div>
+                
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" rows="3" @bind="_organizationModel.Description"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="domain" class="form-label">Domain (Optional)</label>
+                    <input type="text" class="form-control" id="domain" @bind="_organizationModel.Domain" />
+                    <div class="form-text">Optional: Your organization's domain name</div>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Creating...</span>
+                        }
+                        else
+                        {
+                            <span>Create Organization</span>
+                        }
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+</div>
 
 @code {
     private OrganizationModel _organizationModel = new();
@@ -120,7 +113,7 @@
         if (string.IsNullOrEmpty(_userId))
         {
             _errorMessage = "Unable to identify current user. Please log out and log back in.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
         }
     }
 
@@ -137,14 +130,14 @@
         if (string.IsNullOrWhiteSpace(_organizationModel.Name))
         {
             _errorMessage = "Organization name is required.";
-            Snackbar.Add(_errorMessage, Severity.Warning);
+            await NotificationService.ShowWarningAsync(_errorMessage);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_userId))
         {
             _errorMessage = "User ID is missing. Please log out and log back in.";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
             return;
         }
 
@@ -162,7 +155,7 @@
             if (tenant != null)
             {
                 _successMessage = $"Organization '{tenant.Name}' created successfully!";
-                Snackbar.Add(_successMessage, Severity.Success);
+                await NotificationService.ShowSuccessAsync(_successMessage);
                 
                 // Wait a moment before navigating to show success message
                 await Task.Delay(1500);
@@ -172,13 +165,13 @@
             else
             {
                 _errorMessage = "Failed to create organization. Please try again.";
-                Snackbar.Add(_errorMessage, Severity.Error);
+                await NotificationService.ShowErrorAsync(_errorMessage);
             }
         }
         catch (Exception ex)
         {
             _errorMessage = $"Error creating organization: {ex.Message}";
-            Snackbar.Add(_errorMessage, Severity.Error);
+            await NotificationService.ShowErrorAsync(_errorMessage);
         }
         finally
         {
@@ -186,4 +179,3 @@
         }
     }
 }
-

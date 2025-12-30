@@ -6,7 +6,6 @@
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using MudBlazor
 @using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
 @inject IChatGptService ChatGptService
 @inject IPromptService PromptService
@@ -14,7 +13,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
-@inject ISnackbar Snackbar
+@inject INotificationService NotificationService
 @inject ApplicationDbContext _context
 @inject IDatabaseSyncService DbSync
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
@@ -34,8 +33,8 @@
     }
     
     .conversation-sidebar {
-        background: var(--mud-palette-surface);
-        border-right: 1px solid var(--mud-palette-divider);
+        background: #f8f9fa;
+        border-right: 1px solid #dee2e6;
         height: 100%;
         display: flex;
         flex-direction: column;
@@ -55,12 +54,12 @@
     }
     
     .conversation-item:hover {
-        background: var(--mud-palette-action-hover);
+        background: #e9ecef;
     }
     
     .conversation-item.active {
-        background: var(--mud-palette-primary);
-        color: var(--mud-palette-primary-text);
+        background: #0d6efd;
+        color: white;
     }
     
     .message-bubble {
@@ -73,16 +72,16 @@
     }
     
     .message-user {
-        background: var(--mud-palette-primary);
-        color: var(--mud-palette-primary-text);
+        background: #0d6efd;
+        color: white;
         margin-left: auto;
         border-bottom-right-radius: 4px;
     }
     
     .message-assistant {
-        background: var(--mud-palette-surface);
-        color: var(--mud-palette-text-primary);
-        border: 1px solid var(--mud-palette-divider);
+        background: #f8f9fa;
+        color: #212529;
+        border: 1px solid #dee2e6;
         margin-right: auto;
         border-bottom-left-radius: 4px;
     }
@@ -95,15 +94,15 @@
     
     .message-header {
         font-size: 0.75rem;
-        color: var(--mud-palette-text-secondary);
+        color: #6c757d;
         margin-bottom: 4px;
         padding: 0 4px;
     }
     
     .chat-input-area {
-        border-top: 1px solid var(--mud-palette-divider);
+        border-top: 1px solid #dee2e6;
         padding: 12px;
-        background: var(--mud-palette-background);
+        background: white;
         box-sizing: border-box;
         overflow: hidden;
     }
@@ -113,7 +112,7 @@
         overflow-y: auto;
         overflow-x: hidden;
         padding: 20px;
-        background: var(--mud-palette-background-grey);
+        background: #f8f9fa;
         min-height: 0;
         max-height: 100%;
     }
@@ -131,79 +130,66 @@
         align-items: center;
         justify-content: center;
         height: 100%;
-        color: var(--mud-palette-text-secondary);
+        color: #6c757d;
     }
 </style>
 
-<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 100px); overflow: hidden; position: relative; width: 100%; box-sizing: border-box; margin: 0;">
+<div class="container-fluid p-0" style="height: calc(100vh - 100px); overflow: hidden; position: relative; width: 100%; box-sizing: border-box; margin: 0;">
     @if (!_hasApiKey)
     {
-        <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
-            <MudPaper Elevation="3" Class="pa-6 text-center">
-                <MudIcon Icon="@Icons.Material.Filled.Chat" Size="Size.Large" Color="Color.Warning" Class="mb-4" Style="font-size: 64px;" />
-                <MudText Typo="Typo.h5" Class="mb-3">ChatGPT Not Configured</MudText>
-                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
-                    Please configure your OpenAI API key in settings to start chatting.
-                </MudText>
-                <MudButton Variant="Variant.Filled" 
-                          Color="Color.Primary" 
-                          Size="Size.Large"
-                          StartIcon="@Icons.Material.Filled.Settings"
-                          OnClick="NavigateToSettings">
-                    Configure API Key
-                </MudButton>
-            </MudPaper>
-        </MudContainer>
+        <div class="container mt-5" style="max-width: 600px;">
+            <div class="card shadow text-center">
+                <div class="card-body p-5">
+                    <i class="bi bi-chat-dots text-warning" style="font-size: 64px;"></i>
+                    <h5 class="mt-3 mb-3">ChatGPT Not Configured</h5>
+                    <p class="text-muted mb-4">
+                        Please configure your OpenAI API key in settings to start chatting.
+                    </p>
+                    <button class="btn btn-primary btn-lg" @onclick="NavigateToSettings">
+                        <i class="bi bi-gear me-2"></i>
+                        Configure API Key
+                    </button>
+                </div>
+            </div>
+        </div>
     }
     else
     {
-        <MudGrid Class="ma-0" Style="height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important;">
+        <div class="row g-0" style="height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important;">
             @* Sidebar *@
-            <MudItem xs="12" md="3" Class="pa-0" Style="height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%;">
-                <MudPaper Elevation="0" Class="conversation-sidebar" Style="height: 100%; width: 100%; box-sizing: border-box; overflow: hidden;">
-                    <div style="padding: 16px; border-bottom: 1px solid var(--mud-palette-divider);">
-                        <div class="d-flex align-center justify-space-between mb-2">
-                            <MudText Typo="Typo.h6">Conversations</MudText>
-                            <MudIconButton Icon="@Icons.Material.Filled.Add" 
-                                         Size="Size.Small"
-                                         Color="Color.Primary"
-                                         OnClick="CreateNewConversation"
-                                         Title="New Conversation" />
+            <div class="col-md-3 p-0" style="height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%;">
+                <div class="conversation-sidebar" style="height: 100%; width: 100%; box-sizing: border-box; overflow: hidden;">
+                    <div style="padding: 16px; border-bottom: 1px solid #dee2e6;">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="mb-0">Conversations</h6>
+                            <button class="btn btn-sm btn-primary" @onclick="CreateNewConversation" title="New Conversation">
+                                <i class="bi bi-plus-circle"></i>
+                            </button>
                         </div>
                         @if (!string.IsNullOrEmpty(_preferredModel))
                         {
-                            <MudChip Size="Size.Small" 
-                                   Color="Color.Info" 
-                                   Variant="Variant.Text"
-                                   T="string">
-                                @_preferredModel
-                            </MudChip>
+                            <span class="badge bg-info">@_preferredModel</span>
                         }
                     </div>
                     
-                    <MudScrollContainer Style="flex: 1; overflow-y: auto;">
+                    <div style="flex: 1; overflow-y: auto;">
                         @if (_conversations.Any())
                         {
                             @foreach (var conv in _conversations)
                             {
                                 <div class="conversation-item @(conv.Id == _currentConversationId ? "active" : "")"
                                      @onclick="() => LoadConversation(conv.Id)">
-                                    <div class="d-flex align-center">
-                                        <MudIcon Icon="@Icons.Material.Filled.ChatBubble" 
-                                               Size="Size.Small" 
-                                               Class="mr-2" />
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-chat-bubble me-2"></i>
                                         <div style="flex: 1; min-width: 0;">
-                                            <MudText Typo="Typo.body2" 
-                                                   Style="@GetConversationItemStyle(conv.Id)">
+                                            <div style="@GetConversationItemStyle(conv.Id)">
                                                 @conv.Title
-                                            </MudText>
+                                            </div>
                                             @if (conv.UpdatedAt.HasValue)
                                             {
-                                                <MudText Typo="Typo.caption" 
-                                                       Color="Color.Secondary"
-                                                       Style="font-size: 0.7rem;">
+                                                <small class="text-muted" style="font-size: 0.7rem;">
                                                     @GetRelativeTime(conv.UpdatedAt.Value)
-                                                </MudText>
+                                                </small>
                                             }
                                         </div>
                                     </div>
@@ -212,64 +198,57 @@
                         }
                         else
                         {
-                            <div class="text-center pa-4" style="color: var(--mud-palette-text-secondary);">
-                                <MudText Typo="Typo.body2">No conversations yet</MudText>
-                                <MudText Typo="Typo.caption">Start a new conversation to begin</MudText>
+                            <div class="text-center p-4 text-muted">
+                                <p class="mb-1">No conversations yet</p>
+                                <small>Start a new conversation to begin</small>
                             </div>
                         }
-                    </MudScrollContainer>
-                </MudPaper>
-            </MudItem>
+                    </div>
+                </div>
+            </div>
             
             @* Main Chat Area *@
-            <MudItem xs="12" md="9" Class="pa-0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
-                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
+            <div class="col-md-9 p-0" style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
+                <div style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
                     @* Chat Header *@
-                    <div style="padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface); flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
-                        <div class="d-flex align-center justify-space-between mb-2" style="width: 100%; box-sizing: border-box;">
+                    <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
+                        <div class="d-flex align-items-center justify-content-between mb-2" style="width: 100%; box-sizing: border-box;">
                             <div style="flex: 1; min-width: 0; overflow: hidden;">
-                                <MudText Typo="Typo.h6" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                <h6 class="mb-0" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                     @(_currentConversationId.HasValue ? GetCurrentConversationTitle() : "New Conversation")
-                                </MudText>
+                                </h6>
                                 @if (!string.IsNullOrEmpty(_preferredModel))
                                 {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    <small class="text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                         Model: @_preferredModel
-                                    </MudText>
+                                    </small>
                                 }
                             </div>
                             @if (_currentConversationId.HasValue && _messages.Any())
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" 
-                                             Size="Size.Small"
-                                             Color="Color.Error"
-                                             OnClick="ClearCurrentConversation"
-                                             Title="Clear Conversation"
-                                             Style="flex-shrink: 0;" />
+                                <button class="btn btn-sm btn-outline-danger" @onclick="ClearCurrentConversation" title="Clear Conversation" style="flex-shrink: 0;">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             }
                         </div>
-                        <div class="d-flex align-center" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
-                            <MudSelect T="int?" Value="_selectedPromptId" 
-                                     Label="Prompt" 
-                                     Variant="Variant.Outlined"
-                                     Dense="true"
-                                     Style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;"
-                                     Disabled="@_isLoading"
-                                     ValueChanged="@OnPromptChanged">
-                                <MudSelectItem T="int?" Value="@((int?)null)">None (Default)</MudSelectItem>
-                                @foreach (var prompt in _availablePrompts)
-                                {
-                                    <MudSelectItem T="int?" Value="@((int?)prompt.Id)">@prompt.Name</MudSelectItem>
-                                }
-                            </MudSelect>
+                        <div class="d-flex align-items-center mt-2" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+                            <div style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;">
+                                <select class="form-select form-select-sm" value="@_selectedPromptId" @onchange="OnPromptChanged" disabled="@_isLoading">
+                                    <option value="">None (Default)</option>
+                                    @foreach (var prompt in _availablePrompts)
+                                    {
+                                        <option value="@prompt.Id">@prompt.Name</option>
+                                    }
+                                </select>
+                            </div>
                             @if (_selectedPromptId.HasValue)
                             {
                                 var selectedPrompt = _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value);
                                 @if (selectedPrompt != null && !string.IsNullOrEmpty(selectedPrompt.Description))
                                 {
-                                    <MudTooltip Text="@selectedPrompt.Description">
-                                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
-                                    </MudTooltip>
+                                    <span class="text-info" data-bs-toggle="tooltip" data-bs-placement="top" title="@selectedPrompt.Description">
+                                        <i class="bi bi-info-circle"></i>
+                                    </span>
                                 }
                             }
                         </div>
@@ -280,14 +259,11 @@
                         @if (!_messages.Any())
                         {
                             <div class="empty-state">
-                                <MudIcon Icon="@Icons.Material.Filled.Chat" 
-                                       Size="Size.Large" 
-                                       Color="Color.Secondary" 
-                                       Style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;" />
-                                <MudText Typo="Typo.h6" Color="Color.Secondary">Start a conversation</MudText>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                <i class="bi bi-chat-dots text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
+                                <h6 class="text-muted">Start a conversation</h6>
+                                <p class="text-muted mt-2">
                                     Type a message below to begin chatting with ChatGPT
-                                </MudText>
+                                </p>
                             </div>
                         }
                         else
@@ -298,16 +274,16 @@
                                     <div class="message-header">
                                         @if (message.Role == "user")
                                         {
-                                            <span><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="font-size: 14px;" /> You</span>
+                                            <span><i class="bi bi-person me-1" style="font-size: 14px;"></i> You</span>
                                         }
                                         else
                                         {
-                                            <span><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" Style="font-size: 14px;" /> Assistant</span>
+                                            <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
                                         }
                                         <span style="margin-left: 8px;">@message.CreatedAt.ToString("HH:mm")</span>
                                     </div>
                                     <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")">
-                                        <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@message.Content</MudText>
+                                        <div style="white-space: pre-wrap;">@message.Content</div>
                                     </div>
                                 </div>
                             }
@@ -317,12 +293,12 @@
                         {
                             <div class="message-container">
                                 <div class="message-header">
-                                    <span><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" Style="font-size: 14px;" /> Assistant</span>
+                                    <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
                                 </div>
                                 <div class="message-bubble message-assistant">
-                                    <div class="d-flex align-center">
-                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                                        <MudText Typo="Typo.body2" Color="Color.Secondary">Thinking...</MudText>
+                                    <div class="d-flex align-items-center">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        <span class="text-muted">Thinking...</span>
                                     </div>
                                 </div>
                             </div>
@@ -341,30 +317,30 @@
                                      @bind="_messageText"
                                      @bind:event="oninput"
                                      @onkeydown="@HandleKeyDown"
-                                     style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid var(--mud-palette-divider); border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"
-                                     class="mud-input-root-text"></textarea>
+                                     style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"
+                                     class="form-control"></textarea>
                             <div style="position: absolute; right: 8px; bottom: 8px;">
-                                <MudIconButton Icon="@Icons.Material.Filled.Send" 
-                                             Color="Color.Primary"
-                                             Disabled="@(_isLoading || string.IsNullOrWhiteSpace(_messageText))"
-                                             OnClick="SendMessage"
-                                             Size="Size.Medium" />
+                                <button class="btn btn-primary btn-sm" 
+                                        disabled="@(_isLoading || string.IsNullOrWhiteSpace(_messageText))"
+                                        @onclick="SendMessage">
+                                    <i class="bi bi-send"></i>
+                                </button>
                             </div>
                         </div>
-                        <div class="d-flex align-center justify-space-between mt-2">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        <div class="d-flex align-items-center justify-content-between mt-2">
+                            <small class="text-muted">
                                 @_messageText.Length characters
-                            </MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            </small>
+                            <small class="text-muted">
                                 Enter to send • Shift+Enter for new line
-                            </MudText>
+                            </small>
                         </div>
                     </div>
-                </MudPaper>
-            </MudItem>
-        </MudGrid>
+                </div>
+            </div>
+        </div>
     }
-</MudContainer>
+</div>
 
 @code {
     private bool _hasApiKey = false;
@@ -374,7 +350,6 @@
     private List<ChatGptMessage> _messages = new();
     private string _messageText = string.Empty;
     private bool _isLoading = false;
-    private MudTextField<string>? _messageTextField;
     private ElementReference _messagesContainer;
     private ElementReference _messageTextarea;
     private List<ChatGptPrompt> _availablePrompts = new();
@@ -451,7 +426,6 @@
             await FocusTextarea();
         }
     }
-
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
@@ -598,11 +572,18 @@
         await ScrollToBottom();
     }
     
-    private async Task OnPromptChanged(int? newPromptId)
+    private void OnPromptChanged(ChangeEventArgs e)
     {
-        _selectedPromptId = newPromptId;
+        if (int.TryParse(e.Value?.ToString(), out var promptId))
+        {
+            _selectedPromptId = promptId;
+        }
+        else
+        {
+            _selectedPromptId = null;
+        }
         // Update the current prompt for future messages (don't clear conversation)
-        _currentPromptIdForConversation = newPromptId;
+        _currentPromptIdForConversation = _selectedPromptId;
         StateHasChanged();
     }
 
@@ -620,7 +601,7 @@
             
             if (string.IsNullOrEmpty(userId) || tenantId == null)
             {
-                Snackbar.Add("Unable to identify user or organization. Please log out and log back in.", Severity.Error);
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization. Please log out and log back in.");
                 return;
             }
 
@@ -728,7 +709,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            await NotificationService.ShowErrorAsync($"Error: {ex.Message}");
         }
         finally
         {
