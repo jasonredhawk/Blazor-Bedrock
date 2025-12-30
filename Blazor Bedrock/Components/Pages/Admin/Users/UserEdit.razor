@@ -5,11 +5,14 @@
 @using Blazor_Bedrock.Services.RoleManagement
 @using Blazor_Bedrock.Services.Auth
 @using Blazor_Bedrock.Services.Logger
+@using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.Extensions.Logging
+@using Microsoft.EntityFrameworkCore
 @inject IUserService UserService
 @inject IRoleService RoleService
 @inject ITenantService TenantService
@@ -20,6 +23,8 @@
 @inject INotificationService NotificationService
 @inject ILogger<UserEdit> Logger
 @inject IApplicationLoggerService AppLogger
+@inject ApplicationDbContext DbContext
+@inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 <PageTitle>@(_isEdit ? "Edit User" : "Create User")</PageTitle>
@@ -58,8 +63,14 @@
                     }
                     
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="isActive" @bind="_userModel.IsActive" />
-                        <label class="form-check-label" for="isActive">Active</label>
+                        <input type="checkbox" class="form-check-input" id="isActive" @bind="_userModel.IsActive" disabled="@(_isEdit && _isSuperAdmin)" />
+                        <label class="form-check-label @(_isEdit && _isSuperAdmin ? "text-muted" : "")" for="isActive">
+                            Active
+                            @if (_isEdit && _isSuperAdmin)
+                            {
+                                <small class="text-muted d-block ms-4">(Cannot be changed - Organization Creator must remain active)</small>
+                            }
+                        </label>
                     </div>
                     
                     <h6 class="mb-2">Roles</h6>
@@ -67,13 +78,23 @@
                         @foreach (var role in _availableRoles)
                         {
                             var roleId = role.Id;
+                            var isAdminRole = roleId == _adminRoleId;
+                            // Only apply SuperAdmin protection when editing existing users who are SuperAdmin
+                            var isSuperAdminProtected = _isEdit && isAdminRole && _isSuperAdmin;
+                            var isDisabled = isSuperAdminProtected;
+                            
                             <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" 
                                        id="role-@roleId" 
                                        checked="@IsRoleChecked(roleId)"
+                                       disabled="@isDisabled"
                                        @onchange="@((ChangeEventArgs e) => SetRoleChecked(roleId, e.Value?.ToString() == "True"))" />
-                                <label class="form-check-label" for="role-@roleId">
+                                <label class="form-check-label @(isDisabled ? "text-muted" : "")" for="role-@roleId">
                                     @role.Name
+                                    @if (isSuperAdminProtected)
+                                    {
+                                        <small class="text-muted d-block ms-4">(Cannot be changed - Organization Creator)</small>
+                                    }
                                 </label>
                             </div>
                         }
@@ -117,6 +138,8 @@
     private HashSet<string> _selectedRoleIds = new HashSet<string>();
     private bool _isLoading = false;
     private bool _isInitialized = false;
+    private bool _isSuperAdmin = false;
+    private string? _adminRoleId = null;
 
     private class UserModel
     {
@@ -132,8 +155,83 @@
         return _selectedRoleIds.Contains(roleId);
     }
 
-    private void SetRoleChecked(string roleId, bool isChecked)
+
+    private async Task<bool> IsSuperAdminAsync(string userId)
     {
+        // Never check SuperAdmin status for new users (only for existing users being edited)
+        if (!_isEdit || string.IsNullOrEmpty(userId))
+            return false;
+
+        var tenantId = TenantService.GetCurrentTenantId();
+        if (!tenantId.HasValue)
+            return false;
+
+        // Verify user exists in database before checking SuperAdmin status
+        var userExists = await DbSync.ExecuteAsync(async () =>
+        {
+            return await DbContext.Users.AnyAsync(u => u.Id == userId);
+        });
+
+        if (!userExists)
+            return false;
+
+        return await DbSync.ExecuteAsync(async () =>
+        {
+            // Find the Admin role
+            var adminRole = await DbContext.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+            if (adminRole == null)
+                return false;
+
+            // Check if this user has Admin role for this tenant
+            var hasAdminRole = await DbContext.UserRoles
+                .AnyAsync(ur => ur.UserId == userId && ur.RoleId == adminRole.Id && ur.TenantId == tenantId.Value);
+            
+            if (!hasAdminRole)
+                return false;
+
+            // Check if this user is the first user to join the tenant (the organization creator)
+            // This is the most reliable way to identify the SuperAdmin
+            var firstUserTenant = await DbContext.UserTenants
+                .Where(ut => ut.TenantId == tenantId.Value)
+                .OrderBy(ut => ut.JoinedAt)
+                .ThenBy(ut => ut.UserId) // Secondary sort for consistency
+                .FirstOrDefaultAsync();
+
+            // User is SuperAdmin only if they were the first user to join the tenant
+            // This identifies the organization creator
+            return firstUserTenant != null && firstUserTenant.UserId == userId;
+        });
+    }
+
+    private async Task SetRoleChecked(string roleId, bool isChecked)
+    {
+        // For new users, always allow all changes (they can't be SuperAdmin)
+        if (!_isEdit || _user == null)
+        {
+            if (isChecked)
+            {
+                _selectedRoleIds.Add(roleId);
+            }
+            else
+            {
+                _selectedRoleIds.Remove(roleId);
+            }
+            StateHasChanged();
+            return;
+        }
+
+        // For existing users, check SuperAdmin protection
+        var isAdminRole = roleId == _adminRoleId;
+
+        // Prevent SuperAdmin from unchecking Admin role (only for existing users who are SuperAdmin)
+        if (isAdminRole && _isSuperAdmin && !isChecked)
+        {
+            await NotificationService.ShowWarningAsync("The Organization Creator cannot remove their Admin role. This ensures there is always an administrator for the organization.");
+            return;
+        }
+        
+        // For other users (non-SuperAdmin), Admin role can be toggled on/off freely
+
         if (isChecked)
         {
             _selectedRoleIds.Add(roleId);
@@ -194,8 +292,18 @@
             string.Join(", ", _availableRoles.Select(r => $"{r.Name}({r.Id})")));
         AppLogger.Log(LogLevel.Information, $"UserEdit: Loaded {_availableRoles.Count} available roles", "UserEdit");
         
+        // Find Admin role ID
+        var adminRole = _availableRoles.FirstOrDefault(r => r.Name == "Admin");
+        _adminRoleId = adminRole?.Id;
+        
         // Initialize selected role IDs
         _selectedRoleIds.Clear();
+        
+        // Ensure _isSuperAdmin is false for new users
+        if (!_isEdit)
+        {
+            _isSuperAdmin = false;
+        }
 
         if (_isEdit && !string.IsNullOrEmpty(UserId))
         {
@@ -244,6 +352,27 @@
                 AppLogger.Log(LogLevel.Information, 
                     $"UserEdit: Selected role IDs initialized with {_selectedRoleIds.Count} roles", 
                     "UserEdit");
+                
+                // Check if user is SuperAdmin (organization creator)
+                _isSuperAdmin = await IsSuperAdminAsync(UserId);
+                Logger.LogInformation("[UserEdit] User is SuperAdmin: {IsSuperAdmin}", _isSuperAdmin);
+                
+                // Ensure SuperAdmin is always active
+                if (_isSuperAdmin && !_userModel.IsActive)
+                {
+                    Logger.LogWarning("[UserEdit] SuperAdmin was inactive - auto-activating");
+                    _userModel.IsActive = true;
+                    _user.IsActive = true;
+                }
+                
+                // Ensure Admin role is always selected for SuperAdmin only
+                if (_isSuperAdmin && _adminRoleId != null && !_selectedRoleIds.Contains(_adminRoleId))
+                {
+                    Logger.LogWarning("[UserEdit] SuperAdmin missing Admin role - auto-adding it");
+                    _selectedRoleIds.Add(_adminRoleId);
+                }
+                
+                // Note: For other users (non-SuperAdmin), Admin role can be freely toggled on/off
                 
                 // Force state update
                 StateHasChanged();
@@ -334,7 +463,18 @@
             {
                 _user.FirstName = _userModel.FirstName;
                 _user.LastName = _userModel.LastName;
-                _user.IsActive = _userModel.IsActive;
+                
+                // Prevent SuperAdmin from being deactivated
+                if (_isSuperAdmin && !_userModel.IsActive)
+                {
+                    await NotificationService.ShowErrorAsync("The Organization Creator cannot be deactivated. This ensures there is always an active administrator.");
+                    _userModel.IsActive = true; // Reset to active
+                    _user.IsActive = true;
+                }
+                else
+                {
+                    _user.IsActive = _userModel.IsActive;
+                }
                 
                 var result = await UserService.UpdateUserAsync(_user);
                 if (result.Succeeded)
@@ -348,11 +488,24 @@
                     Logger.LogInformation("[UserEdit.HandleSubmit] Current roles in DB: {RoleIds}", string.Join(", ", currentRoleIds));
                     Logger.LogInformation("[UserEdit.HandleSubmit] Selected roles from UI: {RoleIds}", string.Join(", ", _selectedRoleIds));
 
-                    // Remove roles that are no longer selected
+                    // Remove roles that are no longer selected (with safeguards)
                     var rolesToRemove = currentRoles.Where(r => !_selectedRoleIds.Contains(r.Id)).ToList();
                     Logger.LogInformation("[UserEdit.HandleSubmit] Roles to remove: {Count}", rolesToRemove.Count);
+                    
                     foreach (var role in rolesToRemove)
                     {
+                        // Prevent removing Admin role from SuperAdmin only
+                        if (role.Name == "Admin" && _isSuperAdmin)
+                        {
+                            Logger.LogWarning("[UserEdit.HandleSubmit] Attempted to remove Admin role from SuperAdmin - blocked");
+                            await NotificationService.ShowErrorAsync("Cannot remove Admin role from the Organization Creator. This ensures there is always an administrator.");
+                            // Re-add Admin role to selected roles to keep it checked
+                            _selectedRoleIds.Add(role.Id);
+                            continue;
+                        }
+                        
+                        // Allow removing Admin role from other users (not SuperAdmin)
+                        
                         Logger.LogInformation("[UserEdit.HandleSubmit] Removing role: {RoleName} ({RoleId})", role.Name, role.Id);
                         var removeResult = await UserService.RemoveRoleFromUserAsync(_user.Id, role.Id, tenantId.Value);
                         if (!removeResult)

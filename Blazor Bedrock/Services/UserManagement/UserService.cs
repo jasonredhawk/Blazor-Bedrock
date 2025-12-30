@@ -41,7 +41,8 @@ public class UserService : IUserService
                 .Where(ut => ut.TenantId == tenantId && ut.IsActive)
                 .Include(ut => ut.User)
                 .Select(ut => ut.User)
-                .Where(u => u.IsActive)
+                // Removed .Where(u => u.IsActive) filter to show all users (active and inactive)
+                // This allows admins to see and manage inactive users
                 .ToListAsync();
         });
     }

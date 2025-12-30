@@ -20,5 +20,14 @@
             _isEnabled = await FeatureFlagService.IsEnabledAsync(FeatureName);
         }
     }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Refresh when FeatureName parameter changes
+        if (!string.IsNullOrEmpty(FeatureName))
+        {
+            _isEnabled = await FeatureFlagService.IsEnabledAsync(FeatureName);
+        }
+    }
 }
 

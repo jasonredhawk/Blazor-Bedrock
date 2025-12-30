@@ -88,22 +88,30 @@ public class MenuService : IMenuService
                     Children = new List<MenuItem>()
                 };
 
-                // If Admin, show all menu items without permission checks
+                // If Admin, show menu items based on feature flags
                 if (isAdmin)
                 {
-                    settingsMenu.Children.Add(new MenuItem
+                    // Users (if feature flag enabled)
+                    if (await _featureFlagService.IsEnabledAsync("Users_Enabled"))
                     {
-                        Title = "Users",
-                        Href = "/admin/users",
-                        Icon = "bi bi-people"
-                    });
+                        settingsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Users",
+                            Href = "/admin/users",
+                            Icon = "bi bi-people"
+                        });
+                    }
 
-                    settingsMenu.Children.Add(new MenuItem
+                    // Roles (if feature flag enabled)
+                    if (await _featureFlagService.IsEnabledAsync("Roles_Enabled"))
                     {
-                        Title = "Roles",
-                        Href = "/admin/roles",
-                        Icon = "bi bi-shield-check"
-                    });
+                        settingsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Roles",
+                            Href = "/admin/roles",
+                            Icon = "bi bi-shield-check"
+                        });
+                    }
 
                     // Feature Settings (if enabled)
                     if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
@@ -118,9 +126,9 @@ public class MenuService : IMenuService
                 }
                 else
                 {
-                    // Non-admin users: check permissions
+                    // Non-admin users: check permissions and feature flags
                     var canViewUsers = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Users.View");
-                    if (canViewUsers)
+                    if (canViewUsers && await _featureFlagService.IsEnabledAsync("Users_Enabled"))
                     {
                         settingsMenu.Children.Add(new MenuItem
                         {
@@ -131,7 +139,7 @@ public class MenuService : IMenuService
                     }
 
                     var canViewRoles = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Roles.View");
-                    if (canViewRoles)
+                    if (canViewRoles && await _featureFlagService.IsEnabledAsync("Roles_Enabled"))
                     {
                         settingsMenu.Children.Add(new MenuItem
                         {

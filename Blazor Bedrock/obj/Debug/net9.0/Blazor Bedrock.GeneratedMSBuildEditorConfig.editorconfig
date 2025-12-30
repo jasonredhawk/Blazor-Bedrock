@@ -50,6 +50,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcVXNlck1lbnUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/FeatureSettings.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxGZWF0dXJlU2V0dGluZ3MucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Roles/RoleEdit.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxSb2xlc1xSb2xlRWRpdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 

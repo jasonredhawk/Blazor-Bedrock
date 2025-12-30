@@ -51,8 +51,10 @@ public class FeatureFlagService : IFeatureFlagService
     {
         await _dbSync.ExecuteAsync(async () =>
         {
+            // Use ToLower() for case-insensitive comparison that EF Core can translate
+            var featureNameLower = featureName.ToLower();
             var flag = await _context.FeatureFlags
-                .FirstOrDefaultAsync(f => f.Name.Equals(featureName, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefaultAsync(f => f.Name.ToLower() == featureNameLower);
 
             if (flag != null)
             {

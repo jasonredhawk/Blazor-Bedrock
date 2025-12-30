@@ -1,0 +1,211 @@
+@page "/admin/feature-settings"
+@using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IFeatureFlagService FeatureFlagService
+@inject ITenantService TenantService
+@inject IPermissionService PermissionService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Feature Settings</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Feature Settings</h4>
+    
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_isInitialized)
+            {
+                @if (_featureFlags.Any())
+                {
+                    <p class="text-muted mb-4">Enable or disable features for your organization. Changes take effect immediately.</p>
+                    
+                    <div class="row">
+                        @foreach (var flag in _featureFlags)
+                        {
+                            <div class="col-md-6 col-lg-4 mb-4">
+                                <div class="card h-100 @(flag.IsEnabled ? "border-success" : "border-secondary")">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div class="flex-grow-1">
+                                                <h5 class="card-title mb-1">@GetFeatureDisplayName(flag.Name)</h5>
+                                                @if (!string.IsNullOrEmpty(flag.Description))
+                                                {
+                                                    <p class="card-text text-muted small mb-0">@flag.Description</p>
+                                                }
+                                            </div>
+                                            <div class="form-check form-switch ms-3">
+                                                <input class="form-check-input @(flag.IsEnabled ? "bg-success" : "")" 
+                                                       type="checkbox" 
+                                                       id="flag-@flag.Id" 
+                                                       checked="@flag.IsEnabled"
+                                                       disabled="@_isLoading"
+                                                       @onchange="@((ChangeEventArgs e) => ToggleFeature(flag, e.Value?.ToString() == "True"))" />
+                                            </div>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            @if (flag.IsEnabled)
+                                            {
+                                                <span class="badge bg-success me-2">
+                                                    <i class="bi bi-check-circle me-1"></i>Enabled
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary me-2">
+                                                    <i class="bi bi-x-circle me-1"></i>Disabled
+                                                </span>
+                                            }
+                                            @if (flag.UpdatedAt.HasValue)
+                                            {
+                                                <small class="text-muted">Updated: @flag.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm")</small>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-toggle-off display-1 text-muted"></i>
+                        <p class="text-muted mt-3">No feature flags found.</p>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<FeatureFlag> _featureFlags = new();
+    private bool _isLoading = false;
+    private bool _isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is authenticated
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        // Check if user has admin access (admin users can access this page)
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (string.IsNullOrEmpty(userId) || !tenantId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("Unable to verify permissions.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        // Check if user is admin (simplified check - in practice you might want a permission check)
+        // For now, we'll allow access if they can view roles (which typically requires admin)
+        var canViewRoles = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, "Roles.View");
+        if (!canViewRoles)
+        {
+            await NotificationService.ShowErrorAsync("You do not have permission to access feature settings.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        await LoadFeatureFlagsAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadFeatureFlagsAsync()
+    {
+        try
+        {
+            var allFlags = await FeatureFlagService.GetAllFlagsAsync();
+            // Filter out FeatureFlags_Enabled - it should always be enabled and not toggleable
+            _featureFlags = allFlags
+                .Where(f => !f.Name.Equals("FeatureFlags_Enabled", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f.Name)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error loading feature flags: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleFeature(FeatureFlag flag, bool newValue)
+    {
+        if (_isLoading)
+            return;
+
+        // Store original value in case we need to revert
+        var originalValue = flag.IsEnabled;
+        
+        // Optimistically update UI
+        flag.IsEnabled = newValue;
+        flag.UpdatedAt = DateTime.UtcNow;
+        _isLoading = true;
+        StateHasChanged();
+        
+        try
+        {
+            await FeatureFlagService.SetFlagAsync(flag.Name, newValue);
+            
+            await NotificationService.ShowSuccessAsync(
+                $"{GetFeatureDisplayName(flag.Name)} has been {(newValue ? "enabled" : "disabled")}."
+            );
+            
+            // Trigger menu refresh by navigating with a refresh parameter
+            // This will cause TopMenuBar's LocationChanged event to fire and refresh the menu
+            var currentUri = new Uri(Navigation.Uri);
+            var currentPath = currentUri.GetLeftPart(UriPartial.Path);
+            Navigation.NavigateTo($"{currentPath}?refresh={DateTime.UtcNow.Ticks}", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            // Revert on error
+            flag.IsEnabled = originalValue;
+            flag.UpdatedAt = DateTime.UtcNow;
+            await NotificationService.ShowErrorAsync($"Error updating feature flag: {ex.Message}");
+            StateHasChanged();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetFeatureDisplayName(string featureName)
+    {
+        // Convert feature flag names to more readable display names
+        return featureName switch
+        {
+            "Auth_Google" => "Google Authentication",
+            "Auth_Facebook" => "Facebook Authentication",
+            "ChatGpt_Enabled" => "ChatGPT Integration",
+            "Stripe_Enabled" => "Stripe Payments",
+            "Users_Enabled" => "Users Management",
+            "Roles_Enabled" => "Roles Management",
+            "Migrations_Enabled" => "Migration Management",
+            "Logger_Enabled" => "Application Logger",
+            "FeatureFlags_Enabled" => "Feature Flags Management",
+            _ => featureName.Replace("_", " ")
+        };
+    }
+}
