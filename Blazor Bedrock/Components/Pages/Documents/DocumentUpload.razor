@@ -19,7 +19,7 @@
     <div>
         <div class="mb-3">
             <label class="form-label">Select Document</label>
-            <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx" />
+            <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.xlsx,.xls,.csv" />
             @if (selectedFile != null)
             {
                 <div class="mt-2">
@@ -139,10 +139,18 @@
         try
         {
             using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50MB max
+            // Handle CSV content type - browsers may not set it correctly
+            var contentType = selectedFile.ContentType ?? "application/octet-stream";
+            if (selectedFile.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) && 
+                !contentType.Contains("csv", StringComparison.OrdinalIgnoreCase))
+            {
+                contentType = "text/csv";
+            }
+            
             var document = await DocumentService.UploadDocumentAsync(
                 stream,
                 selectedFile.Name,
-                selectedFile.ContentType ?? "application/octet-stream",
+                contentType,
                 userId,
                 tenantId.Value,
                 uploadModel.Title,

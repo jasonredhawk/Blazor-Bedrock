@@ -873,6 +873,43 @@
                 conversationDocument = _availableDocuments.FirstOrDefault(d => d.Id == activeDocumentId.Value);
             }
             
+            // Truncate document text if it's too large to avoid token limit errors
+            // Model context limit: 8192 tokens
+            // Rough estimate: 1 token ≈ 4 characters
+            // We'll use 8,000 characters (~2,000 tokens) for document to leave room for:
+            // - System prompt (~500-1000 tokens)
+            // - Conversation history (~2,500 tokens)
+            // - User message (~500 tokens)
+            // - Response buffer (~2,000 tokens)
+            const int maxDocumentChars = 8000;
+            string? documentText = null;
+            bool documentTruncated = false;
+            
+            if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+            {
+                if (conversationDocument.ExtractedText.Length > maxDocumentChars)
+                {
+                    // Try to truncate at a word boundary for better readability
+                    var truncated = conversationDocument.ExtractedText.Substring(0, maxDocumentChars);
+                    var lastSpace = truncated.LastIndexOfAny(new[] { ' ', '\n', '\r', '\t' });
+                    if (lastSpace > maxDocumentChars * 0.9) // Only use word boundary if it's not too far back
+                    {
+                        truncated = truncated.Substring(0, lastSpace);
+                    }
+                    
+                    documentText = truncated + "\n\n[Document truncated due to size limit. Only the first portion is included.]";
+                    documentTruncated = true;
+                    
+                    // Notify user that document was truncated
+                    await NotificationService.ShowWarningAsync(
+                        $"The document '{conversationDocument.Title ?? conversationDocument.FileName}' is very large and has been truncated to fit within API limits. Only the first portion is included in the conversation.");
+                }
+                else
+                {
+                    documentText = conversationDocument.ExtractedText;
+                }
+            }
+            
             // Always add system prompt if one is selected (like CustomGPT - persists throughout conversation)
             // Use the currently selected prompt (which may have changed)
             if (_selectedPromptId.HasValue)
@@ -883,14 +920,15 @@
                     var promptText = selectedPrompt.PromptText;
                     
                     // If document exists and prompt supports {documentText} placeholder, replace it
-                    if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText) && promptText.Contains("{documentText}"))
+                    if (!string.IsNullOrWhiteSpace(documentText) && promptText.Contains("{documentText}"))
                     {
-                        promptText = promptText.Replace("{documentText}", conversationDocument.ExtractedText);
+                        promptText = promptText.Replace("{documentText}", documentText);
                     }
-                    else if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText) && !promptText.Contains("{documentText}"))
+                    else if (!string.IsNullOrWhiteSpace(documentText) && !promptText.Contains("{documentText}"))
                     {
                         // If prompt doesn't have placeholder but document exists, append document info to system prompt
-                        promptText = $"{promptText}\n\nYou have access to the following document:\n\nDocument: {conversationDocument.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{conversationDocument.ExtractedText}";
+                        var truncationNote = documentTruncated ? "\n\nNote: The document content was truncated due to size limitations. Only the first portion is included." : "";
+                        promptText = $"{promptText}\n\nYou have access to the following document:\n\nDocument: {conversationDocument!.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{documentText}{truncationNote}";
                     }
                     
                     // Always include the current system prompt in conversation (sent with every request)
@@ -902,24 +940,95 @@
                     });
                 }
             }
-            else if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+            else if (!string.IsNullOrWhiteSpace(documentText))
             {
                 // No prompt selected, but document exists - add as system message
+                var truncationNote = documentTruncated ? "\n\nNote: The document content was truncated due to size limitations. Only the first portion is included." : "";
                 conversationMessages.Add(new ChatMessage
                 {
                     Role = "system",
-                    Content = $"You have access to the following document:\n\nDocument: {conversationDocument.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{conversationDocument.ExtractedText}"
+                    Content = $"You have access to the following document:\n\nDocument: {conversationDocument!.Title ?? conversationDocument.FileName}\n\nDocument Content:\n{documentText}{truncationNote}"
                 });
             }
             
             // Convert database messages to ChatMessage format
-            foreach (var msg in _messages)
+            // Limit conversation history to avoid token limits (keep most recent messages)
+            // Model context limit: 8192 tokens
+            // Rough estimate: 1 token ≈ 4 characters
+            // We'll use 10,000 characters (~2,500 tokens) for conversation history
+            // This leaves room for system prompt, document, user message, and response
+            const int maxHistoryChars = 10000;
+            int totalChars = 0;
+            var messagesToInclude = new List<ChatGptMessage>();
+            
+            // Add messages from newest to oldest until we hit the limit
+            for (int i = _messages.Count - 1; i >= 0; i--)
+            {
+                var msg = _messages[i];
+                var msgSize = msg.Content?.Length ?? 0;
+                if (totalChars + msgSize > maxHistoryChars)
+                {
+                    break; // Stop adding messages if we'd exceed the limit
+                }
+                messagesToInclude.Insert(0, msg); // Insert at beginning to maintain order
+                totalChars += msgSize;
+            }
+            
+            foreach (var msg in messagesToInclude)
             {
                 conversationMessages.Add(new ChatMessage
                 {
                     Role = msg.Role,
                     Content = msg.Content
                 });
+            }
+            
+            // Notify user if messages were truncated
+            if (messagesToInclude.Count < _messages.Count)
+            {
+                var truncatedCount = _messages.Count - messagesToInclude.Count;
+                await NotificationService.ShowInfoAsync(
+                    $"Conversation history was limited to the most recent messages ({truncatedCount} older message(s) excluded) to fit within API limits.");
+            }
+            
+            // Final safety check: Calculate approximate total token count and truncate if needed
+            // Estimate total size: system prompt + document + history + user message
+            int estimatedTotalChars = conversationMessages.Sum(m => m.Content?.Length ?? 0) + (_messageText?.Length ?? 0);
+            int estimatedTokens = estimatedTotalChars / 4; // Rough estimate
+            
+            // If we're still over ~7500 tokens (leaving buffer), truncate conversation history more aggressively
+            if (estimatedTokens > 7500)
+            {
+                // Remove oldest messages until we're under the limit
+                var targetChars = 6000 * 4; // ~6000 tokens worth of characters
+                var originalCount = conversationMessages.Count;
+                var truncatedMessages = new List<ChatMessage>();
+                int currentChars = conversationMessages.Where(m => m.Role == "system").Sum(m => m.Content?.Length ?? 0);
+                
+                // Keep system message(s)
+                truncatedMessages.AddRange(conversationMessages.Where(m => m.Role == "system"));
+                
+                // Add user/assistant messages from newest to oldest
+                var nonSystemMessages = conversationMessages.Where(m => m.Role != "system").ToList();
+                for (int i = nonSystemMessages.Count - 1; i >= 0; i--)
+                {
+                    var msg = nonSystemMessages[i];
+                    var msgSize = msg.Content?.Length ?? 0;
+                    if (currentChars + msgSize > targetChars)
+                    {
+                        break;
+                    }
+                    truncatedMessages.Insert(truncatedMessages.Count, msg);
+                    currentChars += msgSize;
+                }
+                
+                conversationMessages = truncatedMessages;
+                
+                if (conversationMessages.Count < originalCount)
+                {
+                    await NotificationService.ShowWarningAsync(
+                        "Conversation was further truncated to fit within model context limits.");
+                }
             }
 
             // Add the new user message to conversation (without document text - it's already in system prompt)

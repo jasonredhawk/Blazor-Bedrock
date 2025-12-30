@@ -2,6 +2,7 @@
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Infrastructure.ExternalApis
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject IDocumentService DocumentService
@@ -80,6 +81,79 @@
                 </div>
             </div>
         }
+        else if (isExcel || isCsv)
+        {
+            <!-- Excel/CSV Table Preview -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Data Preview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-muted small mb-2">
+                        @(document.ContentType ?? (isExcel ? "Excel" : "CSV")) · Formatted table preview
+                    </div>
+                    @if (structuredData != null && structuredData.Any())
+                    {
+                        @foreach (var sheet in structuredData)
+                        {
+                            @if (structuredData.Count > 1)
+                            {
+                                <h6 class="mt-3 mb-2">@sheet.SheetName</h6>
+                            }
+                            @if (sheet.Rows.Count >= 100)
+                            {
+                                <div class="alert alert-info mb-2">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Showing first 100 rows as preview. Full data is available for chat analysis.
+                                </div>
+                            }
+                            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered table-striped table-hover">
+                                    @if (sheet.Rows.Any())
+                                    {
+                                        // Find max columns to ensure consistent table structure
+                                        var maxCols = sheet.Rows.Max(r => r.Count);
+                                        
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                @for (int col = 0; col < maxCols; col++)
+                                                {
+                                                    var headerValue = col < sheet.Rows[0].Count ? sheet.Rows[0][col] : "";
+                                                    <th>@(string.IsNullOrWhiteSpace(headerValue) ? $"Column {col + 1}" : headerValue)</th>
+                                                }
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 1; i < sheet.Rows.Count; i++)
+                                            {
+                                                <tr>
+                                                    @for (int col = 0; col < maxCols; col++)
+                                                    {
+                                                        var cellValue = col < sheet.Rows[i].Count ? sheet.Rows[i][col] : "";
+                                                        <td>@cellValue</td>
+                                                    }
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    }
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (isLoadingStructuredData)
+                    {
+                        <div class="text-muted small">Loading data...</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">Unable to load structured data. Showing extracted text instead.</div>
+                        <div class="border rounded p-2" style="max-height: 600px; overflow-y: auto;">
+                            <div style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@document.ExtractedText</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
         else if (!string.IsNullOrEmpty(document.ExtractedText))
         {
             <!-- Extracted Text Preview -->
@@ -89,7 +163,15 @@
                 </div>
                 <div class="card-body">
                     <div class="border rounded p-2" style="max-height: 600px; overflow-y: auto;">
-                        <div style="white-space: pre-wrap;">@document.ExtractedText</div>
+                        @if (isExcel)
+                        {
+                            <!-- Excel files are formatted with sheets and pipe-separated values -->
+                            <div style="white-space: pre-wrap; font-family: 'Courier New', monospace;">@document.ExtractedText</div>
+                        }
+                        else
+                        {
+                            <div style="white-space: pre-wrap;">@document.ExtractedText</div>
+                        }
                     </div>
                 </div>
             </div>
@@ -111,8 +193,12 @@
     private string? userId;
     private int? tenantId;
     private bool isDocx = false;
+    private bool isExcel = false;
+    private bool isCsv = false;
     private string? docxRenderError;
     private bool docxRendered = false;
+    private List<SheetData>? structuredData;
+    private bool isLoadingStructuredData = false;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -140,8 +226,17 @@
             if (document != null)
             {
                 isDocx = IsDocx(document);
+                isExcel = IsExcel(document);
+                isCsv = IsCsv(document);
                 docxRenderError = null;
                 docxRendered = false;
+                
+                // Load structured data for Excel/CSV
+                if (isExcel || isCsv)
+                {
+                    await LoadStructuredData();
+                }
+                
                 StateHasChanged(); // Trigger re-render so OnAfterRenderAsync can run
             }
         }
@@ -217,6 +312,52 @@
         if (doc == null) return false;
         if (!string.IsNullOrWhiteSpace(doc.FileName) && doc.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return true;
         return string.Equals(doc.ContentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsExcel(Document? doc)
+    {
+        if (doc == null) return false;
+        if (!string.IsNullOrWhiteSpace(doc.FileName))
+        {
+            if (doc.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || 
+                doc.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return string.Equals(doc.ContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(doc.ContentType, "application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCsv(Document? doc)
+    {
+        if (doc == null) return false;
+        if (!string.IsNullOrWhiteSpace(doc.FileName) && doc.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return string.Equals(doc.ContentType, "text/csv", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(doc.ContentType, "application/csv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task LoadStructuredData()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null || document == null)
+            return;
+
+        isLoadingStructuredData = true;
+        StateHasChanged();
+
+        try
+        {
+            structuredData = await DocumentService.GetStructuredDataAsync(document.Id, userId, tenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading structured data: {ex.Message}";
+            structuredData = null;
+        }
+        finally
+        {
+            isLoadingStructuredData = false;
+            StateHasChanged();
+        }
     }
 
     private async Task DownloadDocument()

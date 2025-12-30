@@ -3,6 +3,7 @@ using Blazor_Bedrock.Data.Models;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.EntityFrameworkCore;
 using DocumentModel = Blazor_Bedrock.Data.Models.Document;
+using SheetData = Blazor_Bedrock.Infrastructure.ExternalApis.SheetData;
 
 namespace Blazor_Bedrock.Services.Document;
 
@@ -15,6 +16,7 @@ public interface IDocumentService
     Task UpdateDocumentMetadataAsync(int documentId, string userId, int tenantId, string? title, string? author);
     Task<byte[]> GetDocumentFileAsync(int id, string userId, int tenantId);
     Task<(byte[] FileContent, string ContentType, string FileName)> GetDocumentFileWithMetadataAsync(int id, string userId, int tenantId);
+    Task<List<SheetData>> GetStructuredDataAsync(int id, string userId, int tenantId);
 }
 
 public class DocumentService : IDocumentService
@@ -136,5 +138,30 @@ public class DocumentService : IDocumentService
             throw new FileNotFoundException("Document not found");
 
         return (document.FileContent, document.ContentType, document.FileName);
+    }
+
+    public async Task<List<SheetData>> GetStructuredDataAsync(int id, string userId, int tenantId)
+    {
+        var document = await _context.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId && d.TenantId == tenantId);
+        
+        if (document == null)
+            throw new FileNotFoundException("Document not found");
+
+        using var stream = new MemoryStream(document.FileContent);
+        
+        var contentType = document.ContentType?.ToLower() ?? "";
+        if (contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
+            document.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+            document.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+        {
+            return await _documentProcessor.ExtractStructuredDataFromExcelAsync(stream);
+        }
+        else if (contentType.Contains("csv") || document.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return await _documentProcessor.ExtractStructuredDataFromCsvAsync(stream);
+        }
+        
+        throw new NotSupportedException("Structured data extraction is only supported for Excel and CSV files");
     }
 }
