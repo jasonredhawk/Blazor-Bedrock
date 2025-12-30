@@ -1,6 +1,8 @@
 @using Blazor_Bedrock.Services.Logger
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Microsoft.JSInterop
 @inject IApplicationLoggerService LoggerService
+@inject IFeatureFlagService FeatureFlagService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @rendermode InteractiveServer
@@ -116,6 +118,7 @@
 }
 
 @code {
+    private bool _isLoggerEnabled = true;
     private bool _isVisible = true; // Always visible when feature is enabled
     private bool _isExpanded = false; // Minimized by default
     private bool _showFilter = false;
@@ -155,6 +158,13 @@
         }
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if logger feature is enabled
+        _isLoggerEnabled = await FeatureFlagService.IsEnabledAsync("Logger_Enabled");
+        _isVisible = _isLoggerEnabled; // Only visible if feature is enabled
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -165,7 +175,22 @@
         
         // Always update CSS variable on document root so it's accessible everywhere
         // This ensures it's updated whenever the component re-renders
+        // This handles: feature disabled (0px), minimized (50px), or expanded (450px/550px)
         await UpdateLoggerHeightVariable();
+    }
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        // Re-check feature flag when parameters change (e.g., after navigation)
+        var wasEnabled = _isLoggerEnabled;
+        _isLoggerEnabled = await FeatureFlagService.IsEnabledAsync("Logger_Enabled");
+        _isVisible = _isLoggerEnabled;
+        
+        // If feature state changed, update the CSS variable
+        if (wasEnabled != _isLoggerEnabled)
+        {
+            await UpdateLoggerHeightVariable();
+        }
     }
 
     private void RefreshLogs()
@@ -192,7 +217,8 @@
     
     private async Task UpdateLoggerHeightVariable()
     {
-        var height = GetLoggerHeight();
+        // If logger feature is disabled or not visible, set height to 0
+        var height = (_isLoggerEnabled && _isVisible) ? GetLoggerHeight() : "0px";
         await JSRuntime.InvokeVoidAsync("applicationLogger.setLoggerHeight", height);
     }
 

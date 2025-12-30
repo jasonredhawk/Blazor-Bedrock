@@ -1,8 +1,11 @@
 @inherits LayoutComponentBase
 @using Blazor_Bedrock.Components.Shared
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Microsoft.AspNetCore.Components.Authorization
+@inject IFeatureFlagService FeatureFlagService
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
-<div class="d-flex flex-column" style="height: 100vh; overflow: hidden; --logger-height: var(--logger-height, 50px);">
+<div class="d-flex flex-column" style="height: 100vh; overflow: hidden; --logger-height: var(--logger-height, 0px);">
     <TopMenuBar ProjectTitle="Blazor Bedrock" />
 
     <main class="flex-grow-1" style="overflow-y: auto; min-height: 0;">
@@ -21,3 +24,19 @@
         <span class="dismiss">🗙</span>
     </div>
 </div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Check if logger is enabled and set CSS variable accordingly
+            var isLoggerEnabled = await FeatureFlagService.IsEnabledAsync("Logger_Enabled");
+            if (!isLoggerEnabled)
+            {
+                // Set height to 0 if feature is disabled
+                await JSRuntime.InvokeVoidAsync("applicationLogger.setLoggerHeight", "0px");
+            }
+        }
+    }
+}
