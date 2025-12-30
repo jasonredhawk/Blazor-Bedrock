@@ -92,4 +92,3 @@ window.setupChatEnterKey = function (dotNetRef) {
     attachHandler();
     window.chatEnterKeyInterval = setInterval(attachHandler, 300);
 };
-

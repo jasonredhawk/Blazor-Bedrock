@@ -24,8 +24,10 @@
 
 <style>
     .chat-container {
-        height: calc(100vh - 200px);
+        height: calc(100vh - 120px);
         min-height: 600px;
+        max-height: calc(100vh - 120px);
+        overflow: hidden;
     }
     
     .conversation-sidebar {
@@ -34,6 +36,7 @@
         height: 100%;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
     
     .conversation-item {
@@ -100,8 +103,18 @@
     .messages-container {
         flex: 1;
         overflow-y: auto;
+        overflow-x: hidden;
         padding: 20px;
         background: var(--mud-palette-background-grey);
+        min-height: 0;
+        max-height: 100%;
+    }
+    
+    .chat-main-area {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
     
     .empty-state {
@@ -114,7 +127,7 @@
     }
 </style>
 
-<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 120px);">
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 100px); overflow: hidden; position: relative;">
     @if (!_hasApiKey)
     {
         <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
@@ -136,7 +149,7 @@
     }
     else
     {
-        <MudGrid Class="ma-0 chat-container" Style="height: 100%;">
+        <MudGrid Class="ma-0" Style="height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex;">
             @* Sidebar *@
             <MudItem xs="12" md="3" Class="pa-0">
                 <MudPaper Elevation="0" Class="conversation-sidebar">
@@ -201,10 +214,10 @@
             </MudItem>
             
             @* Main Chat Area *@
-            <MudItem xs="12" md="9" Class="pa-0">
-                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column;">
+            <MudItem xs="12" md="9" Class="pa-0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden;">
+                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden;">
                     @* Chat Header *@
-                    <div style="padding: 16px 20px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface);">
+                    <div style="padding: 16px 20px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface); flex-shrink: 0;">
                         <div class="d-flex align-center justify-space-between">
                             <div>
                                 <MudText Typo="Typo.h6">
@@ -229,7 +242,7 @@
                     </div>
                     
                     @* Messages Area *@
-                    <div class="messages-container" @ref="_messagesContainer">
+                    <div class="messages-container" @ref="_messagesContainer" style="flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;">
                         @if (!_messages.Any())
                         {
                             <div class="empty-state">
@@ -284,7 +297,7 @@
                     </div>
                     
                     @* Input Area *@
-                    <div class="chat-input-area" id="chat-input-container">
+                    <div class="chat-input-area" id="chat-input-container" style="flex-shrink: 0;">
                         <div style="position: relative;">
                             <textarea id="chat-message-textarea"
                                      placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
