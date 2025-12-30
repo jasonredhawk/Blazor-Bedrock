@@ -9,6 +9,7 @@
 @using MudBlazor
 @using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
 @inject IChatGptService ChatGptService
+@inject IPromptService PromptService
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
@@ -28,6 +29,8 @@
         min-height: 600px;
         max-height: calc(100vh - 120px);
         overflow: hidden;
+        width: 100%;
+        box-sizing: border-box;
     }
     
     .conversation-sidebar {
@@ -37,6 +40,9 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        width: 100%;
+        box-sizing: border-box;
+        max-width: 100%;
     }
     
     .conversation-item {
@@ -96,8 +102,10 @@
     
     .chat-input-area {
         border-top: 1px solid var(--mud-palette-divider);
-        padding: 16px;
+        padding: 12px;
         background: var(--mud-palette-background);
+        box-sizing: border-box;
+        overflow: hidden;
     }
     
     .messages-container {
@@ -127,7 +135,7 @@
     }
 </style>
 
-<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 100px); overflow: hidden; position: relative;">
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-0" Style="height: calc(100vh - 100px); overflow: hidden; position: relative; width: 100%; box-sizing: border-box; margin: 0;">
     @if (!_hasApiKey)
     {
         <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
@@ -149,10 +157,10 @@
     }
     else
     {
-        <MudGrid Class="ma-0" Style="height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex;">
+        <MudGrid Class="ma-0" Style="height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important;">
             @* Sidebar *@
-            <MudItem xs="12" md="3" Class="pa-0">
-                <MudPaper Elevation="0" Class="conversation-sidebar">
+            <MudItem xs="12" md="3" Class="pa-0" Style="height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%;">
+                <MudPaper Elevation="0" Class="conversation-sidebar" Style="height: 100%; width: 100%; box-sizing: border-box; overflow: hidden;">
                     <div style="padding: 16px; border-bottom: 1px solid var(--mud-palette-divider);">
                         <div class="d-flex align-center justify-space-between mb-2">
                             <MudText Typo="Typo.h6">Conversations</MudText>
@@ -214,18 +222,18 @@
             </MudItem>
             
             @* Main Chat Area *@
-            <MudItem xs="12" md="9" Class="pa-0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden;">
-                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden;">
+            <MudItem xs="12" md="9" Class="pa-0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
+                <MudPaper Elevation="0" Style="height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%;">
                     @* Chat Header *@
-                    <div style="padding: 16px 20px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface); flex-shrink: 0;">
-                        <div class="d-flex align-center justify-space-between">
-                            <div>
-                                <MudText Typo="Typo.h6">
+                    <div style="padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-divider); background: var(--mud-palette-surface); flex-shrink: 0; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
+                        <div class="d-flex align-center justify-space-between mb-2" style="width: 100%; box-sizing: border-box;">
+                            <div style="flex: 1; min-width: 0; overflow: hidden;">
+                                <MudText Typo="Typo.h6" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                     @(_currentConversationId.HasValue ? GetCurrentConversationTitle() : "New Conversation")
                                 </MudText>
                                 @if (!string.IsNullOrEmpty(_preferredModel))
                                 {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                         Model: @_preferredModel
                                     </MudText>
                                 }
@@ -236,7 +244,33 @@
                                              Size="Size.Small"
                                              Color="Color.Error"
                                              OnClick="ClearCurrentConversation"
-                                             Title="Clear Conversation" />
+                                             Title="Clear Conversation"
+                                             Style="flex-shrink: 0;" />
+                            }
+                        </div>
+                        <div class="d-flex align-center" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+                            <MudSelect T="int?" Value="_selectedPromptId" 
+                                     Label="Prompt" 
+                                     Variant="Variant.Outlined"
+                                     Dense="true"
+                                     Style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;"
+                                     Disabled="@_isLoading"
+                                     ValueChanged="@OnPromptChanged">
+                                <MudSelectItem T="int?" Value="@((int?)null)">None (Default)</MudSelectItem>
+                                @foreach (var prompt in _availablePrompts)
+                                {
+                                    <MudSelectItem T="int?" Value="@((int?)prompt.Id)">@prompt.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                            @if (_selectedPromptId.HasValue)
+                            {
+                                var selectedPrompt = _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value);
+                                @if (selectedPrompt != null && !string.IsNullOrEmpty(selectedPrompt.Description))
+                                {
+                                    <MudTooltip Text="@selectedPrompt.Description">
+                                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
+                                    </MudTooltip>
+                                }
                             }
                         </div>
                     </div>
@@ -297,16 +331,17 @@
                     </div>
                     
                     @* Input Area *@
-                    <div class="chat-input-area" id="chat-input-container" style="flex-shrink: 0;">
-                        <div style="position: relative;">
-                            <textarea id="chat-message-textarea"
+                    <div class="chat-input-area" id="chat-input-container" style="flex-shrink: 0; box-sizing: border-box;">
+                        <div style="position: relative; width: 100%; box-sizing: border-box;">
+                            <textarea @ref="_messageTextarea"
+                                     id="chat-message-textarea"
                                      placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
                                      rows="3"
                                      disabled="@_isLoading"
                                      @bind="_messageText"
                                      @bind:event="oninput"
                                      @onkeydown="@HandleKeyDown"
-                                     style="width: 100%; padding: 16px 50px 16px 16px; border: 1px solid var(--mud-palette-divider); border-radius: 4px; outline: none; resize: vertical; min-height: 80px; font-family: inherit; font-size: 0.875rem;"
+                                     style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid var(--mud-palette-divider); border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"
                                      class="mud-input-root-text"></textarea>
                             <div style="position: absolute; right: 8px; bottom: 8px;">
                                 <MudIconButton Icon="@Icons.Material.Filled.Send" 
@@ -341,6 +376,10 @@
     private bool _isLoading = false;
     private MudTextField<string>? _messageTextField;
     private ElementReference _messagesContainer;
+    private ElementReference _messageTextarea;
+    private List<ChatGptPrompt> _availablePrompts = new();
+    private int? _selectedPromptId;
+    private int? _currentPromptIdForConversation; // Track which prompt is active for current conversation
 
     protected override async Task OnInitializedAsync()
     {
@@ -357,6 +396,13 @@
                     var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
                     _hasApiKey = true;
                     _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
+                    
+                    // Load prompts using DbSync to avoid concurrency issues
+                    await DbSync.ExecuteAsync(async () =>
+                    {
+                        _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId);
+                    });
+                    
                     await LoadConversations();
                 }
                 catch
@@ -398,6 +444,12 @@
         
         // Scroll to bottom after messages update
         await ScrollToBottom();
+        
+        // Focus textarea on first render if not loading
+        if (firstRender && !_isLoading)
+        {
+            await FocusTextarea();
+        }
     }
 
 
@@ -430,6 +482,24 @@
                             top: container.scrollHeight,
                             behavior: 'smooth'
                         });
+                    }
+                })()
+            ");
+        }
+        catch { }
+    }
+    
+    private async Task FocusTextarea()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                (function() {
+                    var textarea = document.getElementById('chat-message-textarea');
+                    if (textarea) {
+                        setTimeout(function() {
+                            textarea.focus();
+                        }, 100);
                     }
                 })()
             ");
@@ -471,6 +541,26 @@
         {
             _messages.Clear();
             _currentConversationId = null;
+            // Keep prompt selection but reset conversation tracking
+            _currentPromptIdForConversation = _selectedPromptId;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task CreateNewConversation()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+        
+        if (!string.IsNullOrEmpty(userId) && tenantId != null)
+        {
+            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel);
+            _currentConversationId = conversation.Id;
+            _messages = new();
+            // Keep prompt selection for new conversation
+            _currentPromptIdForConversation = _selectedPromptId;
+            await LoadConversations();
             StateHasChanged();
         }
     }
@@ -501,24 +591,19 @@
         {
             _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
         });
+        // Reset prompt selection when loading an existing conversation
+        _selectedPromptId = null;
+        _currentPromptIdForConversation = null;
         StateHasChanged();
         await ScrollToBottom();
     }
-
-    private async Task CreateNewConversation()
+    
+    private async Task OnPromptChanged(int? newPromptId)
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var tenantId = TenantService.GetCurrentTenantId();
-        
-        if (!string.IsNullOrEmpty(userId) && tenantId != null)
-        {
-            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel);
-            _currentConversationId = conversation.Id;
-            _messages = new();
-            await LoadConversations();
-            StateHasChanged();
-        }
+        _selectedPromptId = newPromptId;
+        // Update the current prompt for future messages (don't clear conversation)
+        _currentPromptIdForConversation = newPromptId;
+        StateHasChanged();
     }
 
     private async Task SendMessage()
@@ -544,11 +629,30 @@
                 var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel);
                 _currentConversationId = newConversation.Id;
                 _messages = new List<ChatGptMessage>();
+                // Track the current prompt for this new conversation
+                _currentPromptIdForConversation = _selectedPromptId;
                 await LoadConversations();
             }
 
             // Build conversation history from existing messages
             var conversationMessages = new List<ChatMessage>();
+            
+            // Always add system prompt if one is selected (like CustomGPT - persists throughout conversation)
+            // Use the currently selected prompt (which may have changed)
+            if (_selectedPromptId.HasValue)
+            {
+                var selectedPrompt = _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value);
+                if (selectedPrompt != null)
+                {
+                    // Always include the current system prompt in conversation (sent with every request)
+                    // This allows changing prompts mid-conversation without clearing history
+                    conversationMessages.Add(new ChatMessage
+                    {
+                        Role = "system",
+                        Content = selectedPrompt.PromptText
+                    });
+                }
+            }
             
             // Convert database messages to ChatMessage format
             foreach (var msg in _messages)
@@ -618,6 +722,9 @@
             await LoadConversations();
             StateHasChanged();
             await ScrollToBottom();
+            
+            // Refocus the textarea so user can type immediately
+            await FocusTextarea();
         }
         catch (Exception ex)
         {

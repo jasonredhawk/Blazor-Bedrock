@@ -5,11 +5,12 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
-@attribute [Authorize(Roles = "Admin")]
 @inject IRoleService RoleService
 @inject IPermissionService PermissionService
 @inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @rendermode InteractiveServer
@@ -103,6 +104,37 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check permission
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId) && tenantId.HasValue)
+            {
+                var requiredPermission = _isEdit ? "Roles.Edit" : "Roles.Add";
+                var hasPermission = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, requiredPermission);
+                
+                if (!hasPermission)
+                {
+                    Snackbar.Add($"You do not have permission to {(_isEdit ? "edit" : "add")} roles.", Severity.Error);
+                    Navigation.NavigateTo("/admin/roles");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
         _allPermissions = await PermissionService.GetAllPermissionsAsync();
         _permissionsByCategory = _allPermissions
             .GroupBy(p => p.Category ?? "General")

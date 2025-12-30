@@ -1,12 +1,15 @@
 @page "/admin/users"
 @using Blazor_Bedrock.Services.UserManagement
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.Auth
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
-@attribute [Authorize(Roles = "Admin")]
 @inject IUserService UserService
 @inject ITenantService TenantService
+@inject IPermissionService PermissionService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @rendermode InteractiveServer
@@ -25,12 +28,14 @@
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search"
                           Style="max-width: 300px;" />
-            <MudButton Variant="Variant.Filled" 
-                       Color="Color.Primary" 
-                       StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="NavigateToCreate">
-                Add User
-            </MudButton>
+            <PermissionGate PermissionName="Users.Add">
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="NavigateToCreate">
+                    Add User
+                </MudButton>
+            </PermissionGate>
         </div>
 
         <MudTable Items="@FilteredUsers" Hover="true" Striped="true" Dense="true">
@@ -56,14 +61,18 @@
                     @(context.LastLoginAt?.ToString("g") ?? "Never")
                 </MudTd>
                 <MudTd DataLabel="Actions">
-                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
-                                   Color="Color.Primary" 
-                                   Size="Size.Small"
-                                   OnClick="() => NavigateToEdit(context.Id)" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
-                                   Color="Color.Error" 
-                                   Size="Size.Small"
-                                   OnClick="() => DeleteUser(context.Id)" />
+                    <PermissionGate PermissionName="Users.Edit">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                       Color="Color.Primary" 
+                                       Size="Size.Small"
+                                       OnClick="() => NavigateToEdit(context.Id)" />
+                    </PermissionGate>
+                    <PermissionGate PermissionName="Users.Delete">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                       Color="Color.Error" 
+                                       Size="Size.Small"
+                                       OnClick="() => DeleteUser(context.Id)" />
+                    </PermissionGate>
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -73,6 +82,7 @@
 @code {
     private List<ApplicationUser> _users = new();
     private string _searchText = string.Empty;
+    private bool _canView = false;
 
     private IEnumerable<ApplicationUser> FilteredUsers
     {
@@ -91,6 +101,35 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check permission to view users
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId) && tenantId.HasValue)
+            {
+                _canView = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, "Users.View");
+                if (!_canView)
+                {
+                    Snackbar.Add("You do not have permission to view users.", Severity.Error);
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
         await LoadUsersAsync();
     }
 

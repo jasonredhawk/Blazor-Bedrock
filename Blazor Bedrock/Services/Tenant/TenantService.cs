@@ -16,6 +16,7 @@ public interface ITenantService
     Task<bool> UserHasAccessToTenantAsync(string userId, int tenantId);
     Task<TenantModel?> CreateTenantAsync(string name, string? description, string? domain, string userId);
     int? GetCurrentTenantId();
+    Task<int?> GetLastSelectedTenantIdAsync(string userId);
 }
 
 public class TenantService : ITenantService
@@ -82,6 +83,18 @@ public class TenantService : ITenantService
         // Verify user has access to this tenant
         var hasAccess = await UserHasAccessToTenantAsync(userId, tenantId);
         if (!hasAccess) return false;
+
+        // Save to database as user's last selected tenant
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var userManager = httpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                user.LastSelectedTenantId = tenantId;
+                await userManager.UpdateAsync(user);
+            }
+        });
 
         // Always try to set session (works even if response has started in some cases)
         try
@@ -151,6 +164,29 @@ public class TenantService : ITenantService
             _context.UserTenants.Add(userTenant);
             await _context.SaveChangesAsync();
 
+            // Assign Admin role to the creator for this tenant
+            var roleManager = _httpContextAccessor.HttpContext?.RequestServices.GetRequiredService<RoleManager<ApplicationRole>>();
+            if (roleManager != null)
+            {
+                var adminRole = await roleManager.FindByNameAsync("Admin");
+                if (adminRole != null)
+                {
+                    var userRoleExists = await _context.UserRoles
+                        .AnyAsync(ur => ur.UserId == userId && ur.RoleId == adminRole.Id && ur.TenantId == tenant.Id);
+                    
+                    if (!userRoleExists)
+                    {
+                        _context.UserRoles.Add(new UserRole
+                        {
+                            UserId = userId,
+                            RoleId = adminRole.Id,
+                            TenantId = tenant.Id
+                        });
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
+
             // Set as current tenant (note: this will use the semaphore again, but that's ok)
             await SetCurrentTenantAsync(tenant.Id);
 
@@ -171,10 +207,32 @@ public class TenantService : ITenantService
         if (httpContext.Request.Cookies.TryGetValue(TenantIdKey, out var cookieValue) &&
             int.TryParse(cookieValue, out var cookieTenantId))
         {
+            // Restore to session for faster access
+            try
+            {
+                httpContext.Session.SetInt32(TenantIdKey, cookieTenantId);
+            }
+            catch
+            {
+                // Session might not be available
+            }
             return cookieTenantId;
         }
 
         return null;
+    }
+
+    public async Task<int?> GetLastSelectedTenantIdAsync(string userId)
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext == null) return null;
+
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var userManager = httpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            return user?.LastSelectedTenantId;
+        });
     }
 }
 

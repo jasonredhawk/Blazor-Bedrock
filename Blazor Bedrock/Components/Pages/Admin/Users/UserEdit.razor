@@ -3,14 +3,17 @@
 @using Blazor_Bedrock.Services.UserManagement
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.RoleManagement
+@using Blazor_Bedrock.Services.Auth
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using MudBlazor
-@attribute [Authorize(Roles = "Admin")]
 @inject IUserService UserService
 @inject IRoleService RoleService
 @inject ITenantService TenantService
+@inject IPermissionService PermissionService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -22,7 +25,7 @@
     <MudText Typo="Typo.h4" Class="mb-4">@(_isEdit ? "Edit User" : "Create User")</MudText>
     
     <MudPaper Elevation="2" Class="pa-4">
-        @if (_user != null || !_isEdit)
+        @if ((_user != null || !_isEdit) && _availableRoles.Any())
         {
             <EditForm Model="@_userModel" OnValidSubmit="HandleSubmit">
                 <DataAnnotationsValidator />
@@ -60,12 +63,19 @@
                 <MudCheckBox @bind-Checked="_userModel.IsActive" Label="Active" T="bool" Class="mb-4" />
                 
                 <MudText Typo="Typo.h6" Class="mb-2">Roles</MudText>
-                <MudCheckBoxGroup SelectedValues="_selectedRoles" SelectedValuesChanged="OnSelectedRolesChanged" T="string">
+                <div class="mb-4">
                     @foreach (var role in _availableRoles)
                     {
-                        <MudCheckBox Value="@role.Id" T="string">@role.Name</MudCheckBox>
+                        var roleId = role.Id;
+                        var isChecked = _selectedRoles.Contains(roleId);
+                        <MudCheckBox @key="@roleId"
+                                     Checked="@isChecked" 
+                                     CheckedChanged="@((bool isCheckedValue) => OnRoleCheckedChanged(roleId, isCheckedValue))"
+                                     Label="@role.Name"
+                                     T="bool"
+                                     Class="mb-2" />
                     }
-                </MudCheckBoxGroup>
+                </div>
                 
                 <div class="d-flex gap-2 mt-4">
                     <MudButton Variant="Variant.Text" 
@@ -118,8 +128,46 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var tenantId = TenantService.GetCurrentTenantId();
-        _availableRoles = await RoleService.GetRolesAsync(tenantId);
+        // Check permission
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (!string.IsNullOrEmpty(userId) && tenantId.HasValue)
+            {
+                var requiredPermission = _isEdit ? "Users.Edit" : "Users.Add";
+                var hasPermission = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, requiredPermission);
+                
+                if (!hasPermission)
+                {
+                    Snackbar.Add($"You do not have permission to {(_isEdit ? "edit" : "add")} users.", Severity.Error);
+                    Navigation.NavigateTo("/admin/users");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        var tenantIdForData = TenantService.GetCurrentTenantId();
+        if (!tenantIdForData.HasValue)
+        {
+            Snackbar.Add("No tenant selected", Severity.Error);
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        _availableRoles = await RoleService.GetRolesAsync(tenantIdForData);
 
         if (_isEdit && !string.IsNullOrEmpty(UserId))
         {
@@ -134,10 +182,12 @@
                     IsActive = _user.IsActive
                 };
 
-                var userRoles = await UserService.GetUserRolesAsync(UserId, tenantId ?? 0);
-                _selectedRoles = userRoles.Select(r => r.Id).ToHashSet();
+                var userRoles = await UserService.GetUserRolesAsync(UserId, tenantIdForData.Value);
+                _selectedRoles = new HashSet<string>(userRoles.Select(r => r.Id));
             }
         }
+        
+        StateHasChanged();
     }
 
     private async Task HandleSubmit()
@@ -161,20 +211,33 @@
                 var result = await UserService.UpdateUserAsync(_user);
                 if (result.Succeeded)
                 {
-                    // Update roles
+                    // Update roles - get current roles first
                     var currentRoles = await UserService.GetUserRolesAsync(_user.Id, tenantId.Value);
                     var currentRoleIds = currentRoles.Select(r => r.Id).ToHashSet();
+                    
+                    // Create a copy of selected roles to avoid modification during iteration
+                    var selectedRolesCopy = new HashSet<string>(_selectedRoles);
 
-                    // Remove roles
-                    foreach (var role in currentRoles.Where(r => !_selectedRoles.Contains(r.Id)))
+                    // Remove roles that are no longer selected
+                    var rolesToRemove = currentRoles.Where(r => !selectedRolesCopy.Contains(r.Id)).ToList();
+                    foreach (var role in rolesToRemove)
                     {
-                        await UserService.RemoveRoleFromUserAsync(_user.Id, role.Id, tenantId.Value);
+                        var removeResult = await UserService.RemoveRoleFromUserAsync(_user.Id, role.Id, tenantId.Value);
+                        if (!removeResult)
+                        {
+                            Snackbar.Add($"Failed to remove role: {role.Name}", Severity.Warning);
+                        }
                     }
 
-                    // Add new roles
-                    foreach (var roleId in _selectedRoles.Where(id => !currentRoleIds.Contains(id)))
+                    // Add new roles that are selected but not currently assigned
+                    var rolesToAdd = selectedRolesCopy.Where(id => !currentRoleIds.Contains(id)).ToList();
+                    foreach (var roleId in rolesToAdd)
                     {
-                        await UserService.AssignRoleToUserAsync(_user.Id, roleId, tenantId.Value);
+                        var addResult = await UserService.AssignRoleToUserAsync(_user.Id, roleId, tenantId.Value);
+                        if (!addResult)
+                        {
+                            Snackbar.Add($"Failed to assign role", Severity.Warning);
+                        }
                     }
 
                     Snackbar.Add("User updated successfully", Severity.Success);
@@ -230,9 +293,22 @@
         Navigation.NavigateTo("/admin/users");
     }
 
-    private void OnSelectedRolesChanged(HashSet<string> selectedRoles)
+    private bool GetRoleCheckedState(string roleId)
     {
-        _selectedRoles = selectedRoles;
+        return _selectedRoles.Contains(roleId);
+    }
+
+    private void OnRoleCheckedChanged(string roleId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            _selectedRoles.Add(roleId);
+        }
+        else
+        {
+            _selectedRoles.Remove(roleId);
+        }
+        StateHasChanged();
     }
 }
 

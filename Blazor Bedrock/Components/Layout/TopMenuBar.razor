@@ -10,9 +10,50 @@
 @rendermode InteractiveServer
 
 <MudAppBar Elevation="2" Color="Color.Primary">
-    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
-    
     <MudText Typo="Typo.h6" Class="ml-4">@ProjectTitle</MudText>
+    
+    <div class="d-flex align-center ml-4" style="flex: 1;">
+        @foreach (var item in _menuItems)
+        {
+            @if (item.Children != null && item.Children.Any())
+            {
+                <MudMenu Icon="@item.Icon" Color="Color.Inherit" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-1" Style="text-transform: none;">
+                            @if (!string.IsNullOrEmpty(item.Icon))
+                            {
+                                <MudIcon Icon="@item.Icon" Size="Size.Small" Class="mr-1" />
+                            }
+                            <MudText Typo="Typo.body1">@item.Title</MudText>
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @foreach (var child in item.Children)
+                        {
+                            <MudMenuItem OnClick="() => NavigateTo(child.Href)">
+                                @if (!string.IsNullOrEmpty(child.Icon))
+                                {
+                                    <MudIcon Icon="@child.Icon" Size="Size.Small" Class="mr-2" />
+                                }
+                                @child.Title
+                            </MudMenuItem>
+                        }
+                    </ChildContent>
+                </MudMenu>
+            }
+            else if (!string.IsNullOrEmpty(item.Href))
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="mr-1" Style="text-transform: none;" Href="@item.Href">
+                    @if (!string.IsNullOrEmpty(item.Icon))
+                    {
+                        <MudIcon Icon="@item.Icon" Size="Size.Small" Class="mr-1" />
+                    }
+                    <MudText Typo="Typo.body1">@item.Title</MudText>
+                </MudButton>
+            }
+        }
+    </div>
     
     <MudSpacer />
     
@@ -20,41 +61,10 @@
     <UserMenu />
 </MudAppBar>
 
-<MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="@DrawerVariant.Temporary">
-    <MudDrawerHeader>
-        <MudText Typo="Typo.h6">@ProjectTitle</MudText>
-    </MudDrawerHeader>
-    <MudNavMenu>
-        @foreach (var item in _menuItems)
-        {
-            @if (item.Children != null && item.Children.Any())
-            {
-                <MudNavGroup Title="@item.Title" Icon="@item.Icon" Expanded="false">
-                    @foreach (var child in item.Children)
-                    {
-                        <MudNavLink Href="@child.Href" Match="NavLinkMatch.Prefix">
-                            <MudIcon Icon="@child.Icon" Class="mr-2" />
-                            @child.Title
-                        </MudNavLink>
-                    }
-                </MudNavGroup>
-            }
-            else
-            {
-                <MudNavLink Href="@item.Href" Match="NavLinkMatch.Prefix">
-                    <MudIcon Icon="@item.Icon" Class="mr-2" />
-                    @item.Title
-                </MudNavLink>
-            }
-        }
-    </MudNavMenu>
-</MudDrawer>
-
 @code {
     [Parameter] public string ProjectTitle { get; set; } = "Blazor Bedrock";
     
     private List<MenuItem> _menuItems = new();
-    private bool _drawerOpen = false;
     private bool _isUpdating = false;
 
     protected override async Task OnInitializedAsync()
@@ -63,6 +73,16 @@
         
         // Subscribe to authentication state changes
         AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        
+        // Subscribe to navigation changes to refresh menu when tenant might change
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Refresh menu when navigating (in case tenant changed)
+        await UpdateMenuItems();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
@@ -93,22 +113,8 @@
             }
             else
             {
-                // Show login menu item for unauthenticated users
-                _menuItems = new List<MenuItem>
-                {
-                    new MenuItem
-                    {
-                        Title = "Home",
-                        Href = "/",
-                        Icon = Icons.Material.Filled.Home
-                    },
-                    new MenuItem
-                    {
-                        Title = "Login",
-                        Href = "/auth/login",
-                        Icon = Icons.Material.Filled.Login
-                    }
-                };
+                // Show no menu items for unauthenticated users (Login button is in UserMenu component)
+                _menuItems = new List<MenuItem>();
             }
         }
         catch (Exception ex)
@@ -118,16 +124,8 @@
             {
                 return;
             }
-            // Set default menu on error
-            _menuItems = new List<MenuItem>
-            {
-                new MenuItem
-                {
-                    Title = "Home",
-                    Href = "/",
-                    Icon = Icons.Material.Filled.Home
-                }
-            };
+            // Set default menu on error (empty for unauthenticated users, Login button is in UserMenu component)
+            _menuItems = new List<MenuItem>();
         }
         finally
         {
@@ -141,11 +139,18 @@
         {
             AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         }
+        if (Navigation != null)
+        {
+            Navigation.LocationChanged -= OnLocationChanged;
+        }
     }
 
-    private void ToggleDrawer()
+    private void NavigateTo(string? href)
     {
-        _drawerOpen = !_drawerOpen;
+        if (!string.IsNullOrEmpty(href))
+        {
+            Navigation.NavigateTo(href);
+        }
     }
 }
 

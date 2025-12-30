@@ -9,6 +9,7 @@ public class ApplicationUser : IdentityUser
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginAt { get; set; }
     public bool IsActive { get; set; } = true;
+    public int? LastSelectedTenantId { get; set; }
 
     // Navigation properties
     public virtual ICollection<UserTenant> UserTenants { get; set; } = new List<UserTenant>();

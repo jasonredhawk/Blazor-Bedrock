@@ -1,74 +1,99 @@
-﻿@page "/"
+@page "/"
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Services.Tenant
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
 <PageTitle>Home</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h3" Class="mb-4">Welcome to Blazor Bedrock</MudText>
-    
-    @if (_authState != null)
+    @if (_showOrganizationPrompt)
     {
-        <MudAlert Severity="@(_authState.User?.Identity?.IsAuthenticated == true ? Severity.Success : Severity.Info)" Class="mb-4">
-            <MudText Typo="Typo.body2">
-                <strong>Authentication Status:</strong> 
-                @if (_authState.User?.Identity?.IsAuthenticated == true)
-                {
-                    <text>Authenticated as @_authState.User.Identity.Name</text>
-                    @if (_currentUser != null)
-                    {
-                        <text> (@_currentUser.FirstName @_currentUser.LastName - @_currentUser.Email)</text>
-                    }
-                }
-                else
-                {
-                    <text>Not Authenticated</text>
-                }
+        <MudPaper Elevation="3" Class="pa-8 mb-4">
+            <MudText Typo="Typo.h4" Class="mb-4">Welcome to Blazor Bedrock</MudText>
+            <MudText Typo="Typo.body1" Class="mb-4">
+                To get started, you need to create an organization. This will be your workspace where you can manage users, roles, and access all the application features.
             </MudText>
-        </MudAlert>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="NavigateToCreateOrganization"
+                       Class="mt-4"
+                       Size="Size.Large">
+                Create Organization
+            </MudButton>
+        </MudPaper>
     }
-    
-    <MudGrid>
-        <MudItem xs="12" md="6">
-            <MudCard Elevation="2">
-                <MudCardContent>
-                    <MudText Typo="Typo.h6">Multi-Tenant Application</MudText>
-                    <MudText Typo="Typo.body2" Class="mt-2">
-                        This is a comprehensive bedrock application with multi-tenant support, 
-                        user management, role-based permissions, and modular architecture.
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" md="6">
-            <MudCard Elevation="2">
-                <MudCardContent>
-                    <MudText Typo="Typo.h6">Features</MudText>
-                    <MudText Typo="Typo.body2" Class="mt-2">
-                        <ul>
-                            <li>User & Role Management</li>
-                            <li>ChatGPT Integration</li>
-                            <li>Stripe Payments</li>
-                            <li>Migration Management</li>
-                            <li>Application Logger</li>
-                        </ul>
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
+    else
+    {
+        <MudText Typo="Typo.h3" Class="mb-4">Welcome to Blazor Bedrock</MudText>
+        
+        @if (_authState != null)
+        {
+            <MudAlert Severity="@(_authState.User?.Identity?.IsAuthenticated == true ? Severity.Success : Severity.Info)" Class="mb-4">
+                <MudText Typo="Typo.body2">
+                    <strong>Authentication Status:</strong> 
+                    @if (_authState.User?.Identity?.IsAuthenticated == true)
+                    {
+                        <text>Authenticated as @_authState.User.Identity.Name</text>
+                        @if (_currentUser != null)
+                        {
+                            <text> (@_currentUser.FirstName @_currentUser.LastName - @_currentUser.Email)</text>
+                        }
+                    }
+                    else
+                    {
+                        <text>Not Authenticated</text>
+                    }
+                </MudText>
+            </MudAlert>
+        }
+        
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">Multi-Tenant Application</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-2">
+                            This is a comprehensive bedrock application with multi-tenant support, 
+                            user management, role-based permissions, and modular architecture.
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">Features</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-2">
+                            <ul>
+                                <li>User & Role Management</li>
+                                <li>ChatGPT Integration</li>
+                                <li>Stripe Payments</li>
+                                <li>Migration Management</li>
+                                <li>Application Logger</li>
+                            </ul>
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
 </MudContainer>
 
 @code {
     private AuthenticationState? _authState;
     private ApplicationUser? _currentUser;
+    private bool _showOrganizationPrompt = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -77,13 +102,34 @@
         if (_authState.User?.Identity?.IsAuthenticated == true)
         {
             var userId = _authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.GetUserAsync(_authState.User);
+                userId = user?.Id;
+            }
+
             if (!string.IsNullOrEmpty(userId))
             {
                 await DbSync.ExecuteAsync(async () =>
                 {
                     _currentUser = await UserManager.FindByIdAsync(userId);
                 });
+
+                // Check if user has an organization
+                var tenants = await TenantService.GetUserTenantsAsync(userId);
+                var currentTenantId = TenantService.GetCurrentTenantId();
+                
+                // Show prompt if no tenants or no current tenant selected
+                if (!tenants.Any() || !currentTenantId.HasValue)
+                {
+                    _showOrganizationPrompt = true;
+                }
             }
         }
+    }
+
+    private void NavigateToCreateOrganization()
+    {
+        Navigation.NavigateTo("/tenant/create-organization");
     }
 }

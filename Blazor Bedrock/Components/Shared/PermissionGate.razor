@@ -1,0 +1,36 @@
+@using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.Tenant
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IPermissionService PermissionService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+
+@if (_hasPermission)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public string PermissionName { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _hasPermission = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(PermissionName))
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (authState.User?.Identity?.IsAuthenticated == true)
+            {
+                var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (!string.IsNullOrEmpty(userId) && tenantId.HasValue)
+                {
+                    _hasPermission = await PermissionService.UserHasPermissionAsync(userId, tenantId.Value, PermissionName);
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,136 @@
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Components.Layout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Blazor_Bedrock.Data.Models
+@using MudBlazor
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IDatabaseSyncService DbSync
+@rendermode InteractiveServer
+
+@if (_showPrompt)
+{
+    <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-16">
+        <MudPaper Elevation="3" Class="pa-8">
+            <MudText Typo="Typo.h4" Class="mb-4">Organization Required</MudText>
+            <MudText Typo="Typo.body1" Class="mb-4">
+                You need to create an organization to access the application features. 
+                Please create an organization to continue.
+            </MudText>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="ShowCreateDialog"
+                       Class="mt-4">
+                Create Organization
+            </MudButton>
+        </MudPaper>
+    </MudContainer>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    private bool _showPrompt = false;
+    private bool _isChecking = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckOrganizationAsync();
+    }
+
+    private async Task CheckOrganizationAsync()
+    {
+        // Skip check for auth pages and create organization page
+        var currentPath = Navigation.Uri.Replace(Navigation.BaseUri, "").TrimStart('/');
+        if (currentPath.StartsWith("auth/", StringComparison.OrdinalIgnoreCase) || 
+            currentPath.StartsWith("tenant/create-organization", StringComparison.OrdinalIgnoreCase))
+        {
+            _isChecking = false;
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated != true)
+        {
+            _isChecking = false;
+            return;
+        }
+
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+        {
+            var user = await UserManager.GetUserAsync(authState.User);
+            userId = user?.Id;
+        }
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var tenants = await TenantService.GetUserTenantsAsync(userId);
+            var currentTenantId = TenantService.GetCurrentTenantId();
+            
+            // If no tenants or no current tenant selected, show prompt
+            if (!tenants.Any() || !currentTenantId.HasValue)
+            {
+                _showPrompt = true;
+            }
+        }
+
+        _isChecking = false;
+    }
+
+    private async Task ShowCreateDialog()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+        {
+            var user = await UserManager.GetUserAsync(authState.User);
+            userId = user?.Id;
+        }
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            Snackbar.Add("Unable to identify user. Please log out and log back in.", Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["UserId"] = userId
+        };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = false,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<CreateOrganizationDialog>("Create Organization", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data != null)
+        {
+            // Organization created, refresh the check
+            await CheckOrganizationAsync();
+            StateHasChanged();
+        }
+    }
+}
