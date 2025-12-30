@@ -24,11 +24,15 @@ public interface IChatGptService
     Task<string> SendChatMessageAsync(string userId, int? tenantId, string message, string? model = null, string? systemPrompt = null);
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
     Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
-    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null);
+    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
     Task<ChatGptMessage> SaveMessageAsync(ChatGptMessage message);
     Task UpdateConversationTimestampAsync(int conversationId);
+    Task<bool> DeleteConversationAsync(int conversationId, string userId, int? tenantId);
+    Task UpdateConversationTitleAsync(int conversationId, string title);
+    Task UpdateConversationPromptAsync(int conversationId, int? promptId);
+    Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage);
 }
 
 public class ChatGptService : IChatGptService
@@ -318,7 +322,7 @@ public class ChatGptService : IChatGptService
         }
     }
 
-    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null)
+    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null)
     {
         return await _dbSync.ExecuteAsync(async () =>
         {
@@ -327,7 +331,8 @@ public class ChatGptService : IChatGptService
                 UserId = userId,
                 TenantId = tenantId,
                 Title = title,
-                Model = model
+                Model = model,
+                PromptId = promptId
             };
 
             _context.ChatGptConversations.Add(conversation);
@@ -379,5 +384,106 @@ public class ChatGptService : IChatGptService
                 await _context.SaveChangesAsync();
             }
         });
+    }
+
+    public async Task<bool> DeleteConversationAsync(int conversationId, string userId, int? tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var conversation = await _context.ChatGptConversations
+                .FirstOrDefaultAsync(c => c.Id == conversationId && 
+                                          c.UserId == userId && 
+                                          (tenantId == null || c.TenantId == tenantId));
+
+            if (conversation == null)
+            {
+                return false;
+            }
+
+            // Messages will be deleted automatically due to cascade delete
+            _context.ChatGptConversations.Remove(conversation);
+            await _context.SaveChangesAsync();
+            return true;
+        });
+    }
+
+    public async Task UpdateConversationTitleAsync(int conversationId, string title)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
+            if (existingConversation != null)
+            {
+                existingConversation.Title = title;
+                existingConversation.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        });
+    }
+
+    public async Task UpdateConversationPromptAsync(int conversationId, int? promptId)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
+            if (existingConversation != null)
+            {
+                existingConversation.PromptId = promptId;
+                existingConversation.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        });
+    }
+
+    public async Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage)
+    {
+        try
+        {
+            // Create a simple prompt to generate a short title
+            var titlePrompt = $"Generate a short, descriptive title (maximum 5-7 words) for a conversation that starts with this message: \"{firstMessage}\"\n\nReturn only the title, nothing else. Make it concise and descriptive.";
+            
+            var messages = new List<ChatMessage>
+            {
+                new ChatMessage
+                {
+                    Role = "system",
+                    Content = "You are a helpful assistant that generates concise, descriptive titles for conversations. Always return only the title text, nothing else."
+                },
+                new ChatMessage
+                {
+                    Role = "user",
+                    Content = titlePrompt
+                }
+            };
+
+            var apiKey = await GetDecryptedApiKeyAsync(userId, tenantId);
+            var preferredModel = await GetPreferredModelAsync(tenantId);
+            
+            // Use a cheaper/faster model for title generation
+            var title = await CallChatGptWithMessagesAsync(messages, apiKey, "gpt-3.5-turbo");
+            
+            // Clean up the title - remove quotes, trim, and limit length
+            title = title.Trim().Trim('"', '\'', '`');
+            if (title.Length > 60)
+            {
+                title = title.Substring(0, 57) + "...";
+            }
+            
+            return string.IsNullOrWhiteSpace(title) ? "New Conversation" : title;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to generate conversation title, using fallback");
+            // Fallback: use first 50 characters of the message
+            if (string.IsNullOrWhiteSpace(firstMessage))
+            {
+                return "New Conversation";
+            }
+            
+            var fallbackTitle = firstMessage.Length > 50 
+                ? firstMessage.Substring(0, 47) + "..." 
+                : firstMessage;
+            return fallbackTitle;
+        }
     }
 }

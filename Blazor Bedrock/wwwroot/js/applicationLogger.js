@@ -1,4 +1,14 @@
 window.applicationLogger = {
+    setLoggerHeight: function (height) {
+        document.documentElement.style.setProperty('--logger-height', height);
+        // Force a layout recalculation by triggering multiple events
+        window.dispatchEvent(new Event('resize'));
+        // Also trigger a custom event for components that need to react
+        window.dispatchEvent(new CustomEvent('logger-height-changed', { detail: { height: height } }));
+        // Force a reflow to ensure CSS recalculates
+        void document.body.offsetHeight;
+    },
+    
     init: function (dotNetRef) {
         // Keyboard shortcut removed - visibility is now controlled by feature flag
 

@@ -1,11 +1,14 @@
 @using Blazor_Bedrock.Services.Logger
+@using Microsoft.JSInterop
 @inject IApplicationLoggerService LoggerService
+@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
 @if (_isVisible)
 {
-    <div class="application-logger border-top bg-white shadow-lg flex-shrink-0" style="height: @GetLoggerHeight();">
+    <div class="application-logger border-top bg-white shadow-lg flex-shrink-0" 
+         style="height: @GetLoggerHeight(); --logger-height: @GetLoggerHeight();">
         <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
             <span class="ms-2">Application Logger (@FilteredLogs.Count() of @_logs.Count)</span>
             <div>
@@ -159,6 +162,10 @@
             LoggerService.OnLogAdded += RefreshLogs;
             RefreshLogs();
         }
+        
+        // Always update CSS variable on document root so it's accessible everywhere
+        // This ensures it's updated whenever the component re-renders
+        await UpdateLoggerHeightVariable();
     }
 
     private void RefreshLogs()
@@ -167,14 +174,26 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void ToggleExpanded()
+    private async Task ToggleExpanded()
     {
         _isExpanded = !_isExpanded;
+        StateHasChanged();
+        await Task.Delay(10); // Small delay to ensure state is updated
+        await UpdateLoggerHeightVariable();
     }
 
-    private void ToggleFilter()
+    private async Task ToggleFilter()
     {
         _showFilter = !_showFilter;
+        StateHasChanged();
+        await Task.Delay(10); // Small delay to ensure state is updated
+        await UpdateLoggerHeightVariable();
+    }
+    
+    private async Task UpdateLoggerHeightVariable()
+    {
+        var height = GetLoggerHeight();
+        await JSRuntime.InvokeVoidAsync("applicationLogger.setLoggerHeight", height);
     }
 
     private void SelectAllLevels()
