@@ -1,6 +1,7 @@
 using Blazor_Bedrock.Data;
 using Blazor_Bedrock.Data.Models;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
+using Blazor_Bedrock.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
@@ -26,6 +27,8 @@ public interface IChatGptService
     Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
+    Task<ChatGptMessage> SaveMessageAsync(ChatGptMessage message);
+    Task UpdateConversationTimestampAsync(int conversationId);
 }
 
 public class ChatGptService : IChatGptService
@@ -35,19 +38,22 @@ public class ChatGptService : IChatGptService
     private readonly IDocumentProcessor _documentProcessor;
     private readonly HttpClient _httpClient;
     private readonly ILogger<ChatGptService> _logger;
+    private readonly IDatabaseSyncService _dbSync;
 
     public ChatGptService(
         ApplicationDbContext context,
         IDataProtectionProvider dataProtectionProvider,
         IDocumentProcessor documentProcessor,
         HttpClient httpClient,
-        ILogger<ChatGptService> logger)
+        ILogger<ChatGptService> logger,
+        IDatabaseSyncService dbSync)
     {
         _context = context;
         _dataProtectionProvider = dataProtectionProvider;
         _documentProcessor = documentProcessor;
         _httpClient = httpClient;
         _logger = logger;
+        _dbSync = dbSync;
         
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Blazor-Bedrock/1.0");
     }
@@ -59,17 +65,20 @@ public class ChatGptService : IChatGptService
             throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
         }
 
-        // Prioritize tenant-specific API keys (organization-level)
-        var apiKey = await _context.ChatGptApiKeys
-            .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
-
-        if (apiKey == null)
+        return await _dbSync.ExecuteAsync(async () =>
         {
-            throw new InvalidOperationException($"No API key found for the current organization. Please configure an API key in Settings.");
-        }
+            // Prioritize tenant-specific API keys (organization-level)
+            var apiKey = await _context.ChatGptApiKeys
+                .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
 
-        var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
-        return protector.Unprotect(apiKey.EncryptedApiKey);
+            if (apiKey == null)
+            {
+                throw new InvalidOperationException($"No API key found for the current organization. Please configure an API key in Settings.");
+            }
+
+            var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
+            return protector.Unprotect(apiKey.EncryptedApiKey);
+        });
     }
 
     public async Task<string?> GetPreferredModelAsync(int? tenantId)
@@ -79,10 +88,13 @@ public class ChatGptService : IChatGptService
             return null;
         }
 
-        var apiKey = await _context.ChatGptApiKeys
-            .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var apiKey = await _context.ChatGptApiKeys
+                .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
 
-        return apiKey?.PreferredModel;
+            return apiKey?.PreferredModel;
+        });
     }
 
     public async Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null)
@@ -92,38 +104,41 @@ public class ChatGptService : IChatGptService
             throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
         }
 
-        var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
-        var encryptedKey = protector.Protect(apiKey);
-
-        // Look for existing tenant-specific API key (organization-level)
-        var existing = await _context.ChatGptApiKeys
-            .FirstOrDefaultAsync(k => k.TenantId == tenantId);
-
-        if (existing != null)
+        await _dbSync.ExecuteAsync(async () =>
         {
-            existing.EncryptedApiKey = encryptedKey;
-            existing.PreferredModel = preferredModel;
-            existing.LastUsedAt = DateTime.UtcNow;
-            existing.IsActive = true;
-            // Ensure UserId is set (in case it wasn't before)
-            if (string.IsNullOrEmpty(existing.UserId))
+            var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
+            var encryptedKey = protector.Protect(apiKey);
+
+            // Look for existing tenant-specific API key (organization-level)
+            var existing = await _context.ChatGptApiKeys
+                .FirstOrDefaultAsync(k => k.TenantId == tenantId);
+
+            if (existing != null)
             {
-                existing.UserId = userId;
+                existing.EncryptedApiKey = encryptedKey;
+                existing.PreferredModel = preferredModel;
+                existing.LastUsedAt = DateTime.UtcNow;
+                existing.IsActive = true;
+                // Ensure UserId is set (in case it wasn't before)
+                if (string.IsNullOrEmpty(existing.UserId))
+                {
+                    existing.UserId = userId;
+                }
             }
-        }
-        else
-        {
-            _context.ChatGptApiKeys.Add(new ChatGptApiKey
+            else
             {
-                UserId = userId,
-                TenantId = tenantId,
-                EncryptedApiKey = encryptedKey,
-                PreferredModel = preferredModel,
-                IsActive = true
-            });
-        }
+                _context.ChatGptApiKeys.Add(new ChatGptApiKey
+                {
+                    UserId = userId,
+                    TenantId = tenantId,
+                    EncryptedApiKey = encryptedKey,
+                    PreferredModel = preferredModel,
+                    IsActive = true
+                });
+            }
 
-        await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync();
+        });
     }
 
     public async Task<List<string>> GetAvailableModelsAsync(string apiKey)
@@ -305,32 +320,64 @@ public class ChatGptService : IChatGptService
 
     public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null)
     {
-        var conversation = new ChatGptConversation
+        return await _dbSync.ExecuteAsync(async () =>
         {
-            UserId = userId,
-            TenantId = tenantId,
-            Title = title,
-            Model = model
-        };
+            var conversation = new ChatGptConversation
+            {
+                UserId = userId,
+                TenantId = tenantId,
+                Title = title,
+                Model = model
+            };
 
-        _context.ChatGptConversations.Add(conversation);
-        await _context.SaveChangesAsync();
-        return conversation;
+            _context.ChatGptConversations.Add(conversation);
+            await _context.SaveChangesAsync();
+            return conversation;
+        });
     }
 
     public async Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId)
     {
-        return await _context.ChatGptConversations
-            .Where(c => c.UserId == userId && (tenantId == null || c.TenantId == tenantId))
-            .OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
-            .ToListAsync();
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.ChatGptConversations
+                .Where(c => c.UserId == userId && (tenantId == null || c.TenantId == tenantId))
+                .OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
+                .ToListAsync();
+        });
     }
 
     public async Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId)
     {
-        return await _context.ChatGptMessages
-            .Where(m => m.ConversationId == conversationId)
-            .OrderBy(m => m.CreatedAt)
-            .ToListAsync();
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.ChatGptMessages
+                .Where(m => m.ConversationId == conversationId)
+                .OrderBy(m => m.CreatedAt)
+                .ToListAsync();
+        });
+    }
+
+    public async Task<ChatGptMessage> SaveMessageAsync(ChatGptMessage message)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            _context.ChatGptMessages.Add(message);
+            await _context.SaveChangesAsync();
+            return message;
+        });
+    }
+
+    public async Task UpdateConversationTimestampAsync(int conversationId)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
+            if (existingConversation != null)
+            {
+                existingConversation.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        });
     }
 }

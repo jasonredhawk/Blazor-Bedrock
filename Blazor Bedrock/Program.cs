@@ -15,6 +15,7 @@ using Blazor_Bedrock.Services.Stripe;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Blazor_Bedrock.Services.Notification;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -159,6 +160,13 @@ builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddSingleton<IApplicationLoggerService, ApplicationLoggerService>();
+
+// Add custom logger provider to capture all logs
+// Create with a temporary service provider, will be updated after app is built
+var tempServiceProvider = builder.Services.BuildServiceProvider();
+var loggerProvider = new ApplicationLoggerProvider(tempServiceProvider);
+builder.Logging.AddProvider(loggerProvider);
+tempServiceProvider.Dispose();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IDocumentProcessor, DocumentProcessor>();
@@ -173,6 +181,9 @@ builder.Services.AddHttpClient<IChatGptService, ChatGptService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 
 var app = builder.Build();
+
+// Update the logger provider to use the app's service provider
+loggerProvider.UpdateServiceProvider(app.Services);
 
 // Database Migration and Seeding
 using (var scope = app.Services.CreateScope())

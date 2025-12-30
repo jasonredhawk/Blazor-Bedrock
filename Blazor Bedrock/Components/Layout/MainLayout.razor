@@ -2,10 +2,10 @@
 @using Blazor_Bedrock.Components.Shared
 @using Microsoft.AspNetCore.Components.Authorization
 
-<div class="d-flex flex-column min-vh-100">
+<div class="d-flex flex-column" style="height: 100vh; overflow: hidden;">
     <TopMenuBar ProjectTitle="Blazor Bedrock" />
 
-    <main class="flex-grow-1">
+    <main class="flex-grow-1" style="overflow-y: auto; min-height: 0;">
         <div class="container-fluid mt-4">
             @Body
         </div>

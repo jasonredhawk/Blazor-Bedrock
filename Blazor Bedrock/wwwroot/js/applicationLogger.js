@@ -1,12 +1,6 @@
 window.applicationLogger = {
     init: function (dotNetRef) {
-        // Keyboard shortcut: CTRL+`
-        document.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === '`') {
-                e.preventDefault();
-                dotNetRef.invokeMethodAsync('ShowLogger');
-            }
-        });
+        // Keyboard shortcut removed - visibility is now controlled by feature flag
 
         // Intercept console methods
         const originalLog = console.log;

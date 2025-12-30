@@ -14,8 +14,6 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
-@inject ApplicationDbContext _context
-@inject IDatabaseSyncService DbSync
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
 @rendermode InteractiveServer
 @implements IAsyncDisposable
@@ -368,17 +366,16 @@
             {
                 try
                 {
+                    // All service methods now handle DbSync internally
                     var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
                     _hasApiKey = true;
                     _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
                     
-                    // Load prompts using DbSync to avoid concurrency issues
-                    await DbSync.ExecuteAsync(async () =>
-                    {
-                        _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId);
-                    });
+                    // Load prompts
+                    _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId);
                     
-                    await LoadConversations();
+                    // Load conversations
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
                 }
                 catch
                 {
@@ -534,7 +531,7 @@
             _messages = new();
             // Keep prompt selection for new conversation
             _currentPromptIdForConversation = _selectedPromptId;
-            await LoadConversations();
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             StateHasChanged();
         }
     }
@@ -561,10 +558,7 @@
     private async Task LoadConversation(int conversationId)
     {
         _currentConversationId = conversationId;
-        await DbSync.ExecuteAsync(async () =>
-        {
-            _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
-        });
+        _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
         // Reset prompt selection when loading an existing conversation
         _selectedPromptId = null;
         _currentPromptIdForConversation = null;
@@ -612,7 +606,7 @@
                 _messages = new List<ChatGptMessage>();
                 // Track the current prompt for this new conversation
                 _currentPromptIdForConversation = _selectedPromptId;
-                await LoadConversations();
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             }
 
             // Build conversation history from existing messages
@@ -661,12 +655,7 @@
                 Content = userMessageText
             };
             
-            await DbSync.ExecuteAsync(async () =>
-            {
-                _context.ChatGptMessages.Add(userMessage);
-                await _context.SaveChangesAsync();
-            });
-            
+            userMessage = await ChatGptService.SaveMessageAsync(userMessage);
             _messages.Add(userMessage);
             
             // Clear input immediately for better UX
@@ -685,22 +674,12 @@
                 Content = response
             };
             
-            await DbSync.ExecuteAsync(async () =>
-            {
-                _context.ChatGptMessages.Add(assistantMessage);
-                
-                // Update conversation timestamp
-                var existingConversation = await _context.ChatGptConversations.FindAsync(_currentConversationId.Value);
-                if (existingConversation != null)
-                {
-                    existingConversation.UpdatedAt = DateTime.UtcNow;
-                }
-                
-                await _context.SaveChangesAsync();
-            });
+            assistantMessage = await ChatGptService.SaveMessageAsync(assistantMessage);
+            await ChatGptService.UpdateConversationTimestampAsync(_currentConversationId.Value);
             
             _messages.Add(assistantMessage);
-            await LoadConversations();
+            // Reload conversations to update the timestamp
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             StateHasChanged();
             await ScrollToBottom();
             

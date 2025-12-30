@@ -1,15 +1,13 @@
 @using Blazor_Bedrock.Services.Logger
-@using Microsoft.JSInterop
 @inject IApplicationLoggerService LoggerService
-@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
 @if (_isVisible)
 {
-    <div class="application-logger border-top bg-white shadow-lg" style="@GetLoggerStyle()">
+    <div class="application-logger border-top bg-white shadow-lg flex-shrink-0" style="height: @GetLoggerHeight();">
         <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
-            <span class="ms-2">Application Logger (@_logs.Count)</span>
+            <span class="ms-2">Application Logger (@FilteredLogs.Count() of @_logs.Count)</span>
             <div>
                 <button class="btn btn-sm btn-outline-primary me-1" @onclick="ToggleFilter" title="Toggle Filter">
                     <i class="bi bi-funnel @(_showFilter ? "text-primary" : "")"></i>
@@ -17,37 +15,58 @@
                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="ToggleExpanded" title="Toggle Expand">
                     <i class="bi bi-chevron-@(_isExpanded ? "down" : "up")"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-warning me-1" @onclick="ClearLogs" title="Clear Logs">
+                <button class="btn btn-sm btn-outline-warning" @onclick="ClearLogs" title="Clear Logs">
                     <i class="bi bi-trash"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" @onclick="HideLogger" title="Hide Logger">
-                    <i class="bi bi-x"></i>
                 </button>
             </div>
         </div>
         
         @if (_showFilter)
         {
-            <div class="d-flex align-items-center p-2 border-bottom gap-2">
-                <div style="width: 150px;">
-                    <select class="form-select form-select-sm" @bind="_selectedLevel">
-                        <option value="">All</option>
-                        <option value="@LogLevel.Information">Information</option>
-                        <option value="@LogLevel.Warning">Warning</option>
-                        <option value="@LogLevel.Error">Error</option>
-                        <option value="@LogLevel.Debug">Debug</option>
-                    </select>
+            <div class="p-2 border-bottom">
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small fw-bold">Log Levels:</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-trace" checked="@_enabledLevels[LogLevel.Trace]" @onchange="@((e) => ToggleLevel(LogLevel.Trace, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-trace">Trace</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-debug" checked="@_enabledLevels[LogLevel.Debug]" @onchange="@((e) => ToggleLevel(LogLevel.Debug, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-debug">Debug</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-information" checked="@_enabledLevels[LogLevel.Information]" @onchange="@((e) => ToggleLevel(LogLevel.Information, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-information">Information</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-warning" checked="@_enabledLevels[LogLevel.Warning]" @onchange="@((e) => ToggleLevel(LogLevel.Warning, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-warning">Warning</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-error" checked="@_enabledLevels[LogLevel.Error]" @onchange="@((e) => ToggleLevel(LogLevel.Error, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-error">Error</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="filter-critical" checked="@_enabledLevels[LogLevel.Critical]" @onchange="@((e) => ToggleLevel(LogLevel.Critical, (bool)e.Value!))" />
+                            <label class="form-check-label small" for="filter-critical">Critical</label>
+                        </div>
+                    </div>
                 </div>
-                <div class="input-group input-group-sm" style="width: 200px;">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="text" class="form-control" placeholder="Search" @bind="_searchText" @bind:event="oninput" />
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="width: 300px;">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" placeholder="Search logs..." @bind="_searchText" @bind:event="oninput" />
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SelectAllLevels">All</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DeselectAllLevels">None</button>
                 </div>
             </div>
         }
         
         @if (_isExpanded)
         {
-            <div style="height: calc(100% - 100px); overflow-y: auto;">
+            <div style="height: 400px; overflow-y: auto;">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover table-striped mb-0">
                         <colgroup>
@@ -94,13 +113,21 @@
 }
 
 @code {
-    private bool _isVisible = false;
-    private bool _isExpanded = false;
+    private bool _isVisible = true; // Always visible when feature is enabled
+    private bool _isExpanded = false; // Minimized by default
     private bool _showFilter = false;
     private List<LogEntry> _logs = new();
-    private LogLevel? _selectedLevel = null;
+    private Dictionary<LogLevel, bool> _enabledLevels = new()
+    {
+        { LogLevel.Trace, true },
+        { LogLevel.Debug, true },
+        { LogLevel.Information, true },
+        { LogLevel.Warning, true },
+        { LogLevel.Error, true },
+        { LogLevel.Critical, true },
+        { LogLevel.None, false }
+    };
     private string _searchText = string.Empty;
-    private DotNetObjectReference<ApplicationLogger>? _objRef;
 
     private IEnumerable<LogEntry> FilteredLogs
     {
@@ -108,17 +135,17 @@
         {
             var filtered = _logs.AsEnumerable();
             
-            if (_selectedLevel.HasValue)
-            {
-                filtered = filtered.Where(l => l.Level == _selectedLevel.Value);
-            }
+            // Filter by enabled log levels
+            filtered = filtered.Where(l => _enabledLevels.ContainsKey(l.Level) && _enabledLevels[l.Level]);
             
+            // Filter by search text
             if (!string.IsNullOrEmpty(_searchText))
             {
                 var search = _searchText.ToLower();
                 filtered = filtered.Where(l => 
                     l.Message.ToLower().Contains(search) ||
-                    l.Category.ToLower().Contains(search));
+                    l.Category.ToLower().Contains(search) ||
+                    (!string.IsNullOrEmpty(l.Exception) && l.Exception.ToLower().Contains(search)));
             }
             
             return filtered.OrderByDescending(l => l.Timestamp);
@@ -129,8 +156,6 @@
     {
         if (firstRender)
         {
-            _objRef = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("applicationLogger.init", _objRef);
             LoggerService.OnLogAdded += RefreshLogs;
             RefreshLogs();
         }
@@ -152,45 +177,72 @@
         _showFilter = !_showFilter;
     }
 
+    private void SelectAllLevels()
+    {
+        foreach (var level in _enabledLevels.Keys.ToList())
+        {
+            if (level != LogLevel.None)
+            {
+                _enabledLevels[level] = true;
+            }
+        }
+    }
+
+    private void DeselectAllLevels()
+    {
+        foreach (var level in _enabledLevels.Keys.ToList())
+        {
+            _enabledLevels[level] = false;
+        }
+    }
+
+    private void ToggleLevel(LogLevel level, bool enabled)
+    {
+        if (_enabledLevels.ContainsKey(level))
+        {
+            _enabledLevels[level] = enabled;
+        }
+    }
+
     private void ClearLogs()
     {
         LoggerService.Clear();
         RefreshLogs();
     }
 
-    private void HideLogger()
-    {
-        _isVisible = false;
-    }
-
-    [JSInvokable]
-    public void ShowLogger()
-    {
-        _isVisible = true;
-        InvokeAsync(StateHasChanged);
-    }
-
     private string GetLevelBadgeClass(LogLevel level)
     {
         return level switch
         {
-            LogLevel.Information => "bg-info",
-            LogLevel.Warning => "bg-warning",
-            LogLevel.Error => "bg-danger",
-            LogLevel.Debug => "bg-secondary",
-            _ => "bg-secondary"
+            LogLevel.Trace => "bg-secondary text-white",
+            LogLevel.Debug => "bg-secondary text-white",
+            LogLevel.Information => "bg-info text-white",
+            LogLevel.Warning => "bg-warning text-dark",
+            LogLevel.Error => "bg-danger text-white",
+            LogLevel.Critical => "bg-dark text-white",
+            _ => "bg-secondary text-white"
         };
     }
 
-    private string GetLoggerStyle()
+    private string GetLoggerHeight()
     {
-        var height = _isExpanded ? "400px" : "50px";
-        return $"position: fixed; bottom: 0; left: 0; right: 0; height: {height}; z-index: 9999;";
+        // Minimized: just the header bar
+        if (!_isExpanded)
+        {
+            return "50px";
+        }
+        
+        // Expanded: header + filter (if shown) + content area
+        // Header: ~50px, Filter: ~100px (if shown), Content: 400px
+        if (_showFilter)
+        {
+            return "550px"; // 50px header + 100px filter + 400px content
+        }
+        return "450px"; // 50px header + 400px content
     }
 
     public async ValueTask DisposeAsync()
     {
         LoggerService.OnLogAdded -= RefreshLogs;
-        _objRef?.Dispose();
     }
 }
