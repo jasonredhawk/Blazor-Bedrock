@@ -10,7 +10,7 @@ public interface IStripeService
 {
     Task<List<StripeSubscription>> GetTenantSubscriptionsAsync(int tenantId);
     Task<StripeSubscription?> GetSubscriptionAsync(int subscriptionId);
-    Task<string> CreateCheckoutSessionAsync(int tenantId, string planId, string successUrl, string cancelUrl);
+    Task<string> CreateCheckoutSessionAsync(int tenantId, string stripePriceId, int subscriptionPlanId, string successUrl, string cancelUrl);
 }
 
 public class StripeService : IStripeService
@@ -43,7 +43,7 @@ public class StripeService : IStripeService
         return await _context.StripeSubscriptions.FindAsync(subscriptionId);
     }
 
-    public async Task<string> CreateCheckoutSessionAsync(int tenantId, string planId, string successUrl, string cancelUrl)
+    public async Task<string> CreateCheckoutSessionAsync(int tenantId, string stripePriceId, int subscriptionPlanId, string successUrl, string cancelUrl)
     {
         var options = new SessionCreateOptions
         {
@@ -52,7 +52,7 @@ public class StripeService : IStripeService
             {
                 new SessionLineItemOptions
                 {
-                    Price = planId,
+                    Price = stripePriceId,
                     Quantity = 1,
                 },
             },
@@ -61,7 +61,8 @@ public class StripeService : IStripeService
             CancelUrl = cancelUrl,
             Metadata = new Dictionary<string, string>
             {
-                { "tenantId", tenantId.ToString() }
+                { "tenantId", tenantId.ToString() },
+                { "subscriptionPlanId", subscriptionPlanId.ToString() }
             }
         };
 

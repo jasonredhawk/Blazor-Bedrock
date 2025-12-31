@@ -2,6 +2,7 @@
 @using Blazor_Bedrock.Services.Subscription
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Stripe
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -9,6 +10,7 @@
 @inject IOrganizationSubscriptionService OrganizationSubscriptionService
 @inject ITenantService TenantService
 @inject IFeatureFlagService FeatureFlagService
+@inject IStripeService StripeService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -120,9 +122,18 @@
                                         }
                                         else if (plan.IsActive)
                                         {
-                                            <button class="btn btn-primary w-100" @onclick="() => SelectPlan(plan.Id)">
-                                                <i class="bi bi-arrow-up-circle me-2"></i>Select Plan
-                                            </button>
+                                            @if (plan.MonthlyPrice.HasValue || plan.YearlyPrice.HasValue)
+                                            {
+                                                <button class="btn btn-primary w-100" @onclick="() => ShowBillingOptions(plan)">
+                                                    <i class="bi bi-credit-card me-2"></i>Subscribe
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-primary w-100" @onclick="() => SelectPlan(plan.Id, null)">
+                                                    <i class="bi bi-check-circle me-2"></i>Select Free Plan
+                                                </button>
+                                            }
                                         }
                                         else
                                         {
@@ -156,11 +167,73 @@
     </div>
 </div>
 
+@if (_showBillingModal && _selectedPlanForPurchase != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Billing Period - @_selectedPlanForPurchase.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseBillingModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-grid gap-2">
+                        @if (_selectedPlanForPurchase.MonthlyPrice.HasValue && !string.IsNullOrEmpty(_selectedPlanForPurchase.StripeMonthlyPriceId))
+                        {
+                            <button class="btn btn-outline-primary btn-lg" @onclick="() => SelectPlan(_selectedPlanForPurchase.Id, _selectedPlanForPurchase.StripeMonthlyPriceId)">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>Monthly</strong>
+                                        <div>$@_selectedPlanForPurchase.MonthlyPrice.Value.ToString("F2")/@_selectedPlanForPurchase.Currency per month</div>
+                                    </div>
+                                    <i class="bi bi-arrow-right"></i>
+                                </div>
+                            </button>
+                        }
+                        @if (_selectedPlanForPurchase.YearlyPrice.HasValue && !string.IsNullOrEmpty(_selectedPlanForPurchase.StripeYearlyPriceId))
+                        {
+                            <button class="btn btn-outline-primary btn-lg" @onclick="() => SelectPlan(_selectedPlanForPurchase.Id, _selectedPlanForPurchase.StripeYearlyPriceId)">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>Yearly</strong>
+                                        <div>$@_selectedPlanForPurchase.YearlyPrice.Value.ToString("F2")/@_selectedPlanForPurchase.Currency per year</div>
+                                        @if (_selectedPlanForPurchase.MonthlyPrice.HasValue && _selectedPlanForPurchase.YearlyPrice.HasValue && _selectedPlanForPurchase.MonthlyPrice.Value > 0)
+                                        {
+                                            var savings = (_selectedPlanForPurchase.MonthlyPrice.Value * 12) - _selectedPlanForPurchase.YearlyPrice.Value;
+                                            var savingsPercent = (savings / (_selectedPlanForPurchase.MonthlyPrice.Value * 12)) * 100;
+                                            <small class="text-success">Save $@savings.ToString("F2") (@savingsPercent.ToString("F1")%)</small>
+                                        }
+                                    </div>
+                                    <i class="bi bi-arrow-right"></i>
+                                </div>
+                            </button>
+                        }
+                    </div>
+                    @if ((!_selectedPlanForPurchase.MonthlyPrice.HasValue || string.IsNullOrEmpty(_selectedPlanForPurchase.StripeMonthlyPriceId)) && 
+                         (!_selectedPlanForPurchase.YearlyPrice.HasValue || string.IsNullOrEmpty(_selectedPlanForPurchase.StripeYearlyPriceId)))
+                    {
+                        <div class="alert alert-warning mt-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            This plan does not have Stripe pricing configured. Please contact support.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseBillingModal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<SubscriptionPlan> _availablePlans = new();
     private TenantWithSubscription? _currentSubscription = null;
     private bool _isInitialized = false;
     private int? _tenantId = null;
+    private bool _showBillingModal = false;
+    private SubscriptionPlan? _selectedPlanForPurchase = null;
+    private bool _isProcessing = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -216,7 +289,19 @@
         }
     }
 
-    private async Task SelectPlan(int planId)
+    private void ShowBillingOptions(SubscriptionPlan plan)
+    {
+        _selectedPlanForPurchase = plan;
+        _showBillingModal = true;
+    }
+
+    private void CloseBillingModal()
+    {
+        _showBillingModal = false;
+        _selectedPlanForPurchase = null;
+    }
+
+    private async Task SelectPlan(int planId, string? stripePriceId)
     {
         if (!_tenantId.HasValue)
         {
@@ -224,16 +309,46 @@
             return;
         }
 
+        // If it's a free plan (no Stripe price ID), assign directly
+        if (string.IsNullOrEmpty(stripePriceId))
+        {
+            _isProcessing = true;
+            try
+            {
+                await OrganizationSubscriptionService.UpdateSubscriptionAsync(_tenantId.Value, planId, null, null);
+                await NotificationService.ShowSuccessAsync("Free plan selected successfully.");
+                CloseBillingModal();
+                await LoadDataAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error updating subscription: {ex.Message}");
+            }
+            finally
+            {
+                _isProcessing = false;
+            }
+            return;
+        }
+
+        // For paid plans, redirect to Stripe checkout
+        _isProcessing = true;
         try
         {
-            await OrganizationSubscriptionService.UpdateSubscriptionAsync(_tenantId.Value, planId, null, null);
-            await NotificationService.ShowSuccessAsync("Subscription updated successfully.");
-            await LoadDataAsync();
-            StateHasChanged();
+            var baseUrl = Navigation.BaseUri.TrimEnd('/');
+            var successUrl = $"{baseUrl}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}";
+            var cancelUrl = $"{baseUrl}/subscription";
+
+            var checkoutUrl = await StripeService.CreateCheckoutSessionAsync(_tenantId.Value, stripePriceId, planId, successUrl, cancelUrl);
+            
+            // Redirect to Stripe checkout
+            Navigation.NavigateTo(checkoutUrl, forceLoad: true);
         }
         catch (Exception ex)
         {
-            await NotificationService.ShowErrorAsync($"Error updating subscription: {ex.Message}");
+            _isProcessing = false;
+            await NotificationService.ShowErrorAsync($"Error creating checkout session: {ex.Message}");
         }
     }
 }
