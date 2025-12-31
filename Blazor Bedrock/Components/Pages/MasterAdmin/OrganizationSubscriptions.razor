@@ -168,7 +168,7 @@
                                 <strong>Plan Details:</strong><br/>
                                 Monthly: $@(selectedPlan.MonthlyPrice?.ToString("F2") ?? "N/A")<br/>
                                 Yearly: $@(selectedPlan.YearlyPrice?.ToString("F2") ?? "N/A")<br/>
-                                @if (selectedPlan.MonthlyPrice.HasValue && selectedPlan.YearlyPrice.HasValue)
+                                @if (selectedPlan.MonthlyPrice.HasValue && selectedPlan.YearlyPrice.HasValue && selectedPlan.MonthlyPrice.Value > 0)
                                 {
                                     var savings = (selectedPlan.MonthlyPrice.Value * 12) - selectedPlan.YearlyPrice.Value;
                                     var savingsPercent = (savings / (selectedPlan.MonthlyPrice.Value * 12)) * 100;

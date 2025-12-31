@@ -1,0 +1,239 @@
+@page "/subscription"
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ISubscriptionPlanService SubscriptionPlanService
+@inject IOrganizationSubscriptionService OrganizationSubscriptionService
+@inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Subscription</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <h4 class="mb-4">Subscription Plans</h4>
+            
+            @if (_isInitialized)
+            {
+                @if (_currentSubscription != null)
+                {
+                    <div class="alert alert-info mb-4">
+                        <h5>Current Subscription</h5>
+                        <p class="mb-1">
+                            <strong>Plan:</strong> @(_currentSubscription.CurrentPlan?.Name ?? "No Plan")
+                        </p>
+                        @if (_currentSubscription.EffectiveMonthlyPrice.HasValue)
+                        {
+                            <p class="mb-1">
+                                <strong>Monthly Price:</strong> $@_currentSubscription.EffectiveMonthlyPrice.Value.ToString("F2")
+                            </p>
+                        }
+                        @if (_currentSubscription.EffectiveYearlyPrice.HasValue)
+                        {
+                            <p class="mb-1">
+                                <strong>Yearly Price:</strong> $@_currentSubscription.EffectiveYearlyPrice.Value.ToString("F2")
+                            </p>
+                        }
+                        @if (_currentSubscription.Subscription != null)
+                        {
+                            <p class="mb-0">
+                                <strong>Status:</strong> <span class="badge @(_currentSubscription.Subscription.Status == "active" ? "bg-success" : "bg-warning")">@_currentSubscription.Subscription.Status</span>
+                            </p>
+                        }
+                    </div>
+                }
+
+                @if (_availablePlans.Any())
+                {
+                    <div class="row">
+                        @foreach (var plan in _availablePlans)
+                        {
+                            var isCurrentPlan = _currentSubscription?.CurrentPlan?.Id == plan.Id;
+                            <div class="col-md-6 col-lg-4 mb-4">
+                                <div class="card h-100 @(plan.IsActive ? (isCurrentPlan ? "border-primary border-3" : "border-primary") : "border-secondary")">
+                                    <div class="card-header bg-primary text-white">
+                                        <h5 class="card-title mb-0">@plan.Name</h5>
+                                        @if (isCurrentPlan)
+                                        {
+                                            <small class="text-white-50">Current Plan</small>
+                                        }
+                                    </div>
+                                    <div class="card-body">
+                                        @if (!string.IsNullOrEmpty(plan.Description))
+                                        {
+                                            <p class="card-text text-muted small">@plan.Description</p>
+                                        }
+                                        
+                                        <div class="mb-3">
+                                            <h6>Pricing</h6>
+                                            @if (plan.MonthlyPrice.HasValue)
+                                            {
+                                                <div>Monthly: <strong>$@plan.MonthlyPrice.Value.ToString("F2")</strong></div>
+                                            }
+                                            else
+                                            {
+                                                <div>Monthly: <strong>Free</strong></div>
+                                            }
+                                            @if (plan.YearlyPrice.HasValue)
+                                            {
+                                                <div>Yearly: <strong>$@plan.YearlyPrice.Value.ToString("F2")</strong></div>
+                                                @if (plan.MonthlyPrice.HasValue && plan.MonthlyPrice.Value > 0)
+                                                {
+                                                    var savings = (plan.MonthlyPrice.Value * 12) - plan.YearlyPrice.Value;
+                                                    var savingsPercent = (savings / (plan.MonthlyPrice.Value * 12)) * 100;
+                                                    <small class="text-success">Save $@savings.ToString("F2") (@savingsPercent.ToString("F1")%)</small>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <div>Yearly: <strong>Free</strong></div>
+                                            }
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <h6>Limits</h6>
+                                            <ul class="list-unstyled small">
+                                                <li>Documents: @(plan.MaxDocuments?.ToString() ?? "Unlimited")</li>
+                                                <li>Conversations: @(plan.MaxConversations?.ToString() ?? "Unlimited")</li>
+                                                <li>Queries/Conversation: @(plan.MaxQueriesPerConversation?.ToString() ?? "Unlimited")</li>
+                                                <li>Users: @(plan.MaxUsers?.ToString() ?? "Unlimited")</li>
+                                                <li>Charts: @(plan.MaxCharts?.ToString() ?? "Unlimited")</li>
+                                                <li>ChatGPT Analysis: @(plan.CanUseChatGptAnalysis ? "Yes" : "No")</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        @if (isCurrentPlan)
+                                        {
+                                            <button class="btn btn-secondary w-100" disabled>
+                                                <i class="bi bi-check-circle me-2"></i>Current Plan
+                                            </button>
+                                        }
+                                        else if (plan.IsActive)
+                                        {
+                                            <button class="btn btn-primary w-100" @onclick="() => SelectPlan(plan.Id)">
+                                                <i class="bi bi-arrow-up-circle me-2"></i>Select Plan
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-secondary w-100" disabled>
+                                                <i class="bi bi-x-circle me-2"></i>Unavailable
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-credit-card display-1 text-muted"></i>
+                        <p class="text-muted mt-3">No subscription plans available.</p>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<SubscriptionPlan> _availablePlans = new();
+    private TenantWithSubscription? _currentSubscription = null;
+    private bool _isInitialized = false;
+    private int? _tenantId = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        // Check if subscriptions feature is enabled
+        var subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+        if (!subscriptionsEnabled)
+        {
+            await NotificationService.ShowErrorAsync("Subscriptions are not enabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        _tenantId = TenantService.GetCurrentTenantId();
+        if (!_tenantId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("Please select an organization first.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        await LoadDataAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _availablePlans = await SubscriptionPlanService.GetAllPlansAsync();
+        
+        if (_tenantId.HasValue)
+        {
+            var subscription = await OrganizationSubscriptionService.GetTenantSubscriptionAsync(_tenantId.Value);
+            if (subscription != null)
+            {
+                var tenant = await TenantService.GetCurrentTenantAsync();
+                if (tenant != null)
+                {
+                    var plan = await SubscriptionPlanService.GetPlanByIdAsync(subscription.SubscriptionPlanId);
+                    _currentSubscription = new TenantWithSubscription
+                    {
+                        Tenant = tenant,
+                        Subscription = subscription,
+                        CurrentPlan = plan
+                    };
+                }
+            }
+        }
+    }
+
+    private async Task SelectPlan(int planId)
+    {
+        if (!_tenantId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("No organization selected.");
+            return;
+        }
+
+        try
+        {
+            await OrganizationSubscriptionService.UpdateSubscriptionAsync(_tenantId.Value, planId, null, null);
+            await NotificationService.ShowSuccessAsync("Subscription updated successfully.");
+            await LoadDataAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error updating subscription: {ex.Message}");
+        }
+    }
+}

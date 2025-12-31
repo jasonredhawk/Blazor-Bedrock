@@ -171,11 +171,12 @@
                 $"{GetFeatureDisplayName(flag.Name)} has been {(newValue ? "enabled" : "disabled")}."
             );
             
-            // Trigger menu refresh by navigating with a refresh parameter
-            // This will cause TopMenuBar's LocationChanged event to fire and refresh the menu
+            // Trigger menu refresh by navigating with forceLoad to ensure menu is refreshed
+            // Small delay to ensure cache is cleared
+            await Task.Delay(100);
             var currentUri = new Uri(Navigation.Uri);
             var currentPath = currentUri.GetLeftPart(UriPartial.Path);
-            Navigation.NavigateTo($"{currentPath}?refresh={DateTime.UtcNow.Ticks}", forceLoad: false);
+            Navigation.NavigateTo(currentPath, forceLoad: true);
         }
         catch (Exception ex)
         {
@@ -199,7 +200,7 @@
             "Auth_Google" => "Google Authentication",
             "Auth_Facebook" => "Facebook Authentication",
             "ChatGpt_Enabled" => "ChatGPT Integration",
-            "Stripe_Enabled" => "Stripe Payments",
+            "Subscriptions" => "Subscriptions",
             "Users_Enabled" => "Users Management",
             "Roles_Enabled" => "Roles Management",
             "Migrations_Enabled" => "Migration Management",

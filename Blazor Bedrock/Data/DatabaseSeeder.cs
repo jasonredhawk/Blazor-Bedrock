@@ -37,7 +37,7 @@ public class DatabaseSeeder
             new FeatureFlag { Name = "Auth_Google", Description = "Enable Google Authentication", IsEnabled = false },
             new FeatureFlag { Name = "Auth_Facebook", Description = "Enable Facebook Authentication", IsEnabled = false },
             new FeatureFlag { Name = "ChatGpt_Enabled", Description = "Enable ChatGPT Integration", IsEnabled = true },
-            new FeatureFlag { Name = "Stripe_Enabled", Description = "Enable Stripe Payments", IsEnabled = false },
+            new FeatureFlag { Name = "Subscriptions", Description = "Enable Subscriptions (enables subscription-based limits)", IsEnabled = false },
             new FeatureFlag { Name = "Users_Enabled", Description = "Enable Users Management", IsEnabled = true },
             new FeatureFlag { Name = "Roles_Enabled", Description = "Enable Roles Management", IsEnabled = true },
             new FeatureFlag { Name = "Migrations_Enabled", Description = "Enable Migration Management", IsEnabled = true },

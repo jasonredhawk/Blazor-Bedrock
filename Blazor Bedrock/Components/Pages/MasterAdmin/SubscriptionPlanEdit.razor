@@ -1,0 +1,224 @@
+@page "/masteradmin/subscription-models/edit/{PlanId:int}"
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ISubscriptionPlanService SubscriptionPlanService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Edit Subscription Plan</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h4 class="mb-4">Edit Subscription Plan</h4>
+            
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    @if (_isInitialized)
+                    {
+                        @if (_plan != null)
+                        {
+                            <EditForm Model="@_plan" OnValidSubmit="HandleSubmit">
+                                <DataAnnotationsValidator />
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Name</label>
+                                    <InputText class="form-control" @bind-Value="_plan.Name" />
+                                    <ValidationMessage For="@(() => _plan.Name)" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <InputTextArea class="form-control" @bind-Value="_plan.Description" rows="3" />
+                                </div>
+
+                                <div class="mb-3 form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_plan.IsActive" />
+                                    <label class="form-check-label">Active</label>
+                                </div>
+
+                                <hr />
+
+                                <h5>Pricing</h5>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Monthly Price ($)</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MonthlyPrice" step="0.01" format-value-as-number="true" />
+                                        <small class="text-muted">Leave empty for free tier</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Yearly Price ($)</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.YearlyPrice" step="0.01" format-value-as-number="true" />
+                                        <small class="text-muted">Leave empty for free tier</small>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Currency</label>
+                                    <InputText class="form-control" @bind-Value="_plan.Currency" />
+                                </div>
+
+                                <hr />
+
+                                <h5>Stripe Integration</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">Stripe Product ID</label>
+                                    <InputText class="form-control" @bind-Value="_plan.StripeProductId" />
+                                    <small class="text-muted">The Stripe Product ID for this subscription plan</small>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Stripe Monthly Price ID</label>
+                                        <InputText class="form-control" @bind-Value="_plan.StripeMonthlyPriceId" />
+                                        <small class="text-muted">The Stripe Price ID for monthly billing</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Stripe Yearly Price ID</label>
+                                        <InputText class="form-control" @bind-Value="_plan.StripeYearlyPriceId" />
+                                        <small class="text-muted">The Stripe Price ID for yearly billing</small>
+                                    </div>
+                                </div>
+
+                                <hr />
+
+                                <h5>Limits (leave empty for unlimited)</h5>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Max Documents</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MaxDocuments" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Max Conversations</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MaxConversations" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Max Queries per Conversation</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MaxQueriesPerConversation" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Max Users</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MaxUsers" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Max Charts</label>
+                                        <InputNumber class="form-control" @bind-Value="_plan.MaxCharts" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3 form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_plan.CanUseChatGptAnalysis" />
+                                    <label class="form-check-label">Can Use ChatGPT Analysis</label>
+                                </div>
+
+                                <div class="d-flex justify-content-between mt-4">
+                                    <button type="button" class="btn btn-secondary" @onclick="NavigateBack">Cancel</button>
+                                    <button type="submit" class="btn btn-primary" disabled="@_isSaving">
+                                        @if (_isSaving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                        }
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </EditForm>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">
+                                Subscription plan not found.
+                            </div>
+                            <button class="btn btn-secondary" @onclick="NavigateBack">Back to Subscription Models</button>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int PlanId { get; set; }
+    
+    private SubscriptionPlan? _plan;
+    private bool _isInitialized = false;
+    private bool _isMasterAdmin = false;
+    private bool _isSaving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.FindByIdAsync(userId);
+                _isMasterAdmin = user?.IsMasterAdmin ?? false;
+                
+                if (!_isMasterAdmin)
+                {
+                    await NotificationService.ShowErrorAsync("You do not have permission to access this page.");
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        await LoadPlanAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadPlanAsync()
+    {
+        _plan = await SubscriptionPlanService.GetPlanByIdAsync(PlanId);
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (_plan == null) return;
+
+        _isSaving = true;
+        try
+        {
+            await SubscriptionPlanService.UpdatePlanAsync(_plan);
+            await NotificationService.ShowSuccessAsync("Subscription plan updated successfully.");
+            Navigation.NavigateTo("/masteradmin/subscription-models");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error updating subscription plan: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        Navigation.NavigateTo("/masteradmin/subscription-models");
+    }
+}

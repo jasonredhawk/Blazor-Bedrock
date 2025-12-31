@@ -44,7 +44,7 @@
                                             @if (plan.YearlyPrice.HasValue)
                                             {
                                                 <div>Yearly: <strong>$@plan.YearlyPrice.Value.ToString("F2")</strong></div>
-                                                @if (plan.MonthlyPrice.HasValue && plan.YearlyPrice.HasValue)
+                                                @if (plan.MonthlyPrice.HasValue && plan.YearlyPrice.HasValue && plan.MonthlyPrice.Value > 0)
                                                 {
                                                     var savings = (plan.MonthlyPrice.Value * 12) - plan.YearlyPrice.Value;
                                                     var savingsPercent = (savings / (plan.MonthlyPrice.Value * 12)) * 100;

@@ -10,6 +10,7 @@ public class SubscriptionPlan
     // Pricing
     public decimal? MonthlyPrice { get; set; }
     public decimal? YearlyPrice { get; set; }
+    public string? StripeProductId { get; set; }
     public string? StripeMonthlyPriceId { get; set; }
     public string? StripeYearlyPriceId { get; set; }
     public string Currency { get; set; } = "USD";

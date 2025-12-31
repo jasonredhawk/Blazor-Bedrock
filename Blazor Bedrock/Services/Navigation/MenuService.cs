@@ -347,13 +347,13 @@ public class MenuService : IMenuService
                 }
             }
 
-            // Stripe (if enabled, requires tenant) - only for non-MasterAdmin
-            if (!isMasterAdmin && tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Stripe_Enabled"))
+            // Subscription (if enabled, requires tenant) - for all users
+            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Subscriptions"))
             {
                 menuItems.Add(new MenuItem
                 {
-                    Title = "Payments",
-                    Href = "/stripe/subscriptions",
+                    Title = "Subscription",
+                    Href = "/subscription",
                     Icon = "bi bi-credit-card"
                 });
             }
@@ -403,17 +403,6 @@ public class MenuService : IMenuService
                         Title = "Migrations",
                         Href = "/superadmin/migrations",
                         Icon = "bi bi-database"
-                    });
-                }
-
-                // Stripe (moved from root)
-                if (await _featureFlagService.IsEnabledAsync("Stripe_Enabled"))
-                {
-                    masterAdminMenu.Children.Add(new MenuItem
-                    {
-                        Title = "Stripe",
-                        Href = "/stripe/subscriptions",
-                        Icon = "bi bi-credit-card"
                     });
                 }
 
