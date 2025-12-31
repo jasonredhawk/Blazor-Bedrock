@@ -28,6 +28,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<StripeSubscription> StripeSubscriptions { get; set; }
     public DbSet<UserProfile> UserProfiles { get; set; }
     public DbSet<Document> Documents { get; set; }
+    public DbSet<SavedChart> SavedCharts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -50,6 +51,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.ApplyConfiguration(new StripeSubscriptionConfiguration());
         builder.ApplyConfiguration(new UserProfileConfiguration());
         builder.ApplyConfiguration(new DocumentConfiguration());
+        builder.ApplyConfiguration(new SavedChartConfiguration());
 
         // Rename Identity tables to match our naming convention
         builder.Entity<ApplicationUser>().ToTable("Users");

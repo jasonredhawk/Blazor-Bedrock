@@ -1,27 +1,41 @@
 using Blazor_Bedrock.Services.Document;
 using Blazor_Bedrock.Services.ChatGpt;
+using Blazor_Bedrock.Data;
+using Blazor_Bedrock.Data.Models;
+using Blazor_Bedrock.Services;
+using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using OfficeOpenXml.Drawing.Chart;
 using System.Text;
 using System.Linq;
+using System.Text.Json;
 
 namespace Blazor_Bedrock.Services.Chart;
 
 public interface IChartService
 {
     Task<ChartCreationResult> CreateChartAsync(ChartCreationRequest request, string userId, int tenantId);
-    Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, string userId, int tenantId, string? prompt = null);
+    Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, ChartCreationRequest request, string userId, int tenantId, string? prompt = null);
+    Task<int> SaveChartAsync(ChartCreationRequest request, string name, string? description, string userId, int tenantId, int? savedChartId = null);
+    Task<List<SavedChart>> GetSavedChartsAsync(string userId, int tenantId);
+    Task<SavedChart?> GetSavedChartByIdAsync(int id, string userId, int tenantId);
+    Task<bool> DeleteSavedChartAsync(int id, string userId, int tenantId);
+    Task<ChartCreationRequest?> LoadSavedChartAsync(int id, string userId, int tenantId);
 }
 
 public class ChartService : IChartService
 {
     private readonly IDocumentService _documentService;
     private readonly IChatGptService _chatGptService;
+    private readonly ApplicationDbContext _context;
+    private readonly IDatabaseSyncService _dbSync;
 
-    public ChartService(IDocumentService documentService, IChatGptService chatGptService)
+    public ChartService(IDocumentService documentService, IChatGptService chatGptService, ApplicationDbContext context, IDatabaseSyncService dbSync)
     {
         _documentService = documentService;
         _chatGptService = chatGptService;
+        _context = context;
+        _dbSync = dbSync;
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
@@ -415,30 +429,15 @@ public class ChartService : IChartService
         {
             try
             {
-                // Use ALL rows for analysis (not just preview)
-                dataAnalysis = await AnalyzeDataAsync(sheetData.Rows.Skip(1).ToList(), headerRow, userId, tenantId);
+                // Use filtered data for analysis - only rows and columns relevant to the chart
+                dataAnalysis = await AnalyzeDataAsync(sheetData.Rows.Skip(1).ToList(), headerRow, request, userId, tenantId);
                 
                 // Position analysis to the right of the chart (leave 2 columns gap)
                 int analysisStartColumn = chartStartColumn + chartWidthColumns + 2; // 1-based column
                 int analysisStartRow = 1; // Start at row 1 to align with header
                 
-                worksheet.Cells[analysisStartRow, analysisStartColumn].Value = "Data Analysis:";
-                worksheet.Cells[analysisStartRow, analysisStartColumn].Style.Font.Bold = true;
-                worksheet.Cells[analysisStartRow, analysisStartColumn].Style.Font.Size = 12;
-                analysisStartRow++;
-
-                var analysisLines = dataAnalysis.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-                foreach (var line in analysisLines)
-                {
-                    if (!string.IsNullOrWhiteSpace(line))
-                    {
-                        worksheet.Cells[analysisStartRow, analysisStartColumn].Value = line.Trim();
-                        worksheet.Cells[analysisStartRow, analysisStartColumn].Style.WrapText = true;
-                        // Set column width for analysis column to ensure text is readable
-                        worksheet.Column(analysisStartColumn).Width = 50;
-                        analysisStartRow++;
-                    }
-                }
+                // Write color-coded analysis
+                WriteColorCodedAnalysis(worksheet, dataAnalysis, analysisStartRow, analysisStartColumn);
             }
             catch (Exception ex)
             {
@@ -471,39 +470,118 @@ public class ChartService : IChartService
         return string.IsNullOrEmpty(sanitized) ? "Sheet1" : sanitized;
     }
 
-    public async Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, string userId, int tenantId, string? prompt = null)
+    public async Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, ChartCreationRequest request, string userId, int tenantId, string? prompt = null)
     {
-        // Convert data to a readable format for ChatGPT
+        // Filter to only include columns used in the chart (x-axis and y-axis columns)
+        var columnsToInclude = new List<string>();
+        
+        // Add X-axis column
+        if (request.Configuration.XAxisColumns != null && request.Configuration.XAxisColumns.Any())
+        {
+            columnsToInclude.AddRange(request.Configuration.XAxisColumns);
+        }
+        
+        // Add Y-axis columns
+        if (request.Configuration.YAxisColumns != null && request.Configuration.YAxisColumns.Any())
+        {
+            columnsToInclude.AddRange(request.Configuration.YAxisColumns);
+        }
+        
+        // Remove duplicates while preserving order
+        columnsToInclude = columnsToInclude.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        
+        if (!columnsToInclude.Any())
+        {
+            // Fallback: if no columns specified, use all columns (shouldn't happen but safety check)
+            columnsToInclude = headers.ToList();
+        }
+        
+        // Get indices of columns to include
+        var columnIndices = columnsToInclude
+            .Select(colName => headers.FindIndex(h => h.Equals(colName, StringComparison.OrdinalIgnoreCase)))
+            .Where(idx => idx >= 0)
+            .ToList();
+        
+        if (!columnIndices.Any())
+        {
+            return "Unable to analyze data: specified columns not found in the data.";
+        }
+        
+        // Filter data to only include the relevant columns
+        var filteredHeaders = columnIndices.Select(idx => headers[idx]).ToList();
+        var filteredData = data
+            .Select(row => columnIndices
+                .Where(idx => idx < row.Count)
+                .Select(idx => row[idx])
+                .ToList())
+            .Where(row => row.Count == columnIndices.Count) // Only include complete rows
+            .ToList();
+        
+        // Convert filtered data to a readable format for ChatGPT
         var dataText = new StringBuilder();
-        dataText.AppendLine("Data Headers:");
-        dataText.AppendLine(string.Join(", ", headers));
+        dataText.AppendLine("Data Headers (chart columns only):");
+        dataText.AppendLine(string.Join(", ", filteredHeaders));
+        dataText.AppendLine();
+        dataText.AppendLine("Note: This analysis includes only the columns used in the chart (x-axis and y-axis columns) and only the rows that match the applied filters.");
         dataText.AppendLine();
         
-        // Use ALL rows for analysis, but limit to 500 rows for ChatGPT API (to avoid token limits)
-        // If more than 500 rows, include summary statistics
-        int totalRows = data.Count;
+        // Use filtered data for analysis, but limit to 500 rows for ChatGPT API (to avoid token limits)
+        int totalRows = filteredData.Count;
         int rowsToInclude = Math.Min(500, totalRows);
         
-        dataText.AppendLine($"Data Rows: {totalRows} total rows (showing first {rowsToInclude} for detailed analysis):");
+        dataText.AppendLine($"Data Rows: {totalRows} total filtered rows (showing first {rowsToInclude} for detailed analysis):");
         
         for (int i = 0; i < rowsToInclude; i++)
         {
-            dataText.AppendLine(string.Join(", ", data[i]));
+            dataText.AppendLine(string.Join(", ", filteredData[i]));
         }
         
         if (totalRows > rowsToInclude)
         {
             dataText.AppendLine();
-            dataText.AppendLine($"Note: Showing first {rowsToInclude} of {totalRows} total rows. Analysis is based on this sample.");
+            dataText.AppendLine($"Note: Showing first {rowsToInclude} of {totalRows} total filtered rows. Analysis is based on this sample.");
         }
 
-        var analysisPrompt = prompt ?? @"Analyze this data and provide:
-1. Key trends and patterns
-2. Summary statistics (if numerical data is present)
-3. Notable insights or observations
-4. Any recommendations based on the data
+        var analysisPrompt = prompt ?? @"Provide a comprehensive data analysis with the following sections:
 
-Be concise but comprehensive. Use bullet points for clarity.";
+## EXECUTIVE SUMMARY
+A brief 2-3 sentence overview of the dataset and key findings.
+
+## DATA OVERVIEW
+- Total records analyzed
+- Date/time range (if applicable)
+- Key dimensions and metrics present
+- Data quality assessment (completeness, outliers, anomalies)
+
+## KEY TRENDS AND PATTERNS
+Identify and describe:
+- Temporal trends (if time-series data)
+- Seasonal patterns or cyclical behavior
+- Distribution patterns
+- Relationships between variables
+- Significant changes or shifts
+
+## STATISTICAL SUMMARY
+For numeric columns, provide:
+- Mean, median, mode
+- Min, max, range
+- Standard deviation and variance
+- Percentiles (25th, 50th, 75th, 90th, 95th if applicable)
+- Skewness and kurtosis if relevant
+
+## INSIGHTS AND OBSERVATIONS
+- Notable data points (highest, lowest, unusual values)
+- Correlations or relationships discovered
+- Anomalies or outliers and their significance
+- Patterns that stand out
+- Contextual observations
+
+## RECOMMENDATIONS
+- Actionable insights based on the analysis
+- Areas requiring attention or further investigation
+- Potential next steps or follow-up analysis
+
+Format each section clearly with section headers. Be detailed and specific, citing actual values from the data where relevant.";
 
         var fullPrompt = $"{analysisPrompt}\n\n{dataText}";
 
@@ -514,7 +592,7 @@ Be concise but comprehensive. Use bullet points for clarity.";
         catch
         {
             // Fallback to basic analysis if ChatGPT is unavailable
-            return GenerateBasicAnalysis(data, headers);
+            return GenerateBasicAnalysis(filteredData, filteredHeaders);
         }
     }
 
@@ -552,6 +630,109 @@ Be concise but comprehensive. Use bullet points for clarity.";
         }
 
         return analysis.ToString();
+    }
+
+    private void WriteColorCodedAnalysis(OfficeOpenXml.ExcelWorksheet worksheet, string analysis, int startRow, int startColumn)
+    {
+        // Define color scheme for different analysis sections
+        var sectionHeaderColor = System.Drawing.Color.FromArgb(68, 114, 196); // Blue
+        var summaryColor = System.Drawing.Color.FromArgb(237, 125, 49); // Orange
+        var statisticsColor = System.Drawing.Color.FromArgb(112, 173, 71); // Green
+        var insightsColor = System.Drawing.Color.FromArgb(255, 192, 0); // Yellow
+        var recommendationsColor = System.Drawing.Color.FromArgb(163, 73, 164); // Purple
+        var defaultColor = System.Drawing.Color.White; // White for regular text
+        
+        var analysisLines = analysis.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        int currentRow = startRow;
+        
+        // Title
+        worksheet.Cells[currentRow, startColumn].Value = "Data Analysis";
+        worksheet.Cells[currentRow, startColumn].Style.Font.Bold = true;
+        worksheet.Cells[currentRow, startColumn].Style.Font.Size = 14;
+        worksheet.Cells[currentRow, startColumn].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+        worksheet.Cells[currentRow, startColumn].Style.Fill.BackgroundColor.SetColor(sectionHeaderColor);
+        worksheet.Cells[currentRow, startColumn].Style.Font.Color.SetColor(System.Drawing.Color.White);
+        currentRow++;
+        
+        // Set column width (no wrapping, so we need adequate width)
+        worksheet.Column(startColumn).Width = 60;
+        
+        foreach (var line in analysisLines)
+        {
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedLine))
+                continue;
+            
+            // Determine color based on content
+            System.Drawing.Color backgroundColor = defaultColor;
+            System.Drawing.Color textColor = System.Drawing.Color.Black;
+            bool isBold = false;
+            int fontSize = 10;
+            
+            var upperLine = trimmedLine.ToUpperInvariant();
+            
+            // Section headers (lines starting with ##, or containing specific keywords)
+            if (trimmedLine.StartsWith("##") || 
+                (upperLine.Contains("EXECUTIVE SUMMARY") && upperLine.Length < 50) ||
+                (upperLine.Contains("DATA OVERVIEW") && upperLine.Length < 50) ||
+                (upperLine.Contains("KEY TRENDS") && upperLine.Length < 50) ||
+                (upperLine.Contains("STATISTICAL SUMMARY") && upperLine.Length < 50) ||
+                (upperLine.Contains("STATISTICS") && upperLine.Length < 50) ||
+                (upperLine.Contains("INSIGHTS") && upperLine.Length < 50) ||
+                (upperLine.Contains("OBSERVATIONS") && upperLine.Length < 50) ||
+                (upperLine.Contains("RECOMMENDATIONS") && upperLine.Length < 50) ||
+                (upperLine.Contains("SUMMARY") && upperLine.Length < 50 && !upperLine.Contains("EXECUTIVE")))
+            {
+                backgroundColor = sectionHeaderColor;
+                textColor = System.Drawing.Color.White;
+                isBold = true;
+                fontSize = 12;
+                // Remove markdown formatting
+                trimmedLine = trimmedLine.Replace("##", "").Trim();
+            }
+            else if (upperLine.Contains("MEAN") || upperLine.Contains("MEDIAN") || upperLine.Contains("AVERAGE") ||
+                     upperLine.Contains("STANDARD DEVIATION") || upperLine.Contains("MIN") || upperLine.Contains("MAX") ||
+                     upperLine.Contains("PERCENTILE") || upperLine.Contains("VARIANCE") || upperLine.Contains("SKEWNESS"))
+            {
+                backgroundColor = statisticsColor;
+                textColor = System.Drawing.Color.Black;
+                isBold = false;
+            }
+            else if (trimmedLine.StartsWith("•") || trimmedLine.StartsWith("-") || trimmedLine.StartsWith("*") ||
+                     (upperLine.Contains("INSIGHT") || upperLine.Contains("OBSERVE") || upperLine.Contains("PATTERN") ||
+                      upperLine.Contains("TREND") || upperLine.Contains("CORRELATION")))
+            {
+                backgroundColor = insightsColor;
+                textColor = System.Drawing.Color.Black;
+                isBold = false;
+            }
+            else if (upperLine.Contains("RECOMMEND") || upperLine.Contains("ACTION") || upperLine.Contains("SUGGEST") ||
+                     upperLine.Contains("SHOULD") || upperLine.Contains("CONSIDER"))
+            {
+                backgroundColor = recommendationsColor;
+                textColor = System.Drawing.Color.White;
+                isBold = false;
+            }
+            else if (trimmedLine.Length < 200 && (upperLine.Contains("TOTAL") || upperLine.Contains("COUNT") || 
+                     upperLine.Contains("RECORDS") || upperLine.Contains("RANGE") || upperLine.Contains("OVERVIEW")))
+            {
+                backgroundColor = summaryColor;
+                textColor = System.Drawing.Color.Black;
+                isBold = false;
+            }
+            
+            // Write the line
+            worksheet.Cells[currentRow, startColumn].Value = trimmedLine;
+            worksheet.Cells[currentRow, startColumn].Style.Font.Bold = isBold;
+            worksheet.Cells[currentRow, startColumn].Style.Font.Size = fontSize;
+            worksheet.Cells[currentRow, startColumn].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            worksheet.Cells[currentRow, startColumn].Style.Fill.BackgroundColor.SetColor(backgroundColor);
+            worksheet.Cells[currentRow, startColumn].Style.Font.Color.SetColor(textColor);
+            // No word wrapping - let text overflow to adjacent cells horizontally if needed
+            worksheet.Cells[currentRow, startColumn].Style.WrapText = false;
+            
+            currentRow++;
+        }
     }
 
     private int GetColumnIndex(List<string> headers, string? columnName)
@@ -597,5 +778,120 @@ Be concise but comprehensive. Use bullet points for clarity.";
             "bottom" => eLegendPosition.Bottom,
             _ => eLegendPosition.Right
         };
+    }
+
+    public async Task<int> SaveChartAsync(ChartCreationRequest request, string name, string? description, string userId, int tenantId, int? savedChartId = null)
+    {
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = false
+        };
+        var configurationJson = JsonSerializer.Serialize(request, jsonOptions);
+
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            SavedChart savedChart;
+            
+            if (savedChartId.HasValue && savedChartId.Value > 0)
+            {
+                // Update existing chart
+                savedChart = await _context.SavedCharts
+                    .FirstOrDefaultAsync(c => c.Id == savedChartId.Value && c.UserId == userId && c.TenantId == tenantId);
+                
+                if (savedChart == null)
+                    throw new InvalidOperationException("Saved chart not found.");
+                
+                savedChart.Name = name;
+                savedChart.Description = description;
+                savedChart.ConfigurationJson = configurationJson;
+                savedChart.UpdatedAt = DateTime.UtcNow;
+                savedChart.LastUsedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // Create new chart
+                savedChart = new SavedChart
+                {
+                    UserId = userId,
+                    TenantId = tenantId,
+                    Name = name,
+                    Description = description,
+                    ConfigurationJson = configurationJson,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    LastUsedAt = DateTime.UtcNow
+                };
+                _context.SavedCharts.Add(savedChart);
+            }
+
+            await _context.SaveChangesAsync();
+            return savedChart.Id;
+        });
+    }
+
+    public async Task<List<SavedChart>> GetSavedChartsAsync(string userId, int tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.SavedCharts
+                .Where(c => c.UserId == userId && c.TenantId == tenantId)
+                .OrderByDescending(c => c.LastUsedAt ?? c.UpdatedAt)
+                .ToListAsync();
+        });
+    }
+
+    public async Task<SavedChart?> GetSavedChartByIdAsync(int id, string userId, int tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var chart = await _context.SavedCharts
+                .FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId && c.TenantId == tenantId);
+            
+            if (chart != null)
+            {
+                // Update LastUsedAt
+                chart.LastUsedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+            
+            return chart;
+        });
+    }
+
+    public async Task<bool> DeleteSavedChartAsync(int id, string userId, int tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var chart = await _context.SavedCharts
+                .FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId && c.TenantId == tenantId);
+            
+            if (chart == null)
+                return false;
+
+            _context.SavedCharts.Remove(chart);
+            await _context.SaveChangesAsync();
+            return true;
+        });
+    }
+
+    public async Task<ChartCreationRequest?> LoadSavedChartAsync(int id, string userId, int tenantId)
+    {
+        var savedChart = await GetSavedChartByIdAsync(id, userId, tenantId);
+        if (savedChart == null)
+            return null;
+
+        try
+        {
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            return JsonSerializer.Deserialize<ChartCreationRequest>(savedChart.ConfigurationJson, jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deserializing saved chart: {ex.Message}");
+            return null;
+        }
     }
 }

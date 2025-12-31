@@ -22,7 +22,49 @@
     <div class="container-fluid mt-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>Create Chart from Data</h2>
-            <a href="/charts" class="btn btn-secondary">Back to Charts</a>
+            <div>
+                <a href="/charts" class="btn btn-secondary me-2">Back to Charts</a>
+            </div>
+        </div>
+
+        <!-- Load Saved Chart Section -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Load Saved Chart (Optional)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Select Saved Chart</label>
+                        @if (_savedCharts == null)
+                        {
+                            <div class="text-muted">Loading saved charts...</div>
+                        }
+                        else if (!_savedCharts.Any())
+                        {
+                            <div class="text-muted">No saved charts yet. Create and save a chart to load it later.</div>
+                        }
+                        else
+                        {
+                            <InputSelect class="form-select" @bind-Value="_selectedSavedChartId" @bind-Value:after="LoadSavedChartAsync">
+                                <option value="0">-- Select a saved chart to load --</option>
+                                @foreach (var chart in _savedCharts)
+                                {
+                                    <option value="@chart.Id">@chart.Name @(!string.IsNullOrEmpty(chart.Description) ? $" - {chart.Description}" : "")</option>
+                                }
+                            </InputSelect>
+                        }
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        @if (_currentSavedChartId.HasValue && _currentSavedChartId.Value > 0 && _savedCharts != null)
+                        {
+                            <button type="button" class="btn btn-danger w-100" @onclick="DeleteCurrentSavedChartAsync">
+                                <i class="bi bi-trash me-2"></i>Delete Saved Chart
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
 
         @if (!string.IsNullOrEmpty(errorMessage))
@@ -380,6 +422,39 @@
                                     }
                                 }
 
+                                <hr class="my-4" />
+
+                                <!-- Save Chart Section -->
+                                <h5 class="mb-3">Save Chart Configuration (Optional)</h5>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Chart Name</label>
+                                    <InputText class="form-control" @bind-Value="_chartName" placeholder="e.g., Monthly Sales Report" />
+                                    <small class="text-muted">Give your chart configuration a name to save it for later use</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Description (Optional)</label>
+                                    <InputTextArea class="form-control" @bind-Value="_chartDescription" rows="2" placeholder="Brief description of this chart configuration" />
+                                </div>
+                                <div class="mb-3">
+                                    <button type="button" class="btn btn-outline-primary" @onclick="SaveChartAsync" disabled="@(string.IsNullOrWhiteSpace(_chartName) || _isSavingChart)">
+                                        @if (_isSavingChart)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-save me-2"></i>
+                                        }
+                                        @(_currentSavedChartId.HasValue && _currentSavedChartId.Value > 0 ? "Update Saved Chart" : "Save Chart")
+                                    </button>
+                                    @if (_currentSavedChartId.HasValue && _currentSavedChartId.Value > 0)
+                                    {
+                                        <span class="ms-2 text-success">
+                                            <i class="bi bi-check-circle me-1"></i>Chart saved (ID: @_currentSavedChartId.Value)
+                                        </span>
+                                    }
+                                </div>
+
                                 <!-- Submit Button -->
                                 <div class="d-grid">
                                     <button type="submit" class="btn btn-primary btn-lg" disabled="@_isCreatingChart">
@@ -487,8 +562,14 @@
     private string? errorMessage;
     private bool _isLoading = true;
     private bool _isCreatingChart = false;
+    private bool _isSavingChart = false;
     private string? userId;
     private int? tenantId;
+    private List<SavedChart>? _savedCharts;
+    private int _selectedSavedChartId = 0;
+    private int? _currentSavedChartId = null;
+    private string _chartName = string.Empty;
+    private string? _chartDescription = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -512,7 +593,155 @@
         }
 
         await LoadDocuments();
+        await LoadSavedChartsAsync();
         _isLoading = false;
+    }
+
+    private async Task LoadSavedChartsAsync()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            _savedCharts = await ChartService.GetSavedChartsAsync(userId, tenantId.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading saved charts: {ex.Message}");
+        }
+    }
+
+    private async Task LoadSavedChartAsync()
+    {
+        if (_selectedSavedChartId == 0 || string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            _currentSavedChartId = null;
+            _chartName = string.Empty;
+            _chartDescription = string.Empty;
+            return;
+        }
+
+        try
+        {
+            var savedRequest = await ChartService.LoadSavedChartAsync(_selectedSavedChartId, userId, tenantId.Value);
+            if (savedRequest == null)
+            {
+                errorMessage = "Failed to load saved chart configuration.";
+                return;
+            }
+
+            var savedChart = _savedCharts?.FirstOrDefault(c => c.Id == _selectedSavedChartId);
+            if (savedChart != null)
+            {
+                _chartName = savedChart.Name;
+                _chartDescription = savedChart.Description;
+                _currentSavedChartId = savedChart.Id;
+            }
+
+            // Load the configuration
+            _request = savedRequest;
+
+            // Restore x-axis and y-axis selections from loaded configuration
+            _selectedXAxisColumn = _request.Configuration.XAxisColumns?.FirstOrDefault() ?? string.Empty;
+            _selectedYAxisColumns = _request.Configuration.YAxisColumns?.ToList() ?? new List<string>();
+
+            // Load document data if document is selected
+            if (_request.DocumentId > 0)
+            {
+                await OnDocumentSelectedAsync();
+            }
+
+            // Update UI
+            UpdatePreview();
+            StateHasChanged();
+
+            await NotificationService.ShowSuccessAsync("Chart configuration loaded successfully!");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading saved chart: {ex.Message}";
+        }
+    }
+
+    private async Task SaveChartAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_chartName))
+        {
+            errorMessage = "Please enter a chart name.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        // Validate that we have a valid configuration
+        if (_request.DocumentId == 0)
+        {
+            errorMessage = "Please select a document before saving.";
+            return;
+        }
+
+        _isSavingChart = true;
+        errorMessage = null;
+
+        try
+        {
+            // Update request with current selections before saving
+            _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
+            _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+
+            var savedChartId = await ChartService.SaveChartAsync(_request, _chartName, _chartDescription, userId, tenantId.Value, _currentSavedChartId);
+            _currentSavedChartId = savedChartId;
+
+            // Reload saved charts list
+            await LoadSavedChartsAsync();
+
+            await NotificationService.ShowSuccessAsync(_currentSavedChartId.HasValue && _selectedSavedChartId == savedChartId 
+                ? "Chart configuration updated successfully!" 
+                : "Chart configuration saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving chart: {ex.Message}";
+        }
+        finally
+        {
+            _isSavingChart = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteCurrentSavedChartAsync()
+    {
+        if (!_currentSavedChartId.HasValue || string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the saved chart '{_chartName}'?");
+            if (!confirmed)
+                return;
+
+            var deleted = await ChartService.DeleteSavedChartAsync(_currentSavedChartId.Value, userId, tenantId.Value);
+            if (deleted)
+            {
+                _currentSavedChartId = null;
+                _selectedSavedChartId = 0;
+                _chartName = string.Empty;
+                _chartDescription = string.Empty;
+                await LoadSavedChartsAsync();
+                await NotificationService.ShowSuccessAsync("Saved chart deleted successfully!");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting saved chart: {ex.Message}";
+        }
     }
 
     private async Task LoadDocuments()
@@ -908,6 +1137,21 @@
                 : "Chart created successfully! The file is downloading.";
             
             await NotificationService.ShowSuccessAsync(message);
+
+            // If chart is saved, update it with current configuration
+            if (_currentSavedChartId.HasValue && _currentSavedChartId.Value > 0 && !string.IsNullOrWhiteSpace(_chartName))
+            {
+                try
+                {
+                    _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
+                    _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+                    await ChartService.SaveChartAsync(_request, _chartName, _chartDescription, userId, tenantId.Value, _currentSavedChartId);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error auto-updating saved chart: {ex.Message}");
+                }
+            }
 
             // Optionally show data analysis (only for single charts)
             if (!string.IsNullOrEmpty(result.DataAnalysis) && result.ChartsCreated == 1)
