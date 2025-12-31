@@ -4,9 +4,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IFeatureFlagService FeatureFlagService
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@inject IConfiguration Configuration
 
 <div class="d-flex flex-column" style="height: 100vh; overflow: hidden; --logger-height: var(--logger-height, 0px);">
-    <TopMenuBar ProjectTitle="Blazor Bedrock" />
+    <TopMenuBar ProjectTitle="@_projectTitle" />
 
     <main class="flex-grow-1" style="overflow-y: auto; min-height: 0;">
         <div class="container-fluid mt-4">
@@ -26,6 +27,14 @@
 </div>
 
 @code {
+    private string _projectTitle = "Blazor Bedrock";
+
+    protected override void OnInitialized()
+    {
+        // Read ProjectTitle from configuration, with fallback to default
+        _projectTitle = Configuration["Application:ProjectTitle"] ?? "Blazor Bedrock";
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
