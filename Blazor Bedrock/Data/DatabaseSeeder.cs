@@ -25,8 +25,8 @@ public class DatabaseSeeder
         await SeedFeatureFlagsAsync();
         await SeedPermissionsAsync();
         await SeedAdminRoleAsync();
+        await SeedSubscriptionPlansAsync();
         await SeedDefaultTenantAsync();
-        await SeedAdminUserAsync();
         await SeedChatGptPromptsAsync();
     }
 
@@ -164,106 +164,81 @@ public class DatabaseSeeder
         }
     }
 
-    private async Task SeedAdminUserAsync()
+    private async Task SeedSubscriptionPlansAsync()
     {
-        var adminEmail = "admin@bedrock.local";
-        var adminUser = await _userManager.FindByEmailAsync(adminEmail);
-        var defaultTenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Name == "Default Organization");
-        
-        if (adminUser == null)
+        var plans = new[]
         {
-            adminUser = new ApplicationUser
+            new SubscriptionPlan
             {
-                UserName = adminEmail,
-                Email = adminEmail,
-                FirstName = "System",
-                LastName = "Administrator",
-                EmailConfirmed = true,
-                IsActive = true
-            };
+                Name = "Free",
+                Description = "Free tier with basic features",
+                IsActive = true,
+                MonthlyPrice = 0,
+                YearlyPrice = 0,
+                Currency = "USD",
+                MaxDocuments = 10,
+                MaxConversations = 5,
+                MaxQueriesPerConversation = 20,
+                MaxUsers = 1,
+                MaxCharts = 5,
+                CanUseChatGptAnalysis = false
+            },
+            new SubscriptionPlan
+            {
+                Name = "Basic",
+                Description = "Basic plan with essential features",
+                IsActive = true,
+                MonthlyPrice = 19.99m,
+                YearlyPrice = 199.99m, // ~17% savings (20*12 = 240, 199.99 saves ~40)
+                Currency = "USD",
+                MaxDocuments = 100,
+                MaxConversations = 50,
+                MaxQueriesPerConversation = 100,
+                MaxUsers = 5,
+                MaxCharts = 50,
+                CanUseChatGptAnalysis = true
+            },
+            new SubscriptionPlan
+            {
+                Name = "Professional",
+                Description = "Professional plan for growing teams",
+                IsActive = true,
+                MonthlyPrice = 49.99m,
+                YearlyPrice = 499.99m, // ~17% savings (50*12 = 600, 499.99 saves ~100)
+                Currency = "USD",
+                MaxDocuments = 1000,
+                MaxConversations = 500,
+                MaxQueriesPerConversation = 500,
+                MaxUsers = 25,
+                MaxCharts = 500,
+                CanUseChatGptAnalysis = true
+            },
+            new SubscriptionPlan
+            {
+                Name = "Enterprise",
+                Description = "Enterprise plan with unlimited features",
+                IsActive = true,
+                MonthlyPrice = 199.99m,
+                YearlyPrice = 1999.99m, // ~17% savings (200*12 = 2400, 1999.99 saves ~400)
+                Currency = "USD",
+                MaxDocuments = null, // unlimited
+                MaxConversations = null, // unlimited
+                MaxQueriesPerConversation = null, // unlimited
+                MaxUsers = null, // unlimited
+                MaxCharts = null, // unlimited
+                CanUseChatGptAnalysis = true
+            }
+        };
 
-            var result = await _userManager.CreateAsync(adminUser, "Admin@123!");
-            if (result.Succeeded)
-            {
-                var adminRole = await _roleManager.FindByNameAsync("Admin");
-                if (adminRole != null)
-                {
-                    // Add to Identity role system
-                    await _userManager.AddToRoleAsync(adminUser, adminRole.Name!);
-                    
-                    // Also assign to default tenant with Admin role (for tenant-scoped permissions)
-                    if (defaultTenant != null)
-                    {
-                        // Add user to tenant
-                        var userTenantExists = await _context.UserTenants
-                            .AnyAsync(ut => ut.UserId == adminUser.Id && ut.TenantId == defaultTenant.Id);
-                        
-                        if (!userTenantExists)
-                        {
-                            _context.UserTenants.Add(new UserTenant
-                            {
-                                UserId = adminUser.Id,
-                                TenantId = defaultTenant.Id,
-                                IsActive = true
-                            });
-                        }
-                        
-                        // Add Admin role to user for this tenant
-                        var userRoleExists = await _context.UserRoles
-                            .AnyAsync(ur => ur.UserId == adminUser.Id && ur.RoleId == adminRole.Id && ur.TenantId == defaultTenant.Id);
-                        
-                        if (!userRoleExists)
-                        {
-                            _context.UserRoles.Add(new UserRole
-                            {
-                                UserId = adminUser.Id,
-                                RoleId = adminRole.Id,
-                                TenantId = defaultTenant.Id
-                            });
-                        }
-                        
-                        await _context.SaveChangesAsync();
-                    }
-                }
-            }
-        }
-        else if (defaultTenant != null)
+        foreach (var plan in plans)
         {
-            // If admin user already exists, ensure they're assigned to default tenant with Admin role
-            var adminRole = await _roleManager.FindByNameAsync("Admin");
-            if (adminRole != null)
+            if (!await _context.SubscriptionPlans.AnyAsync(sp => sp.Name == plan.Name))
             {
-                // Add user to tenant if not already
-                var userTenantExists = await _context.UserTenants
-                    .AnyAsync(ut => ut.UserId == adminUser.Id && ut.TenantId == defaultTenant.Id);
-                
-                if (!userTenantExists)
-                {
-                    _context.UserTenants.Add(new UserTenant
-                    {
-                        UserId = adminUser.Id,
-                        TenantId = defaultTenant.Id,
-                        IsActive = true
-                    });
-                }
-                
-                // Add Admin role to user for this tenant if not already
-                var userRoleExists = await _context.UserRoles
-                    .AnyAsync(ur => ur.UserId == adminUser.Id && ur.RoleId == adminRole.Id && ur.TenantId == defaultTenant.Id);
-                
-                if (!userRoleExists)
-                {
-                    _context.UserRoles.Add(new UserRole
-                    {
-                        UserId = adminUser.Id,
-                        RoleId = adminRole.Id,
-                        TenantId = defaultTenant.Id
-                    });
-                }
-                
-                await _context.SaveChangesAsync();
+                _context.SubscriptionPlans.Add(plan);
             }
         }
+
+        await _context.SaveChangesAsync();
     }
 
     private async Task SeedChatGptPromptsAsync()

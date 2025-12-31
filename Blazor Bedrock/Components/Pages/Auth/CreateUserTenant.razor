@@ -1,11 +1,14 @@
-@page "/auth/create-user-tenant"
+@page "/auth/create-user"
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
 @attribute [AllowAnonymous]
 @inject IIdentityService IdentityService
 @inject UserManager<ApplicationUser> UserManager
+@inject ApplicationDbContext DbContext
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
 @rendermode InteractiveServer
@@ -150,6 +153,9 @@
                 return;
             }
 
+            // Check if this will be the first user - if so, make them MasterAdmin
+            var isFirstUser = !await DbContext.Users.AnyAsync();
+            
             var user = new ApplicationUser
             {
                 UserName = _userModel.Email,
@@ -157,13 +163,21 @@
                 FirstName = _userModel.FirstName,
                 LastName = _userModel.LastName,
                 EmailConfirmed = true,
-                IsActive = true
+                IsActive = true,
+                IsMasterAdmin = isFirstUser // First user is MasterAdmin
             };
 
             var result = await IdentityService.CreateUserAsync(user, _userModel.Password);
             
             if (result.Succeeded)
             {
+                // If this is the first user, save the IsMasterAdmin flag explicitly
+                if (isFirstUser)
+                {
+                    DbContext.Users.Update(user);
+                    await DbContext.SaveChangesAsync();
+                }
+                
                 _successMessage = $"Account created successfully! Redirecting to login...";
                 await NotificationService.ShowSuccessAsync("Account created successfully!");
                 

@@ -14,6 +14,11 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.Domain).HasMaxLength(255);
         builder.HasIndex(t => t.Name);
         builder.HasIndex(t => t.Domain);
+        
+        builder.HasOne(t => t.SubscriptionPlan)
+            .WithMany(sp => sp.Tenants)
+            .HasForeignKey(t => t.SubscriptionPlanId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

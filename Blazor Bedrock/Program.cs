@@ -176,6 +176,8 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IChartService, ChartService>();
 builder.Services.AddScoped<IMigrationService, MigrationService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
+builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.ISubscriptionPlanService, Blazor_Bedrock.Services.Subscription.SubscriptionPlanService>();
+builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.IOrganizationSubscriptionService, Blazor_Bedrock.Services.Subscription.OrganizationSubscriptionService>();
 
 // Data Protection for API key encryption
 builder.Services.AddDataProtection();
