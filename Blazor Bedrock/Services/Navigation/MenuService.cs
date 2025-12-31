@@ -297,6 +297,65 @@ public class MenuService : IMenuService
                 }
             }
 
+            // Charts Menu (Permission-based, requires tenant)
+            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Charts_Enabled"))
+            {
+                var chartsMenu = new MenuItem
+                {
+                    Title = "Charts",
+                    Icon = "bi bi-bar-chart",
+                    Children = new List<MenuItem>()
+                };
+
+                // If Admin, show all Charts menu items
+                if (isAdmin)
+                {
+                    chartsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Browse",
+                        Href = "/charts",
+                        Icon = "bi bi-folder"
+                    });
+                    chartsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Create",
+                        Href = "/charts/create",
+                        Icon = "bi bi-plus-circle"
+                    });
+                }
+                else
+                {
+                    // Non-admin users: check permissions
+                    var canViewCharts = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Charts.View");
+                    if (canViewCharts)
+                    {
+                        chartsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Browse",
+                            Href = "/charts",
+                            Icon = "bi bi-folder"
+                        });
+                    }
+
+                    var canCreateCharts = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Charts.Create");
+                    if (canCreateCharts)
+                    {
+                        chartsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Create",
+                            Href = "/charts/create",
+                            Icon = "bi bi-plus-circle"
+                        });
+                    }
+                }
+
+                // Only add Charts menu if it has children
+                if (chartsMenu.Children.Any())
+                {
+                    menuItems.Add(chartsMenu);
+                }
+            }
+
             // Stripe (if enabled, requires tenant)
             if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Stripe_Enabled"))
             {

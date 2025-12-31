@@ -43,7 +43,8 @@ public class DatabaseSeeder
             new FeatureFlag { Name = "Migrations_Enabled", Description = "Enable Migration Management", IsEnabled = true },
             new FeatureFlag { Name = "Logger_Enabled", Description = "Enable Application Logger", IsEnabled = true },
             new FeatureFlag { Name = "FeatureFlags_Enabled", Description = "Enable Feature Flags Management", IsEnabled = true },
-            new FeatureFlag { Name = "Documents_Enabled", Description = "Enable Document Management", IsEnabled = true }
+            new FeatureFlag { Name = "Documents_Enabled", Description = "Enable Document Management", IsEnabled = true },
+            new FeatureFlag { Name = "Charts_Enabled", Description = "Enable Chart Creation from Excel/CSV Data", IsEnabled = true }
         };
 
         foreach (var flag in flags)
@@ -82,7 +83,12 @@ public class DatabaseSeeder
             // Document Management Permissions
             new Permission { Name = "Documents.View", Description = "View documents list", Category = "Document Management" },
             new Permission { Name = "Documents.Upload", Description = "Upload documents", Category = "Document Management" },
-            new Permission { Name = "Documents.Delete", Description = "Delete documents", Category = "Document Management" }
+            new Permission { Name = "Documents.Delete", Description = "Delete documents", Category = "Document Management" },
+            
+            // Chart Management Permissions
+            new Permission { Name = "Charts.View", Description = "View charts list", Category = "Chart Management" },
+            new Permission { Name = "Charts.Create", Description = "Create charts from data", Category = "Chart Management" },
+            new Permission { Name = "Charts.Delete", Description = "Delete charts", Category = "Chart Management" }
         };
 
         foreach (var permission in permissions)

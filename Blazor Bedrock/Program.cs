@@ -11,6 +11,7 @@ using Blazor_Bedrock.Services.UserManagement;
 using Blazor_Bedrock.Services.RoleManagement;
 using Blazor_Bedrock.Services.ChatGpt;
 using Blazor_Bedrock.Services.Document;
+using Blazor_Bedrock.Services.Chart;
 using Blazor_Bedrock.Services.Migrations;
 using Blazor_Bedrock.Services.Stripe;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
@@ -172,6 +173,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IDocumentProcessor, DocumentProcessor>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IChartService, ChartService>();
 builder.Services.AddScoped<IMigrationService, MigrationService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 

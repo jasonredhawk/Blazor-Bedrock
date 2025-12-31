@@ -1,0 +1,505 @@
+@page "/charts/create"
+@using Blazor_Bedrock.Services.Chart
+@using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@inject IChartService ChartService
+@inject IDocumentService DocumentService
+@inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Create Chart - Blazor Bedrock</PageTitle>
+
+<FeatureGate FeatureName="Charts_Enabled">
+    <div class="container-fluid mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Create Chart from Data</h2>
+            <a href="/charts" class="btn btn-secondary">Back to Charts</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                @errorMessage
+                <button type="button" class="btn-close" @onclick="() => { errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="@_request" OnValidSubmit="CreateChartAsync">
+                <DataAnnotationsValidator />
+
+                <div class="row">
+                    <!-- Left Column: Configuration -->
+                    <div class="col-lg-6">
+                        <div class="card shadow mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Chart Configuration</h5>
+                            </div>
+                            <div class="card-body">
+                                <!-- Document Selection -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Select Document *</label>
+                                    @if (_availableDocuments == null)
+                                    {
+                                        <div class="text-center py-3">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <span class="ms-2">Loading documents...</span>
+                                        </div>
+                                    }
+                                    else if (!_availableDocuments.Any())
+                                    {
+                                        <div class="alert alert-warning">
+                                            No Excel or CSV documents found. <a href="/documents/upload">Upload a document</a> first.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <InputSelect class="form-select" @bind-Value="_request.DocumentId" @bind-Value:after="OnDocumentSelectedAsync">
+                                            <option value="0">-- Select a document --</option>
+                                            @foreach (var doc in _availableDocuments)
+                                            {
+                                                <option value="@doc.Id">@(doc.Title ?? doc.FileName)</option>
+                                            }
+                                        </InputSelect>
+                                    }
+                                </div>
+
+                                @if (_request.DocumentId > 0 && _sheetDataList != null && _sheetDataList.Any())
+                                {
+                                    <!-- Sheet Selection -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Select Sheet</label>
+                                        <InputSelect class="form-select" @bind-Value="_request.SheetName" @bind-Value:after="OnSheetSelectionChanged">
+                                            <option value="">-- Use first sheet --</option>
+                                            @foreach (var sheet in _sheetDataList)
+                                            {
+                                                <option value="@sheet.SheetName">@sheet.SheetName</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                }
+
+                                <!-- Chart Title -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Chart Title *</label>
+                                    <InputText class="form-control" @bind-Value="_request.Configuration.Title" />
+                                    <ValidationMessage For="@(() => _request.Configuration.Title)" />
+                                </div>
+
+                                <!-- Chart Type -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Chart Type *</label>
+                                    <InputSelect class="form-select" @bind-Value="_request.Configuration.ChartType">
+                                        <option value="@ChartType.LineMarkers">Line with Markers</option>
+                                        <option value="@ChartType.Line">Line</option>
+                                        <option value="@ChartType.ColumnClustered">Column (Clustered)</option>
+                                        <option value="@ChartType.ColumnStacked">Column (Stacked)</option>
+                                        <option value="@ChartType.BarClustered">Bar (Clustered)</option>
+                                        <option value="@ChartType.BarStacked">Bar (Stacked)</option>
+                                        <option value="@ChartType.Pie">Pie</option>
+                                        <option value="@ChartType.Scatter">Scatter</option>
+                                        <option value="@ChartType.Area">Area</option>
+                                        <option value="@ChartType.AreaStacked">Area (Stacked)</option>
+                                    </InputSelect>
+                                </div>
+
+                                @if (_headers != null && _headers.Any())
+                                {
+                                    <!-- X-Axis Column -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">X-Axis Column *</label>
+                                        <select class="form-select" @bind="_selectedXAxisColumn">
+                                            <option value="">-- Select column --</option>
+                                            @foreach (var header in _headers)
+                                            {
+                                                <option value="@header">@header</option>
+                                            }
+                                        </select>
+                                    </div>
+
+                                    <!-- Y-Axis Columns -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Y-Axis Columns *</label>
+                                        <small class="text-muted d-block mb-2">Select one or more columns for the Y-axis</small>
+                                        @foreach (var header in _headers)
+                                        {
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       id="yaxis-@header" 
+                                                       checked="@(_selectedYAxisColumns.Contains(header))"
+                                                       @onchange="@((ChangeEventArgs e) => ToggleYAxisColumn(header, e.Value?.ToString() == "True"))" />
+                                                <label class="form-check-label" for="yaxis-@header">
+                                                    @header
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <!-- Data Start Row -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Data Start Row</label>
+                                        <small class="text-muted d-block mb-2">Row number where data starts (1-based, leave empty to start from row 2)</small>
+                                        <InputNumber class="form-control" @bind-Value="_request.Configuration.DataStartRow" />
+                                    </div>
+                                }
+
+                                <!-- Axis Titles -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">X-Axis Title</label>
+                                    <InputText class="form-control" @bind-Value="_request.Configuration.XAxisTitle" placeholder="Leave empty for default" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Y-Axis Title</label>
+                                    <InputText class="form-control" @bind-Value="_request.Configuration.YAxisTitle" placeholder="Leave empty for default" />
+                                </div>
+
+                                <!-- Legend Options -->
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="_request.Configuration.ShowLegend" />
+                                        <label class="form-check-label fw-bold">Show Legend</label>
+                                    </div>
+                                </div>
+
+                                @if (_request.Configuration.ShowLegend)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Legend Position</label>
+                                        <InputSelect class="form-select" @bind-Value="_request.Configuration.LegendPosition">
+                                            <option value="Right">Right</option>
+                                            <option value="Left">Left</option>
+                                            <option value="Top">Top</option>
+                                            <option value="Bottom">Bottom</option>
+                                        </InputSelect>
+                                    </div>
+                                }
+
+                                <!-- Data Analysis -->
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="_request.Configuration.IncludeDataAnalysis" />
+                                        <label class="form-check-label fw-bold">Include Data Analysis</label>
+                                        <small class="text-muted d-block">Generate AI-powered analysis of the data (requires ChatGPT)</small>
+                                    </div>
+                                </div>
+
+                                <!-- Submit Button -->
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-primary btn-lg" disabled="@_isCreatingChart">
+                                        @if (_isCreatingChart)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        }
+                                        Create Chart
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Data Preview -->
+                    <div class="col-lg-6">
+                        <div class="card shadow mb-4">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">Data Preview</h5>
+                            </div>
+                            <div class="card-body">
+                                @if (_request.DocumentId == 0)
+                                {
+                                    <div class="text-center text-muted py-5">
+                                        <i class="bi bi-file-earmark-spreadsheet display-1"></i>
+                                        <p class="mt-3">Select a document to preview its data</p>
+                                    </div>
+                                }
+                                else if (_sheetDataList == null || !_sheetDataList.Any())
+                                {
+                                    <div class="text-center text-muted py-5">
+                                        <div class="spinner-border" role="status"></div>
+                                        <p class="mt-3">Loading data preview...</p>
+                                    </div>
+                                }
+                                else if (_currentSheetData == null || !_currentSheetData.Rows.Any())
+                                {
+                                    <div class="alert alert-warning">
+                                        No data found in the selected sheet.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                        <table class="table table-sm table-striped table-bordered">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    @foreach (var header in _headers)
+                                                    {
+                                                        <th>@header</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in _previewRows)
+                                                {
+                                                    <tr>
+                                                        @foreach (var cell in row)
+                                                        {
+                                                            <td>@cell</td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <small class="text-muted">Showing first 50 rows. Total rows: @_currentSheetData.Rows.Count</small>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </EditForm>
+        }
+    </div>
+</FeatureGate>
+
+@code {
+    private ChartCreationRequest _request = new();
+    private List<Document>? _availableDocuments;
+    private List<Infrastructure.ExternalApis.SheetData>? _sheetDataList;
+    private Infrastructure.ExternalApis.SheetData? _currentSheetData;
+    private List<string> _headers = new();
+    private List<List<string>> _previewRows = new();
+    private string _selectedXAxisColumn = string.Empty;
+    private List<string> _selectedYAxisColumns = new();
+    private string? errorMessage;
+    private bool _isLoading = true;
+    private bool _isCreatingChart = false;
+    private string? userId;
+    private int? tenantId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            _isLoading = false;
+            return;
+        }
+
+        // Check if Charts feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("Charts_Enabled");
+        if (!isEnabled)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        await LoadDocuments();
+        _isLoading = false;
+    }
+
+    private async Task LoadDocuments()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            var allDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+            
+            // Filter for Excel and CSV files only
+            _availableDocuments = allDocuments
+                .Where(d => 
+                    d.ContentType.Contains("spreadsheet") || 
+                    d.ContentType.Contains("excel") ||
+                    d.ContentType.Contains("csv") ||
+                    d.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                    d.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) ||
+                    d.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(d => d.UploadedAt)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading documents: {ex.Message}";
+        }
+    }
+
+    private async Task OnDocumentSelectedAsync()
+    {
+        if (_request.DocumentId == 0)
+        {
+            _sheetDataList = null;
+            _currentSheetData = null;
+            _headers.Clear();
+            _previewRows.Clear();
+            _selectedXAxisColumn = string.Empty;
+            _selectedYAxisColumns.Clear();
+            return;
+        }
+
+        try
+        {
+            _sheetDataList = await DocumentService.GetStructuredDataAsync(_request.DocumentId, userId!, tenantId!.Value);
+            
+            if (_sheetDataList != null && _sheetDataList.Any())
+            {
+                // Reset sheet name to first sheet
+                _request.SheetName = string.Empty;
+                
+                // Use first sheet
+                _currentSheetData = _sheetDataList.First();
+
+                UpdatePreview();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading document data: {ex.Message}";
+        }
+    }
+
+    private void OnSheetSelectionChanged()
+    {
+        if (_sheetDataList == null || !_sheetDataList.Any())
+            return;
+
+        // Update current sheet data based on selection
+        _currentSheetData = string.IsNullOrEmpty(_request.SheetName)
+            ? _sheetDataList.First()
+            : _sheetDataList.FirstOrDefault(s => s.SheetName.Equals(_request.SheetName, StringComparison.OrdinalIgnoreCase)) ?? _sheetDataList.First();
+
+        UpdatePreview();
+        
+        // Clear axis selections when sheet changes
+        _selectedXAxisColumn = string.Empty;
+        _selectedYAxisColumns.Clear();
+    }
+
+    private void UpdatePreview()
+    {
+        if (_currentSheetData == null || !_currentSheetData.Rows.Any())
+        {
+            _headers.Clear();
+            _previewRows.Clear();
+            return;
+        }
+
+        // First row is headers
+        _headers = _currentSheetData.Rows[0];
+
+        // Preview rows (limit to 50 for performance)
+        _previewRows = _currentSheetData.Rows
+            .Skip(1)
+            .Take(50)
+            .ToList();
+
+        // Update chart configuration defaults
+        if (_headers.Any() && string.IsNullOrEmpty(_request.Configuration.Title))
+        {
+            var doc = _availableDocuments?.FirstOrDefault(d => d.Id == _request.DocumentId);
+            _request.Configuration.Title = $"Chart from {doc?.Title ?? doc?.FileName ?? "Data"}";
+        }
+    }
+
+    private void ToggleYAxisColumn(string columnName, bool isSelected)
+    {
+        if (isSelected && !_selectedYAxisColumns.Contains(columnName))
+        {
+            _selectedYAxisColumns.Add(columnName);
+        }
+        else if (!isSelected)
+        {
+            _selectedYAxisColumns.Remove(columnName);
+        }
+    }
+
+    private async Task CreateChartAsync()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        // Validate selections
+        if (_request.DocumentId == 0)
+        {
+            errorMessage = "Please select a document.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_selectedXAxisColumn))
+        {
+            errorMessage = "Please select an X-axis column.";
+            return;
+        }
+
+        if (!_selectedYAxisColumns.Any())
+        {
+            errorMessage = "Please select at least one Y-axis column.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.Configuration.Title))
+        {
+            errorMessage = "Please enter a chart title.";
+            return;
+        }
+
+        // Update request with selected columns
+        _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
+        _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+
+        _isCreatingChart = true;
+        errorMessage = null;
+
+        try
+        {
+            var result = await ChartService.CreateChartAsync(_request, userId, tenantId.Value);
+
+            // Download the file
+            await JSRuntime.InvokeVoidAsync("downloadFile", result.FileName, Convert.ToBase64String(result.ExcelFileBytes), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+            await NotificationService.ShowSuccessAsync("Chart created successfully! The file is downloading.");
+
+            // Optionally show data analysis
+            if (!string.IsNullOrEmpty(result.DataAnalysis))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Data Analysis:\n\n{result.DataAnalysis}");
+            }
+
+            // Reset form or navigate
+            Navigation.NavigateTo("/charts");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error creating chart: {ex.Message}";
+        }
+        finally
+        {
+            _isCreatingChart = false;
+        }
+    }
+}
