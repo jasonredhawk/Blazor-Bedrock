@@ -71,6 +71,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Description</th>
+                                <th>Type</th>
                                 <th>System Prompt</th>
                                 <th>Created</th>
                                 <th>Actions</th>
@@ -82,6 +83,16 @@
                                 <tr>
                                     <td><strong>@prompt.Name</strong></td>
                                     <td>@(prompt.Description ?? "-")</td>
+                                    <td>
+                                        @if (prompt.PromptType == PromptType.Chart)
+                                        {
+                                            <span class="badge bg-info">Chart</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary">Chat</span>
+                                        }
+                                    </td>
                                     <td>
                                         @if (prompt.IsSystemPrompt)
                                         {
@@ -125,6 +136,7 @@
 
     private async Task LoadData()
     {
+        // Load all prompts (both Chat and Chart types) for management page
         prompts = await PromptService.GetAllPromptsAsync(currentTenantId);
         StateHasChanged();
     }

@@ -82,6 +82,14 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBdXRoXExvZ291dC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/ChartsList.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGFydHNcQ2hhcnRzTGlzdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/CreateChart.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGFydHNcQ3JlYXRlQ2hhcnQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/Chat.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XENoYXQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 

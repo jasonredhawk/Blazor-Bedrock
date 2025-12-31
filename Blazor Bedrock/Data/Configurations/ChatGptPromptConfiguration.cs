@@ -12,6 +12,9 @@ public class ChatGptPromptConfiguration : IEntityTypeConfiguration<ChatGptPrompt
         builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
         builder.Property(p => p.PromptText).HasColumnType("LONGTEXT");
         builder.Property(p => p.Description).HasMaxLength(1000);
+        builder.Property(p => p.PromptType)
+            .IsRequired()
+            .HasConversion<int>(); // Store as int in database
         
         builder.HasOne(p => p.Tenant)
             .WithMany(t => t.ChatGptPrompts)
@@ -19,6 +22,7 @@ public class ChatGptPromptConfiguration : IEntityTypeConfiguration<ChatGptPrompt
             .OnDelete(DeleteBehavior.SetNull);
             
         builder.HasIndex(p => p.TenantId);
+        builder.HasIndex(p => p.PromptType);
     }
 }
 

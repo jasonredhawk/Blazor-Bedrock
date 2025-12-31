@@ -13,6 +13,7 @@
 @inject IPromptService PromptService
 @inject ITenantService TenantService
 @inject IDocumentService DocumentService
+@inject Blazor_Bedrock.Infrastructure.ExternalApis.IDocumentProcessor DocumentProcessor
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -301,6 +302,51 @@
                                 }
                             }
                         </div>
+                        @* Sheet Selection UI for Excel files *@
+                        @if (_showSheetSelection && _availableSheetNames.Any())
+                        {
+                            <div class="mt-2 p-2 border rounded" style="background-color: #f8f9fa;">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <small class="fw-bold text-muted">
+                                        <i class="bi bi-table me-1"></i>Select Spreadsheet Sheets:
+                                    </small>
+                                    <div>
+                                        <button class="btn btn-sm btn-link p-0 me-2" @onclick="SelectAllSheets" style="font-size: 0.75rem;">
+                                            Select All
+                                        </button>
+                                        <button class="btn btn-sm btn-link p-0" @onclick="DeselectAllSheets" style="font-size: 0.75rem;">
+                                            Deselect All
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2" style="max-height: 120px; overflow-y: auto;">
+                                    @foreach (var sheetName in _availableSheetNames)
+                                    {
+                                        <label class="form-check-label d-flex align-items-center" style="cursor: pointer; font-size: 0.8rem;">
+                                            <input type="checkbox" 
+                                                   class="form-check-input me-1" 
+                                                   checked="@_selectedSheetNames.Contains(sheetName)"
+                                                   @onchange="@((ChangeEventArgs e) => ToggleSheetSelection(sheetName, (bool)(e.Value ?? false)))" />
+                                            <span>@sheetName</span>
+                                        </label>
+                                    }
+                                </div>
+                                @if (_selectedSheetNames.Any())
+                                {
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        @_selectedSheetNames.Count of @_availableSheetNames.Count sheet(s) selected
+                                    </small>
+                                }
+                                else
+                                {
+                                    <small class="text-warning d-block mt-2">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        No sheets selected. All sheets will be included.
+                                    </small>
+                                }
+                            </div>
+                        }
                     </div>
                     
                     @* Messages Area - Only scrollable area *@
@@ -407,6 +453,10 @@
     private List<Document> _availableDocuments = new();
     private int? _selectedDocumentId;
     private int? _conversationDocumentId; // Track which document is associated with the current conversation
+    private List<string> _availableSheetNames = new();
+    private HashSet<string> _selectedSheetNames = new();
+    private bool _isLoadingSheets = false;
+    private bool _showSheetSelection = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -425,8 +475,8 @@
                     _hasApiKey = true;
                     _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
                     
-                    // Load prompts
-                    _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId);
+                    // Load prompts (only Chat type for chat page)
+                    _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId, PromptType.Chat);
                     
                     // Load conversations
                     _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
@@ -655,11 +705,21 @@
             {
                 _selectedDocumentId = conversation.DocumentId.Value;
                 _conversationDocumentId = conversation.DocumentId.Value;
+                
+                // Load sheet names and restore selection
+                var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == conversation.DocumentId.Value);
+                if (selectedDoc != null)
+                {
+                    await LoadSheetNamesForDocument(selectedDoc);
+                }
             }
             else
             {
                 _selectedDocumentId = null;
                 _conversationDocumentId = null;
+                _showSheetSelection = false;
+                _availableSheetNames.Clear();
+                _selectedSheetNames.Clear();
             }
         }
         else
@@ -745,6 +805,13 @@
         {
             _selectedDocumentId = documentId;
             
+            // Check if this is an Excel file and load sheet names
+            var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == documentId);
+            if (selectedDoc != null)
+            {
+                await LoadSheetNamesForDocument(selectedDoc);
+            }
+            
             // If there's an active conversation, update it with the new document
             if (_currentConversationId.HasValue)
             {
@@ -754,7 +821,8 @@
                 
                 if (!string.IsNullOrEmpty(userId) && tenantId != null)
                 {
-                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, documentId);
+                    var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, documentId, selectedSheets);
                     _conversationDocumentId = documentId;
                     // Reload conversations to get updated data
                     _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
@@ -764,6 +832,9 @@
         else
         {
             _selectedDocumentId = null;
+            _showSheetSelection = false;
+            _availableSheetNames.Clear();
+            _selectedSheetNames.Clear();
             
             // Clear document from conversation if one exists
             if (_currentConversationId.HasValue)
@@ -774,7 +845,7 @@
                 
                 if (!string.IsNullOrEmpty(userId) && tenantId != null)
                 {
-                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null);
+                    await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null, null);
                     _conversationDocumentId = null;
                     // Reload conversations to get updated data
                     _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
@@ -784,9 +855,141 @@
         StateHasChanged();
     }
 
+    private async Task LoadSheetNamesForDocument(Document document)
+    {
+        var contentType = document.ContentType?.ToLower() ?? "";
+        var isExcel = contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
+                      document.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                      document.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase);
+        
+        if (isExcel)
+        {
+            _isLoadingSheets = true;
+            StateHasChanged();
+            
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                
+                if (!string.IsNullOrEmpty(userId) && tenantId != null)
+                {
+                    _availableSheetNames = await DocumentService.GetSheetNamesAsync(document.Id, userId, tenantId.Value);
+                    _showSheetSelection = _availableSheetNames.Any();
+                    
+                    // If we have a conversation with saved sheet selection, restore it
+                    if (_currentConversationId.HasValue)
+                    {
+                        var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                        if (conversation != null && !string.IsNullOrEmpty(conversation.SelectedSheetNames))
+                        {
+                            try
+                            {
+                                var savedSheets = System.Text.Json.JsonSerializer.Deserialize<List<string>>(conversation.SelectedSheetNames);
+                                if (savedSheets != null)
+                                {
+                                    _selectedSheetNames = new HashSet<string>(savedSheets.Where(s => _availableSheetNames.Contains(s)));
+                                }
+                            }
+                            catch
+                            {
+                                // If deserialization fails, select all sheets
+                                _selectedSheetNames = new HashSet<string>(_availableSheetNames);
+                            }
+                        }
+                        else
+                        {
+                            // No saved selection, select all by default
+                            _selectedSheetNames = new HashSet<string>(_availableSheetNames);
+                        }
+                    }
+                    else
+                    {
+                        // No conversation yet, select all by default
+                        _selectedSheetNames = new HashSet<string>(_availableSheetNames);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error loading sheet names: {ex.Message}");
+                _showSheetSelection = false;
+            }
+            finally
+            {
+                _isLoadingSheets = false;
+            }
+        }
+        else
+        {
+            _showSheetSelection = false;
+            _availableSheetNames.Clear();
+            _selectedSheetNames.Clear();
+        }
+    }
+
+    private void ToggleSheetSelection(string sheetName, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedSheetNames.Add(sheetName);
+        }
+        else
+        {
+            _selectedSheetNames.Remove(sheetName);
+        }
+        
+        // Update conversation if one exists
+        if (_currentConversationId.HasValue)
+        {
+            _ = UpdateSheetSelectionInConversation();
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task UpdateSheetSelectionInConversation()
+    {
+        if (!_currentConversationId.HasValue) return;
+        
+        try
+        {
+            var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+            await ChatGptService.UpdateConversationSheetSelectionAsync(_currentConversationId.Value, selectedSheets);
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error updating sheet selection: {ex.Message}");
+        }
+    }
+
+    private void SelectAllSheets()
+    {
+        _selectedSheetNames = new HashSet<string>(_availableSheetNames);
+        if (_currentConversationId.HasValue)
+        {
+            _ = UpdateSheetSelectionInConversation();
+        }
+        StateHasChanged();
+    }
+
+    private void DeselectAllSheets()
+    {
+        _selectedSheetNames.Clear();
+        if (_currentConversationId.HasValue)
+        {
+            _ = UpdateSheetSelectionInConversation();
+        }
+        StateHasChanged();
+    }
+
     private async Task ClearSelectedDocument()
     {
         _selectedDocumentId = null;
+        _showSheetSelection = false;
+        _availableSheetNames.Clear();
+        _selectedSheetNames.Clear();
         
         // Clear document from conversation if one exists
         if (_currentConversationId.HasValue)
@@ -797,7 +1000,7 @@
             
             if (!string.IsNullOrEmpty(userId) && tenantId != null)
             {
-                await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null);
+                await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, null, null);
                 _conversationDocumentId = null;
                 // Reload conversations to get updated data
                 _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
@@ -831,7 +1034,8 @@
 
             if (!_currentConversationId.HasValue)
             {
-                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, _selectedDocumentId);
+                var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, _selectedDocumentId, selectedSheets);
                 _currentConversationId = newConversation.Id;
                 _messages = new List<ChatGptMessage>();
                 // Track the current prompt and document for this new conversation
@@ -853,10 +1057,28 @@
                     // Update document ID if it has changed
                     if (currentConversation.DocumentId != _selectedDocumentId)
                     {
-                        await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, _selectedDocumentId);
+                        var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                        await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, _selectedDocumentId, selectedSheets);
                         _conversationDocumentId = _selectedDocumentId;
                         // Reload conversations to get updated data
                         _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    }
+                    // Update sheet selection if it has changed
+                    else if (_selectedDocumentId.HasValue)
+                    {
+                        var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                        var savedSheets = currentConversation.SelectedSheetNames != null 
+                            ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConversation.SelectedSheetNames) 
+                            : null;
+                        var sheetsChanged = (selectedSheets == null && savedSheets != null && savedSheets.Any()) ||
+                                          (selectedSheets != null && savedSheets == null) ||
+                                          (selectedSheets != null && savedSheets != null && 
+                                           !selectedSheets.SequenceEqual(savedSheets));
+                        if (sheetsChanged)
+                        {
+                            await ChatGptService.UpdateConversationSheetSelectionAsync(_currentConversationId.Value, selectedSheets);
+                            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                        }
                     }
                 }
             }
@@ -885,12 +1107,52 @@
             string? documentText = null;
             bool documentTruncated = false;
             
-            if (conversationDocument != null && !string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+            if (conversationDocument != null)
             {
-                if (conversationDocument.ExtractedText.Length > maxDocumentChars)
+                // Get selected sheets from conversation or current selection
+                List<string>? selectedSheets = null;
+                if (_currentConversationId.HasValue)
+                {
+                    var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                    if (conversation != null && !string.IsNullOrEmpty(conversation.SelectedSheetNames))
+                    {
+                        try
+                        {
+                            selectedSheets = System.Text.Json.JsonSerializer.Deserialize<List<string>>(conversation.SelectedSheetNames);
+                        }
+                        catch { }
+                    }
+                }
+                
+                // If no saved selection, use current selection
+                if (selectedSheets == null || !selectedSheets.Any())
+                {
+                    selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                }
+                
+                // Check if this is an Excel file
+                var contentType = conversationDocument.ContentType?.ToLower() ?? "";
+                var isExcel = contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
+                              conversationDocument.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                              conversationDocument.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase);
+                
+                if (isExcel && (selectedSheets != null && selectedSheets.Any()))
+                {
+                    // Extract text from selected sheets only
+                    using var fileStream = new MemoryStream(conversationDocument.FileContent);
+                    documentText = await DocumentProcessor.ExtractTextFromExcelAsync(fileStream, selectedSheets);
+                }
+                else if (!string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+                {
+                    // Use the stored extracted text for non-Excel files or when all sheets are selected
+                    documentText = conversationDocument.ExtractedText;
+                }
+                
+                // Truncate if needed
+                if (!string.IsNullOrWhiteSpace(documentText) && documentText.Length > maxDocumentChars)
                 {
                     // Try to truncate at a word boundary for better readability
-                    var truncated = conversationDocument.ExtractedText.Substring(0, maxDocumentChars);
+                    var truncated = documentText.Substring(0, maxDocumentChars);
                     var lastSpace = truncated.LastIndexOfAny(new[] { ' ', '\n', '\r', '\t' });
                     if (lastSpace > maxDocumentChars * 0.9) // Only use word boundary if it's not too far back
                     {
@@ -903,10 +1165,6 @@
                     // Notify user that document was truncated
                     await NotificationService.ShowWarningAsync(
                         $"The document '{conversationDocument.Title ?? conversationDocument.FileName}' is very large and has been truncated to fit within API limits. Only the first portion is included in the conversation.");
-                }
-                else
-                {
-                    documentText = conversationDocument.ExtractedText;
                 }
             }
             

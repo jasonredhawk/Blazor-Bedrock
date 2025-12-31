@@ -4,11 +4,14 @@
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject ITenantService TenantService
 @inject NavigationManager Navigation
 @inject IDatabaseSyncService DbSync
+@inject IFeatureFlagService FeatureFlagService
+@inject IConfiguration Configuration
 @rendermode InteractiveServer
 
 <PageTitle>Home</PageTitle>
@@ -16,10 +19,13 @@
 <div class="container-fluid mt-4">
     @if (_showOrganizationPrompt)
     {
-        <div class="card shadow mb-4">
-            <div class="card-body p-5">
-                <h4 class="mb-4">Welcome to Blazor Bedrock</h4>
-                <p class="mb-4">
+        <div class="card shadow-lg border-0 mb-4" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-body p-5 text-center">
+                <div class="mb-4">
+                    <i class="bi bi-building" style="font-size: 4rem; color: var(--bs-primary);"></i>
+                </div>
+                <h2 class="mb-4">Welcome to @_projectTitle</h2>
+                <p class="lead mb-4">
                     To get started, you need to create an organization. This will be your workspace where you can manage users, roles, and access all the application features.
                 </p>
                 <button class="btn btn-primary btn-lg mt-4" @onclick="NavigateToCreateOrganization">
@@ -31,50 +37,72 @@
     }
     else
     {
-        <h3 class="mb-4">Welcome to Blazor Bedrock</h3>
-        
-        @if (_authState != null)
+        <div class="mb-5">
+            <h1 class="display-5 fw-bold mb-3">Welcome to @_projectTitle</h1>
+            @if (_authState?.User?.Identity?.IsAuthenticated == true && _currentUser != null)
+            {
+                <p class="lead text-muted">
+                    Hello, <strong>@_currentUser.FirstName @_currentUser.LastName</strong>! 
+                    Here's what's available in your workspace.
+                </p>
+            }
+            else
+            {
+                <p class="lead text-muted">
+                    Discover the powerful features available in this application.
+                </p>
+            }
+        </div>
+
+        @if (_enabledFeatures.Any())
         {
-            <div class="alert @(_authState.User?.Identity?.IsAuthenticated == true ? "alert-success" : "alert-info") mb-4" role="alert">
-                <strong>Authentication Status:</strong> 
-                @if (_authState.User?.Identity?.IsAuthenticated == true)
+            <div class="row g-4 mb-5">
+                @foreach (var feature in _enabledFeatures)
                 {
-                    <text>Authenticated as @_authState.User.Identity.Name</text>
-                    @if (_currentUser != null)
-                    {
-                        <text> (@_currentUser.FirstName @_currentUser.LastName - @_currentUser.Email)</text>
-                    }
-                }
-                else
-                {
-                    <text>Not Authenticated</text>
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100 shadow-sm border-0 feature-card" style="transition: transform 0.2s, box-shadow 0.2s;">
+                            <div class="card-body p-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="feature-icon me-3" style="font-size: 2.5rem; color: var(--bs-primary);">
+                                        <i class="@feature.Icon"></i>
+                                    </div>
+                                    <h5 class="card-title mb-0">@feature.Title</h5>
+                                </div>
+                                <p class="card-text text-muted mb-3">@feature.Description</p>
+                                @if (!string.IsNullOrEmpty(feature.Link))
+                                {
+                                    <a href="@feature.Link" class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-arrow-right me-1"></i>
+                                        @feature.LinkText
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    </div>
                 }
             </div>
         }
-        
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-body">
-                        <h6 class="card-title">Multi-Tenant Application</h6>
-                        <p class="card-text">
-                            This is a comprehensive bedrock application with multi-tenant support, 
-                            user management, role-based permissions, and modular architecture.
-                        </p>
-                    </div>
-                </div>
+        else
+        {
+            <div class="alert alert-info" role="alert">
+                <i class="bi bi-info-circle me-2"></i>
+                No features are currently enabled. Contact your administrator to enable features.
             </div>
-            <div class="col-md-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-body">
-                        <h6 class="card-title">Features</h6>
-                        <ul class="card-text">
-                            <li>User & Role Management</li>
-                            <li>ChatGPT Integration</li>
-                            <li>Stripe Payments</li>
-                            <li>Migration Management</li>
-                            <li>Application Logger</li>
-                        </ul>
+        }
+
+        <div class="row mt-5">
+            <div class="col-md-12">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-4">
+                        <h5 class="card-title mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            About This Application
+                        </h5>
+                        <p class="card-text mb-0">
+                            This is a comprehensive multi-tenant application with role-based access control, 
+                            feature flags, and a modular architecture. Manage users, roles, documents, 
+                            and leverage AI-powered features all from one platform.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -82,13 +110,34 @@
     }
 </div>
 
+<style>
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+</style>
+
 @code {
     private AuthenticationState? _authState;
     private ApplicationUser? _currentUser;
     private bool _showOrganizationPrompt = false;
+    private string _projectTitle = "Blazor Bedrock";
+    private List<FeatureInfo> _enabledFeatures = new();
+
+    private class FeatureInfo
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+        public string? Link { get; set; }
+        public string LinkText { get; set; } = "Explore";
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        // Read project title from configuration
+        _projectTitle = Configuration["Application:ProjectTitle"] ?? "Blazor Bedrock";
+
         _authState = await AuthStateProvider.GetAuthenticationStateAsync();
         
         if (_authState.User?.Identity?.IsAuthenticated == true)
@@ -116,8 +165,200 @@
                 {
                     _showOrganizationPrompt = true;
                 }
+                else
+                {
+                    // Load enabled features
+                    await LoadEnabledFeaturesAsync(userId, currentTenantId.Value);
+                }
             }
         }
+        else
+        {
+            // For non-authenticated users, show public features
+            await LoadPublicFeaturesAsync();
+        }
+    }
+
+    private async Task LoadEnabledFeaturesAsync(string userId, int tenantId)
+    {
+        var features = new List<FeatureInfo>();
+
+        // Check if user is Admin
+        var isAdmin = false;
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user != null)
+        {
+            isAdmin = await UserManager.IsInRoleAsync(user, "Admin");
+        }
+
+        // ChatGPT Feature
+        if (await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "ChatGPT Integration",
+                Description = "Leverage AI-powered conversations and document analysis with customizable prompts.",
+                Icon = "bi bi-chat-dots",
+                Link = "/chatgpt/chat",
+                LinkText = "Start Chatting"
+            });
+        }
+
+        // Documents Feature
+        if (await FeatureFlagService.IsEnabledAsync("Documents_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Document Management",
+                Description = "Upload, organize, and analyze documents with AI-powered insights.",
+                Icon = "bi bi-file-earmark",
+                Link = "/documents",
+                LinkText = "Browse Documents"
+            });
+        }
+
+        // Charts Feature
+        if (await FeatureFlagService.IsEnabledAsync("Charts_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Data Visualization",
+                Description = "Create interactive charts and visualizations from Excel and CSV data.",
+                Icon = "bi bi-bar-chart",
+                Link = "/charts",
+                LinkText = "View Charts"
+            });
+        }
+
+        // Users Management (Admin or with permission)
+        if (await FeatureFlagService.IsEnabledAsync("Users_Enabled"))
+        {
+            if (isAdmin)
+            {
+                features.Add(new FeatureInfo
+                {
+                    Title = "User Management",
+                    Description = "Manage users, assign roles, and control access across your organization.",
+                    Icon = "bi bi-people",
+                    Link = "/admin/users",
+                    LinkText = "Manage Users"
+                });
+            }
+        }
+
+        // Roles Management (Admin or with permission)
+        if (await FeatureFlagService.IsEnabledAsync("Roles_Enabled"))
+        {
+            if (isAdmin)
+            {
+                features.Add(new FeatureInfo
+                {
+                    Title = "Role Management",
+                    Description = "Configure roles and permissions to control access to features and resources.",
+                    Icon = "bi bi-shield-check",
+                    Link = "/admin/roles",
+                    LinkText = "Manage Roles"
+                });
+            }
+        }
+
+        // Stripe Payments
+        if (await FeatureFlagService.IsEnabledAsync("Stripe_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Payment Management",
+                Description = "Manage subscriptions and payments through Stripe integration.",
+                Icon = "bi bi-credit-card",
+                Link = "/stripe/subscriptions",
+                LinkText = "View Payments"
+            });
+        }
+
+        // Feature Flags Management (Admin only)
+        if (isAdmin && await FeatureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Feature Settings",
+                Description = "Enable or disable application features to customize your workspace.",
+                Icon = "bi bi-toggle-on",
+                Link = "/admin/feature-settings",
+                LinkText = "Configure Features"
+            });
+        }
+
+        // Migrations (Admin only)
+        if (isAdmin && await FeatureFlagService.IsEnabledAsync("Migrations_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Database Migrations",
+                Description = "Manage database schema changes and migrations.",
+                Icon = "bi bi-database",
+                Link = "/superadmin/migrations",
+                LinkText = "Manage Migrations"
+            });
+        }
+
+        // Application Logger
+        if (await FeatureFlagService.IsEnabledAsync("Logger_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Application Logger",
+                Description = "Monitor application logs and debug issues in real-time.",
+                Icon = "bi bi-journal-text",
+                Link = null,
+                LinkText = "Available"
+            });
+        }
+
+        _enabledFeatures = features;
+    }
+
+    private async Task LoadPublicFeaturesAsync()
+    {
+        var features = new List<FeatureInfo>();
+
+        // Show public-facing features that don't require authentication
+        if (await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "ChatGPT Integration",
+                Description = "Leverage AI-powered conversations and document analysis.",
+                Icon = "bi bi-chat-dots",
+                Link = null,
+                LinkText = "Sign in to access"
+            });
+        }
+
+        if (await FeatureFlagService.IsEnabledAsync("Documents_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Document Management",
+                Description = "Upload, organize, and analyze documents with AI-powered insights.",
+                Icon = "bi bi-file-earmark",
+                Link = null,
+                LinkText = "Sign in to access"
+            });
+        }
+
+        if (await FeatureFlagService.IsEnabledAsync("Charts_Enabled"))
+        {
+            features.Add(new FeatureInfo
+            {
+                Title = "Data Visualization",
+                Description = "Create interactive charts and visualizations from your data.",
+                Icon = "bi bi-bar-chart",
+                Link = null,
+                LinkText = "Sign in to access"
+            });
+        }
+
+        _enabledFeatures = features;
     }
 
     private void NavigateToCreateOrganization()

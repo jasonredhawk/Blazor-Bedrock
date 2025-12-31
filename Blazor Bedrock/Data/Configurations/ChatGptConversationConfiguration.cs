@@ -11,6 +11,7 @@ public class ChatGptConversationConfiguration : IEntityTypeConfiguration<ChatGpt
         builder.HasKey(c => c.Id);
         builder.Property(c => c.Title).IsRequired().HasMaxLength(500);
         builder.Property(c => c.Model).HasMaxLength(100);
+        builder.Property(c => c.SelectedSheetNames).HasMaxLength(2000); // JSON array of sheet names
         
         builder.HasOne(c => c.User)
             .WithMany(u => u.ChatGptConversations)

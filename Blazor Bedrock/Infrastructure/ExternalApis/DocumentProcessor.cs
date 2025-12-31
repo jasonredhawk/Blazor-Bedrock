@@ -13,6 +13,7 @@ public interface IDocumentProcessor
 {
     Task<string> ExtractTextFromWordAsync(Stream fileStream);
     Task<string> ExtractTextFromExcelAsync(Stream fileStream);
+    Task<string> ExtractTextFromExcelAsync(Stream fileStream, List<string>? selectedSheetNames);
     Task<string> ExtractTextFromCsvAsync(Stream fileStream);
     Task<string> ExtractTextFromPdfAsync(Stream fileStream);
     Task<string> ExtractTextAsync(Stream fileStream, string contentType);
@@ -66,6 +67,59 @@ public class DocumentProcessor : IDocumentProcessor
         {
             foreach (var worksheet in package.Workbook.Worksheets)
             {
+                text.AppendLine($"Sheet: {worksheet.Name}");
+                
+                for (int row = worksheet.Dimension?.Start.Row ?? 1; 
+                     row <= (worksheet.Dimension?.End.Row ?? 1); 
+                     row++)
+                {
+                    var rowText = new List<string>();
+                    for (int col = worksheet.Dimension?.Start.Column ?? 1; 
+                         col <= (worksheet.Dimension?.End.Column ?? 1); 
+                         col++)
+                    {
+                        var cellValue = worksheet.Cells[row, col].Value?.ToString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(cellValue))
+                        {
+                            rowText.Add(cellValue);
+                        }
+                    }
+                    
+                    if (rowText.Any())
+                    {
+                        text.AppendLine(string.Join(" | ", rowText));
+                    }
+                }
+                
+                text.AppendLine();
+            }
+        }
+        
+        return text.ToString();
+    }
+
+    public async Task<string> ExtractTextFromExcelAsync(Stream fileStream, List<string>? selectedSheetNames)
+    {
+        // Reset stream position if needed
+        if (fileStream.CanSeek && fileStream.Position > 0)
+        {
+            fileStream.Position = 0;
+        }
+        
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        var text = new StringBuilder();
+        
+        using (var package = new ExcelPackage(fileStream))
+        {
+            foreach (var worksheet in package.Workbook.Worksheets)
+            {
+                // If selectedSheetNames is provided and not empty, only include selected sheets
+                // If selectedSheetNames is null or empty, include all sheets
+                if (selectedSheetNames != null && selectedSheetNames.Any() && !selectedSheetNames.Contains(worksheet.Name))
+                {
+                    continue; // Skip this sheet
+                }
+                
                 text.AppendLine($"Sheet: {worksheet.Name}");
                 
                 for (int row = worksheet.Dimension?.Start.Row ?? 1; 
@@ -189,7 +243,10 @@ public class DocumentProcessor : IDocumentProcessor
                 
                 if (worksheet.Dimension != null)
                 {
-                    var endRow = Math.Min(worksheet.Dimension.End.Row, worksheet.Dimension.Start.Row + maxRows - 1);
+                    // If maxRows is 0 or negative, get all rows; otherwise limit to maxRows
+                    var endRow = maxRows > 0 
+                        ? Math.Min(worksheet.Dimension.End.Row, worksheet.Dimension.Start.Row + maxRows - 1)
+                        : worksheet.Dimension.End.Row;
                     
                     for (int row = worksheet.Dimension.Start.Row; 
                          row <= endRow; 
@@ -232,7 +289,8 @@ public class DocumentProcessor : IDocumentProcessor
         {
             string? line;
             int rowCount = 0;
-            while ((line = await reader.ReadLineAsync()) != null && rowCount < maxRows)
+            // If maxRows is 0 or negative, get all rows; otherwise limit to maxRows
+            while ((line = await reader.ReadLineAsync()) != null && (maxRows <= 0 || rowCount < maxRows))
             {
                 var values = ParseCsvLine(line);
                 sheetData.Rows.Add(values);
