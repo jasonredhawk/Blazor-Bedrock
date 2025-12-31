@@ -3,6 +3,7 @@ using Blazor_Bedrock.Services.ChatGpt;
 using OfficeOpenXml;
 using OfficeOpenXml.Drawing.Chart;
 using System.Text;
+using System.Linq;
 
 namespace Blazor_Bedrock.Services.Chart;
 
@@ -30,7 +31,8 @@ public class ChartService : IChartService
         var documentFile = await _documentService.GetDocumentFileWithMetadataAsync(request.DocumentId, userId, tenantId);
         
         using var inputStream = new MemoryStream(documentFile.FileContent);
-        var sheetDataList = await _documentService.GetStructuredDataAsync(request.DocumentId, userId, tenantId);
+        // Get ALL rows (maxRows = 0 means no limit) for chart creation
+        var sheetDataList = await _documentService.GetStructuredDataAsync(request.DocumentId, userId, tenantId, maxRows: 0);
 
         // Find the sheet to use
         var sheetData = string.IsNullOrEmpty(request.SheetName)
@@ -42,9 +44,259 @@ public class ChartService : IChartService
             throw new InvalidOperationException("No data found in the selected sheet.");
         }
 
+        // Apply filters to data FIRST - this ensures only filtered data is used for charts
+        var filteredData = ApplyFilters(sheetData, request.Filters);
+        
+        // If creating multiple charts, use grouping logic
+        if (request.CreateMultipleCharts && !string.IsNullOrEmpty(request.GroupByColumn))
+        {
+            // Set grouping strategy if not already set
+            if (request.GroupingStrategy == ChartGroupingStrategy.None)
+            {
+                // Auto-detect strategy based on whether GroupByColumn matches a filter column
+                if (request.Filters.Any(f => f.IsActive && f.ColumnName.Equals(request.GroupByColumn, StringComparison.OrdinalIgnoreCase)))
+                {
+                    request.GroupingStrategy = ChartGroupingStrategy.ByFilterColumn;
+                }
+                else if (request.Configuration.XAxisColumns.Contains(request.GroupByColumn, StringComparer.OrdinalIgnoreCase))
+                {
+                    request.GroupingStrategy = ChartGroupingStrategy.ByXAxis;
+                }
+                else
+                {
+                    request.GroupingStrategy = ChartGroupingStrategy.Custom;
+                }
+            }
+            
+            return await CreateMultipleChartsAsync(filteredData, request, userId, tenantId);
+        }
+        
+        // Single chart creation (existing logic) - uses filtered data
+        return await CreateSingleChartAsync(filteredData, request, userId, tenantId);
+    }
+
+    private Infrastructure.ExternalApis.SheetData ApplyFilters(Infrastructure.ExternalApis.SheetData sheetData, List<ChartFilter> filters)
+    {
+        if (!filters.Any(f => f.IsActive))
+        {
+            return sheetData; // No filters, return original data
+        }
+
+        var headers = sheetData.Rows[0];
+        var filteredRows = new List<List<string>> { headers }; // Always include header
+
+        // Get active filters
+        var activeFilters = filters.Where(f => f.IsActive).ToList();
+
+        // Filter data rows
+        for (int rowIndex = 1; rowIndex < sheetData.Rows.Count; rowIndex++)
+        {
+            var row = sheetData.Rows[rowIndex];
+            bool includeRow = true;
+
+            // Check each active filter
+            foreach (var filter in activeFilters)
+            {
+                var columnIndex = headers.FindIndex(h => h.Equals(filter.ColumnName, StringComparison.OrdinalIgnoreCase));
+                if (columnIndex >= 0 && columnIndex < row.Count)
+                {
+                    var cellValue = row[columnIndex]?.Trim() ?? string.Empty;
+                    if (!filter.SelectedValues.Contains(cellValue, StringComparer.OrdinalIgnoreCase))
+                    {
+                        includeRow = false;
+                        break;
+                    }
+                }
+            }
+
+            if (includeRow)
+            {
+                filteredRows.Add(row);
+            }
+        }
+
+        return new Infrastructure.ExternalApis.SheetData
+        {
+            SheetName = sheetData.SheetName,
+            Rows = filteredRows
+        };
+    }
+
+    private async Task<ChartCreationResult> CreateSingleChartAsync(Infrastructure.ExternalApis.SheetData sheetData, ChartCreationRequest request, string userId, int tenantId)
+    {
         // Create Excel file with chart
         using var package = new ExcelPackage();
         var worksheet = package.Workbook.Worksheets.Add("Chart Output");
+        
+        var dataAnalysis = await CreateChartInWorksheetAsync(worksheet, sheetData, request, userId, tenantId, "Chart Output", package);
+        
+        // Generate filename
+        var document = await _documentService.GetDocumentByIdAsync(request.DocumentId, userId, tenantId);
+        var baseFileName = Path.GetFileNameWithoutExtension(document?.FileName ?? "chart");
+        var fileName = $"{baseFileName}_chart_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+
+        return new ChartCreationResult
+        {
+            ExcelFileBytes = package.GetAsByteArray(),
+            DataAnalysis = dataAnalysis,
+            FileName = fileName,
+            ChartsCreated = 1,
+            CreatedSheetNames = new List<string> { "Chart Output" }
+        };
+    }
+
+    private async Task<ChartCreationResult> CreateMultipleChartsAsync(Infrastructure.ExternalApis.SheetData sheetData, ChartCreationRequest request, string userId, int tenantId)
+    {
+        if (sheetData.Rows.Count <= 1)
+        {
+            throw new InvalidOperationException("No data available after filtering.");
+        }
+
+        var headers = sheetData.Rows[0];
+        string? groupByColumn = request.GroupByColumn;
+
+        // Determine grouping column based on strategy
+        if (string.IsNullOrEmpty(groupByColumn))
+        {
+            switch (request.GroupingStrategy)
+            {
+                case ChartGroupingStrategy.ByFilterColumn:
+                    // Use the first active filter column
+                    var firstFilter = request.Filters.FirstOrDefault(f => f.IsActive);
+                    if (firstFilter != null)
+                    {
+                        groupByColumn = firstFilter.ColumnName;
+                    }
+                    break;
+                case ChartGroupingStrategy.ByXAxis:
+                    // Use the first X-axis column
+                    if (request.Configuration.XAxisColumns.Any())
+                    {
+                        groupByColumn = request.Configuration.XAxisColumns.First();
+                    }
+                    break;
+                case ChartGroupingStrategy.Custom:
+                    // Use explicitly specified GroupByColumn
+                    break;
+                default:
+                    // Fallback: use first filter column or first X-axis column
+                    var fallbackFilter = request.Filters.FirstOrDefault(f => f.IsActive);
+                    if (fallbackFilter != null)
+                    {
+                        groupByColumn = fallbackFilter.ColumnName;
+                    }
+                    else if (request.Configuration.XAxisColumns.Any())
+                    {
+                        groupByColumn = request.Configuration.XAxisColumns.First();
+                    }
+                    break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(groupByColumn))
+        {
+            throw new InvalidOperationException("Grouping column must be specified for multiple chart creation. Please select a column to group by.");
+        }
+
+        var groupByColumnIndex = headers.FindIndex(h => h.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase));
+        if (groupByColumnIndex < 0)
+        {
+            throw new InvalidOperationException($"Grouping column '{groupByColumn}' not found in data.");
+        }
+
+        // Group data by the specified column
+        // Note: sheetData is already filtered, so we're only grouping the filtered data
+        var groupedData = new Dictionary<string, List<List<string>>>();
+        
+        // Add header row to each group as we create them
+        for (int rowIndex = 1; rowIndex < sheetData.Rows.Count; rowIndex++)
+        {
+            var row = sheetData.Rows[rowIndex];
+            if (groupByColumnIndex < row.Count)
+            {
+                var groupKey = row[groupByColumnIndex]?.Trim() ?? "Unknown";
+                if (!groupedData.ContainsKey(groupKey))
+                {
+                    groupedData[groupKey] = new List<List<string>> { headers };
+                }
+                groupedData[groupKey].Add(row);
+            }
+        }
+
+        // Remove any groups that only have headers (no data)
+        var groupsToRemove = groupedData.Where(g => g.Value.Count <= 1).Select(g => g.Key).ToList();
+        foreach (var key in groupsToRemove)
+        {
+            groupedData.Remove(key);
+        }
+
+        if (!groupedData.Any())
+        {
+            throw new InvalidOperationException("No data groups found after filtering and grouping. Please check your filters and grouping column.");
+        }
+
+        // Create Excel package with multiple worksheets
+        using var package = new ExcelPackage();
+        var createdSheets = new List<string>();
+
+        foreach (var group in groupedData)
+        {
+            if (group.Value.Count <= 1) continue; // Skip groups with only header
+
+            var groupKey = group.Key;
+            var groupSheetData = new Infrastructure.ExternalApis.SheetData
+            {
+                SheetName = groupKey,
+                Rows = group.Value
+            };
+
+            // Create worksheet name (Excel has 31 character limit)
+            var sheetName = SanitizeSheetName(groupKey);
+            if (string.IsNullOrEmpty(sheetName))
+            {
+                sheetName = $"Chart {createdSheets.Count + 1}";
+            }
+
+            // Ensure uniqueness
+            int suffix = 1;
+            string originalSheetName = sheetName;
+            while (package.Workbook.Worksheets.Any(ws => ws.Name == sheetName))
+            {
+                sheetName = $"{originalSheetName.Substring(0, Math.Min(originalSheetName.Length, 28))}_{suffix}";
+                suffix++;
+            }
+
+            var worksheet = package.Workbook.Worksheets.Add(sheetName);
+            createdSheets.Add(sheetName);
+
+            // Create chart title with group information
+            var originalTitle = request.Configuration.Title;
+            request.Configuration.Title = string.IsNullOrEmpty(originalTitle)
+                ? $"{groupKey}"
+                : $"{originalTitle} - {groupKey}";
+
+            await CreateChartInWorksheetAsync(worksheet, groupSheetData, request, userId, tenantId, sheetName, package);
+
+            // Restore original title for next iteration
+            request.Configuration.Title = originalTitle;
+        }
+
+        // Generate filename
+        var document = await _documentService.GetDocumentByIdAsync(request.DocumentId, userId, tenantId);
+        var baseFileName = Path.GetFileNameWithoutExtension(document?.FileName ?? "chart");
+        var fileName = $"{baseFileName}_charts_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+
+        return new ChartCreationResult
+        {
+            ExcelFileBytes = package.GetAsByteArray(),
+            FileName = fileName,
+            ChartsCreated = createdSheets.Count,
+            CreatedSheetNames = createdSheets
+        };
+    }
+
+    private async Task<string?> CreateChartInWorksheetAsync(OfficeOpenXml.ExcelWorksheet worksheet, Infrastructure.ExternalApis.SheetData sheetData, ChartCreationRequest request, string userId, int tenantId, string sheetName, ExcelPackage? package = null)
+    {
 
         // Copy original data to the new worksheet
         int currentRow = 1;
@@ -90,10 +342,16 @@ public class ChartService : IChartService
 
         int dataEndRow = currentRow - 1;
         int dataStartRowInWorksheet = 2; // Row 1 is header, data starts at row 2
-        int chartStartRow = currentRow + 2;
+        
+        // Calculate the last column used by data
+        var headerRow = sheetData.Rows[0];
+        int lastDataColumn = headerRow.Count; // 1-based column number
+        
+        // Position chart to the right of the data (leave 2 columns gap)
+        int chartStartColumn = lastDataColumn + 2; // 1-based, but SetPosition uses 0-based, so subtract 1
+        int chartStartRow = 1; // Start at row 1 to align with header
 
         // Get column indices for X and Y axes (header is at index 0)
-        var headerRow = sheetData.Rows[0];
         var xAxisColumnIndex = GetColumnIndex(headerRow, request.Configuration.XAxisColumns.FirstOrDefault());
         var yAxisColumnIndices = request.Configuration.YAxisColumns
             .Select(colName => GetColumnIndex(headerRow, colName))
@@ -113,9 +371,13 @@ public class ChartService : IChartService
         chart.Title.Font.Size = 14;
         chart.Title.Font.Bold = true;
 
-        // Set chart position
-        chart.SetPosition(chartStartRow, 0, 0, 0);
+        // Set chart position to the right of data (SetPosition uses 0-based indices)
+        chart.SetPosition(chartStartRow - 1, 0, chartStartColumn - 1, 0);
         chart.SetSize(800, 400);
+        
+        // Calculate approximate chart width in columns (800 pixels / ~64 pixels per column = ~12-13 columns)
+        // We'll use this to position the analysis
+        int chartWidthColumns = 13;
 
         // Add X-axis data (categories) - data starts at row 2 (row 1 is header)
         var xAxisRange = worksheet.Cells[dataStartRowInWorksheet, xAxisColumnIndex + 1, dataEndRow, xAxisColumnIndex + 1];
@@ -147,29 +409,34 @@ public class ChartService : IChartService
         chart.Legend.Position = ConvertLegendPosition(request.Configuration.LegendPosition ?? "Right");
         chart.Legend.Font.Size = 10;
 
-        // Add data analysis if requested
+        // Add data analysis if requested (for both single and multiple charts)
         string? dataAnalysis = null;
         if (request.Configuration.IncludeDataAnalysis && sheetData.Rows.Count > 1)
         {
             try
             {
+                // Use ALL rows for analysis (not just preview)
                 dataAnalysis = await AnalyzeDataAsync(sheetData.Rows.Skip(1).ToList(), headerRow, userId, tenantId);
                 
-                // Add analysis to worksheet
-                int analysisRow = chartStartRow + 25;
-                worksheet.Cells[analysisRow, 1].Value = "Data Analysis:";
-                worksheet.Cells[analysisRow, 1].Style.Font.Bold = true;
-                worksheet.Cells[analysisRow, 1].Style.Font.Size = 12;
-                analysisRow++;
+                // Position analysis to the right of the chart (leave 2 columns gap)
+                int analysisStartColumn = chartStartColumn + chartWidthColumns + 2; // 1-based column
+                int analysisStartRow = 1; // Start at row 1 to align with header
+                
+                worksheet.Cells[analysisStartRow, analysisStartColumn].Value = "Data Analysis:";
+                worksheet.Cells[analysisStartRow, analysisStartColumn].Style.Font.Bold = true;
+                worksheet.Cells[analysisStartRow, analysisStartColumn].Style.Font.Size = 12;
+                analysisStartRow++;
 
                 var analysisLines = dataAnalysis.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
                 foreach (var line in analysisLines)
                 {
                     if (!string.IsNullOrWhiteSpace(line))
                     {
-                        worksheet.Cells[analysisRow, 1].Value = line.Trim();
-                        worksheet.Cells[analysisRow, 1].Style.WrapText = true;
-                        analysisRow++;
+                        worksheet.Cells[analysisStartRow, analysisStartColumn].Value = line.Trim();
+                        worksheet.Cells[analysisStartRow, analysisStartColumn].Style.WrapText = true;
+                        // Set column width for analysis column to ensure text is readable
+                        worksheet.Column(analysisStartColumn).Width = 50;
+                        analysisStartRow++;
                     }
                 }
             }
@@ -183,20 +450,25 @@ public class ChartService : IChartService
         // Auto-fit columns
         worksheet.Cells.AutoFitColumns();
 
-        // Generate filename
-        var document = await _documentService.GetDocumentByIdAsync(request.DocumentId, userId, tenantId);
-        var baseFileName = Path.GetFileNameWithoutExtension(document?.FileName ?? "chart");
-        var fileName = $"{baseFileName}_chart_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+        // Return data analysis for caller to use
+        return dataAnalysis;
+    }
 
-        // Save to byte array
-        var result = new ChartCreationResult
+    private string SanitizeSheetName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return "Sheet1";
+
+        // Excel sheet name restrictions: max 31 chars, no : \ / ? * [ ]
+        var invalidChars = new[] { ':', '\\', '/', '?', '*', '[', ']' };
+        var sanitized = new string(name.Where(c => !invalidChars.Contains(c)).ToArray());
+
+        if (sanitized.Length > 31)
         {
-            ExcelFileBytes = package.GetAsByteArray(),
-            DataAnalysis = dataAnalysis,
-            FileName = fileName
-        };
+            sanitized = sanitized.Substring(0, 31);
+        }
 
-        return result;
+        return string.IsNullOrEmpty(sanitized) ? "Sheet1" : sanitized;
     }
 
     public async Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, string userId, int tenantId, string? prompt = null)
@@ -206,12 +478,23 @@ public class ChartService : IChartService
         dataText.AppendLine("Data Headers:");
         dataText.AppendLine(string.Join(", ", headers));
         dataText.AppendLine();
-        dataText.AppendLine("Data Rows (first 100 rows):");
         
-        int rowCount = Math.Min(100, data.Count);
-        for (int i = 0; i < rowCount; i++)
+        // Use ALL rows for analysis, but limit to 500 rows for ChatGPT API (to avoid token limits)
+        // If more than 500 rows, include summary statistics
+        int totalRows = data.Count;
+        int rowsToInclude = Math.Min(500, totalRows);
+        
+        dataText.AppendLine($"Data Rows: {totalRows} total rows (showing first {rowsToInclude} for detailed analysis):");
+        
+        for (int i = 0; i < rowsToInclude; i++)
         {
             dataText.AppendLine(string.Join(", ", data[i]));
+        }
+        
+        if (totalRows > rowsToInclude)
+        {
+            dataText.AppendLine();
+            dataText.AppendLine($"Note: Showing first {rowsToInclude} of {totalRows} total rows. Analysis is based on this sample.");
         }
 
         var analysisPrompt = prompt ?? @"Analyze this data and provide:

@@ -189,7 +189,10 @@ public class DocumentProcessor : IDocumentProcessor
                 
                 if (worksheet.Dimension != null)
                 {
-                    var endRow = Math.Min(worksheet.Dimension.End.Row, worksheet.Dimension.Start.Row + maxRows - 1);
+                    // If maxRows is 0 or negative, get all rows; otherwise limit to maxRows
+                    var endRow = maxRows > 0 
+                        ? Math.Min(worksheet.Dimension.End.Row, worksheet.Dimension.Start.Row + maxRows - 1)
+                        : worksheet.Dimension.End.Row;
                     
                     for (int row = worksheet.Dimension.Start.Row; 
                          row <= endRow; 
@@ -232,7 +235,8 @@ public class DocumentProcessor : IDocumentProcessor
         {
             string? line;
             int rowCount = 0;
-            while ((line = await reader.ReadLineAsync()) != null && rowCount < maxRows)
+            // If maxRows is 0 or negative, get all rows; otherwise limit to maxRows
+            while ((line = await reader.ReadLineAsync()) != null && (maxRows <= 0 || rowCount < maxRows))
             {
                 var values = ParseCsvLine(line);
                 sheetData.Rows.Add(values);

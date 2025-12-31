@@ -14,6 +14,21 @@ public enum ChartType
     AreaStacked
 }
 
+public enum ChartGroupingStrategy
+{
+    None, // Single chart, no grouping
+    ByFilterColumn, // Group by one of the filter columns (e.g., by station, by concentration)
+    ByXAxis, // Group by X-axis values
+    Custom // User-defined grouping
+}
+
+public class ChartFilter
+{
+    public string ColumnName { get; set; } = string.Empty;
+    public List<string> SelectedValues { get; set; } = new();
+    public bool IsActive => SelectedValues.Any();
+}
+
 public class ChartConfiguration
 {
     public string Title { get; set; } = string.Empty;
@@ -33,6 +48,12 @@ public class ChartCreationRequest
     public int DocumentId { get; set; }
     public string? SheetName { get; set; }
     public ChartConfiguration Configuration { get; set; } = new();
+    
+    // Advanced filtering and grouping
+    public List<ChartFilter> Filters { get; set; } = new();
+    public ChartGroupingStrategy GroupingStrategy { get; set; } = ChartGroupingStrategy.None;
+    public string? GroupByColumn { get; set; } // Column to group by when GroupingStrategy is ByFilterColumn
+    public bool CreateMultipleCharts { get; set; } = false;
 }
 
 public class ChartCreationResult
@@ -40,4 +61,6 @@ public class ChartCreationResult
     public byte[] ExcelFileBytes { get; set; } = Array.Empty<byte>();
     public string? DataAnalysis { get; set; }
     public string FileName { get; set; } = "chart.xlsx";
+    public int ChartsCreated { get; set; } = 1;
+    public List<string> CreatedSheetNames { get; set; } = new();
 }

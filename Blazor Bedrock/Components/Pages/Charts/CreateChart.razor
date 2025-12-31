@@ -202,6 +202,184 @@
                                     </div>
                                 </div>
 
+                                <hr class="my-4" />
+
+                                <!-- Advanced: Data Filtering -->
+                                <h5 class="mb-3">Data Filtering (Optional)</h5>
+                                <p class="text-muted small mb-3">Filter your data by selecting specific values from columns (e.g., specific stations or concentrations)</p>
+
+                                @if (_headers != null && _headers.Any())
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Add Filter Column</label>
+                                        <div class="input-group">
+                                            <select class="form-select" @bind="_selectedFilterColumn">
+                                                <option value="">-- Select column to filter --</option>
+                                                @foreach (var header in _headers)
+                                                {
+                                                    @if (!_request.Filters.Any(f => f.ColumnName.Equals(header, StringComparison.OrdinalIgnoreCase)))
+                                                    {
+                                                        <option value="@header">@header</option>
+                                                    }
+                                                }
+                                            </select>
+                                            <button type="button" class="btn btn-outline-primary" @onclick="AddFilter" disabled="@string.IsNullOrEmpty(_selectedFilterColumn)">
+                                                <i class="bi bi-plus-circle me-1"></i>Add Filter
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    @foreach (var filter in _request.Filters)
+                                    {
+                                        var searchTerm = _filterSearchTerms.ContainsKey(filter.ColumnName) ? _filterSearchTerms[filter.ColumnName] : string.Empty;
+                                        var visibleValues = GetFilteredValues(filter.ColumnName, searchTerm);
+                                        var visibleSelectedCount = visibleValues.Count(v => filter.SelectedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+                                        var allVisibleSelected = visibleValues.Any() && visibleValues.All(v => filter.SelectedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+                                        
+                                        <div class="card mb-3">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0">Filter: @filter.ColumnName</h6>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveFilter(filter)">
+                                                        <i class="bi bi-x-circle"></i> Remove
+                                                    </button>
+                                                </div>
+                                                <div class="small text-muted mb-2">Select values to include (leave empty to include all):</div>
+                                                
+                                                <!-- Search bar for filtering visible options -->
+                                                <div class="mb-2">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                                        <input type="text" 
+                                                               class="form-control" 
+                                                               placeholder="Search to filter options..." 
+                                                               value="@searchTerm"
+                                                               @oninput="@((ChangeEventArgs e) => UpdateFilterSearch(filter.ColumnName, e.Value?.ToString() ?? string.Empty))" />
+                                                        @if (!string.IsNullOrEmpty(searchTerm))
+                                                        {
+                                                            <button type="button" class="btn btn-outline-secondary" @onclick="() => ClearFilterSearch(filter.ColumnName)">
+                                                                <i class="bi bi-x"></i>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Select All / Deselect All buttons -->
+                                                @if (visibleValues.Any())
+                                                {
+                                                    <div class="mb-2 d-flex gap-2">
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-outline-primary" 
+                                                                @onclick="() => SelectAllVisible(filter, visibleValues)"
+                                                                disabled="@allVisibleSelected">
+                                                            <i class="bi bi-check-square me-1"></i>Select All (@visibleValues.Count visible)
+                                                        </button>
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-outline-secondary" 
+                                                                @onclick="() => DeselectAllVisible(filter, visibleValues)"
+                                                                disabled="@(visibleSelectedCount == 0)">
+                                                            <i class="bi bi-square me-1"></i>Deselect All Visible
+                                                        </button>
+                                                    </div>
+                                                }
+                                                
+                                                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                                                    @if (_filterValues.ContainsKey(filter.ColumnName))
+                                                    {
+                                                        @if (visibleValues.Any())
+                                                        {
+                                                            @foreach (var value in visibleValues)
+                                                            {
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" 
+                                                                           id="filter-@filter.ColumnName-@value" 
+                                                                           checked="@filter.SelectedValues.Contains(value, StringComparer.OrdinalIgnoreCase)"
+                                                                           @onchange="@((ChangeEventArgs e) => ToggleFilterValue(filter, value, e.Value?.ToString() == "True"))" />
+                                                                    <label class="form-check-label" for="filter-@filter.ColumnName-@value">
+                                                                        @value
+                                                                    </label>
+                                                                </div>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text-muted">
+                                                                @if (!string.IsNullOrEmpty(searchTerm))
+                                                                {
+                                                                    <span>No values match "@searchTerm"</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span>No values available</span>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="text-muted">Loading values...</div>
+                                                    }
+                                                </div>
+                                                @if (filter.SelectedValues.Any())
+                                                {
+                                                    <div class="mt-2">
+                                                        <small class="text-success">
+                                                            <i class="bi bi-check-circle me-1"></i>@filter.SelectedValues.Count value(s) selected
+                                                            @if (!string.IsNullOrEmpty(searchTerm) && visibleSelectedCount < filter.SelectedValues.Count)
+                                                            {
+                                                                <span class="text-muted">(@visibleSelectedCount visible)</span>
+                                                            }
+                                                        </small>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                }
+
+                                <hr class="my-4" />
+
+                                <!-- Advanced: Multiple Charts -->
+                                <h5 class="mb-3">Multiple Charts (Optional)</h5>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="_request.CreateMultipleCharts" />
+                                        <label class="form-check-label fw-bold">Create Multiple Charts</label>
+                                        <small class="text-muted d-block">Create separate worksheets, each with its own chart</small>
+                                    </div>
+                                </div>
+
+                                @if (_request.CreateMultipleCharts)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Group By Column</label>
+                                        <small class="text-muted d-block mb-2">Each unique value in this column will get its own worksheet and chart</small>
+                                        @if (_headers != null && _headers.Any())
+                                        {
+                                            <InputSelect class="form-select" @bind-Value="_request.GroupByColumn">
+                                                <option value="">-- Select column to group by --</option>
+                                                @foreach (var header in _headers)
+                                                {
+                                                    <option value="@header">@header</option>
+                                                }
+                                            </InputSelect>
+                                        }
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(_request.GroupByColumn))
+                                    {
+                                        var groupCount = GetUniqueGroupCount(_request.GroupByColumn);
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-info-circle me-2"></i>
+                                            <strong>Preview:</strong> <strong>@groupCount</strong> chart(s) will be created, one for each unique value in "@_request.GroupByColumn"
+                                            @if (_request.Filters.Any(f => f.IsActive && f.ColumnName.Equals(_request.GroupByColumn, StringComparison.OrdinalIgnoreCase)))
+                                            {
+                                                <span class="text-muted d-block mt-1">(Only filtered values will be used)</span>
+                                            }
+                                        </div>
+                                    }
+                                }
+
                                 <!-- Submit Button -->
                                 <div class="d-grid">
                                     <button type="submit" class="btn btn-primary btn-lg" disabled="@_isCreatingChart">
@@ -268,7 +446,21 @@
                                             </tbody>
                                         </table>
                                     </div>
-                                    <small class="text-muted">Showing first 50 rows. Total rows: @_currentSheetData.Rows.Count</small>
+                                    <small class="text-muted">
+                                        @{
+                                            var totalFilteredRows = ApplyFiltersToAllRows().Count;
+                                            var totalAllRows = _allRowsData != null ? _allRowsData.Rows.Count - 1 : 0; // Subtract header
+                                        }
+                                        Showing first 50 rows of filtered data. 
+                                        @if (_request.Filters.Any(f => f.IsActive))
+                                        {
+                                            <text>Filtered: @totalFilteredRows rows (from @totalAllRows total rows)</text>
+                                        }
+                                        else
+                                        {
+                                            <text>Total rows: @totalAllRows</text>
+                                        }
+                                    </small>
                                 }
                             </div>
                         </div>
@@ -286,8 +478,12 @@
     private Infrastructure.ExternalApis.SheetData? _currentSheetData;
     private List<string> _headers = new();
     private List<List<string>> _previewRows = new();
+    private Infrastructure.ExternalApis.SheetData? _allRowsData; // Store ALL rows for filtering
     private string _selectedXAxisColumn = string.Empty;
     private List<string> _selectedYAxisColumns = new();
+    private string _selectedFilterColumn = string.Empty;
+    private Dictionary<string, List<string>> _filterValues = new(); // Column name -> unique values
+    private Dictionary<string, string> _filterSearchTerms = new(); // Column name -> search term for filtering visible options
     private string? errorMessage;
     private bool _isLoading = true;
     private bool _isCreatingChart = false;
@@ -352,24 +548,33 @@
         {
             _sheetDataList = null;
             _currentSheetData = null;
+            _allRowsData = null;
             _headers.Clear();
             _previewRows.Clear();
             _selectedXAxisColumn = string.Empty;
             _selectedYAxisColumns.Clear();
+            _request.Filters.Clear();
+            _filterValues.Clear();
+            _filterSearchTerms.Clear();
             return;
         }
 
         try
         {
-            _sheetDataList = await DocumentService.GetStructuredDataAsync(_request.DocumentId, userId!, tenantId!.Value);
+            _isLoading = true;
+            StateHasChanged();
+            
+            // Get ALL rows for filtering and chart creation (maxRows: 0 = all rows)
+            _sheetDataList = await DocumentService.GetStructuredDataAsync(_request.DocumentId, userId!, tenantId!.Value, maxRows: 0);
             
             if (_sheetDataList != null && _sheetDataList.Any())
             {
                 // Reset sheet name to first sheet
                 _request.SheetName = string.Empty;
                 
-                // Use first sheet
+                // Use first sheet - store ALL rows
                 _currentSheetData = _sheetDataList.First();
+                _allRowsData = _currentSheetData; // Keep a copy of all rows
 
                 UpdatePreview();
             }
@@ -378,6 +583,11 @@
         {
             errorMessage = $"Error loading document data: {ex.Message}";
         }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 
     private void OnSheetSelectionChanged()
@@ -385,35 +595,60 @@
         if (_sheetDataList == null || !_sheetDataList.Any())
             return;
 
-        // Update current sheet data based on selection
+        // Update current sheet data based on selection - get ALL rows
         _currentSheetData = string.IsNullOrEmpty(_request.SheetName)
             ? _sheetDataList.First()
             : _sheetDataList.FirstOrDefault(s => s.SheetName.Equals(_request.SheetName, StringComparison.OrdinalIgnoreCase)) ?? _sheetDataList.First();
+        
+        _allRowsData = _currentSheetData; // Keep a copy of all rows
 
         UpdatePreview();
         
-        // Clear axis selections when sheet changes
+        // Clear axis selections and filters when sheet changes
         _selectedXAxisColumn = string.Empty;
         _selectedYAxisColumns.Clear();
+        _request.Filters.Clear();
+        _filterValues.Clear();
+        _filterSearchTerms.Clear();
     }
 
     private void UpdatePreview()
     {
-        if (_currentSheetData == null || !_currentSheetData.Rows.Any())
+        if (_allRowsData == null || !_allRowsData.Rows.Any())
         {
             _headers.Clear();
             _previewRows.Clear();
+            // Don't clear _filterValues here - keep them for the dropdowns
             return;
         }
 
         // First row is headers
-        _headers = _currentSheetData.Rows[0];
+        _headers = _allRowsData.Rows[0];
 
-        // Preview rows (limit to 50 for performance)
-        _previewRows = _currentSheetData.Rows
-            .Skip(1)
+        // Apply filters to get filtered data
+        var filteredRows = ApplyFiltersToAllRows();
+
+        // Preview rows (limit to 50 for performance) - show filtered results
+        _previewRows = filteredRows
             .Take(50)
             .ToList();
+
+        // Extract unique values for each column from ALL rows (for filtering dropdowns)
+        // Always reload from ALL rows to ensure we have complete lists, regardless of any filters
+        // Remove the 500 limit to show all values - the search and virtual scrolling will handle performance
+        foreach (var header in _headers)
+        {
+            var columnIndex = _headers.IndexOf(header);
+            var uniqueValues = _allRowsData.Rows
+                .Skip(1) // Skip header
+                .Where(row => columnIndex < row.Count && !string.IsNullOrWhiteSpace(row[columnIndex]))
+                .Select(row => row[columnIndex].Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(v => v)
+                .ToList(); // Removed .Take(500) to show all values
+            
+            _filterValues[header] = uniqueValues;
+        }
 
         // Update chart configuration defaults
         if (_headers.Any() && string.IsNullOrEmpty(_request.Configuration.Title))
@@ -421,6 +656,192 @@
             var doc = _availableDocuments?.FirstOrDefault(d => d.Id == _request.DocumentId);
             _request.Configuration.Title = $"Chart from {doc?.Title ?? doc?.FileName ?? "Data"}";
         }
+    }
+
+    private void EnsureFilterValuesLoaded()
+    {
+        if (_allRowsData == null || !_allRowsData.Rows.Any() || _headers == null || !_headers.Any())
+            return;
+
+        // Always reload filter values from ALL rows to ensure complete lists
+        // This ensures that when a new filter is added, it shows all possible values from the entire dataset
+        // Removed the 500 limit to show all values
+        foreach (var header in _headers)
+        {
+            var columnIndex = _headers.IndexOf(header);
+            var uniqueValues = _allRowsData.Rows
+                .Skip(1) // Skip header
+                .Where(row => columnIndex < row.Count && !string.IsNullOrWhiteSpace(row[columnIndex]))
+                .Select(row => row[columnIndex].Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(v => v)
+                .ToList(); // Removed .Take(500) to show all values
+            
+            _filterValues[header] = uniqueValues;
+        }
+    }
+
+    private List<string> GetFilteredValues(string columnName, string searchTerm)
+    {
+        if (!_filterValues.ContainsKey(columnName))
+            return new List<string>();
+
+        var allValues = _filterValues[columnName];
+        
+        if (string.IsNullOrWhiteSpace(searchTerm))
+            return allValues;
+
+        var searchLower = searchTerm.ToLowerInvariant();
+        return allValues
+            .Where(v => v.ToLowerInvariant().Contains(searchLower))
+            .ToList();
+    }
+
+    private void UpdateFilterSearch(string columnName, string searchTerm)
+    {
+        _filterSearchTerms[columnName] = searchTerm ?? string.Empty;
+        StateHasChanged();
+    }
+
+    private void ClearFilterSearch(string columnName)
+    {
+        if (_filterSearchTerms.ContainsKey(columnName))
+        {
+            _filterSearchTerms.Remove(columnName);
+        }
+        StateHasChanged();
+    }
+
+    private void SelectAllVisible(ChartFilter filter, List<string> visibleValues)
+    {
+        foreach (var value in visibleValues)
+        {
+            if (!filter.SelectedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                filter.SelectedValues.Add(value);
+            }
+        }
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private void DeselectAllVisible(ChartFilter filter, List<string> visibleValues)
+    {
+        foreach (var value in visibleValues)
+        {
+            filter.SelectedValues.RemoveAll(v => v.Equals(value, StringComparison.OrdinalIgnoreCase));
+        }
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private List<List<string>> ApplyFiltersToAllRows()
+    {
+        if (_allRowsData == null || _allRowsData.Rows.Count <= 1)
+            return new List<List<string>>();
+
+        var headers = _allRowsData.Rows[0];
+        var activeFilters = _request.Filters.Where(f => f.IsActive && f.SelectedValues.Any()).ToList();
+
+        // If no active filters, return all rows (except header)
+        if (!activeFilters.Any())
+        {
+            return _allRowsData.Rows.Skip(1).ToList();
+        }
+
+        var filtered = new List<List<string>>();
+        
+        // Filter all rows based on active filters
+        for (int rowIndex = 1; rowIndex < _allRowsData.Rows.Count; rowIndex++)
+        {
+            var row = _allRowsData.Rows[rowIndex];
+            bool includeRow = true;
+
+            foreach (var filter in activeFilters)
+            {
+                var columnIndex = headers.IndexOf(filter.ColumnName);
+                if (columnIndex >= 0 && columnIndex < row.Count)
+                {
+                    var cellValue = row[columnIndex]?.Trim() ?? string.Empty;
+                    if (!filter.SelectedValues.Contains(cellValue, StringComparer.OrdinalIgnoreCase))
+                    {
+                        includeRow = false;
+                        break;
+                    }
+                }
+            }
+
+            if (includeRow)
+            {
+                filtered.Add(row);
+            }
+        }
+
+        return filtered;
+    }
+
+    private void AddFilter()
+    {
+        if (string.IsNullOrEmpty(_selectedFilterColumn))
+            return;
+
+        if (!_request.Filters.Any(f => f.ColumnName.Equals(_selectedFilterColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            _request.Filters.Add(new ChartFilter
+            {
+                ColumnName = _selectedFilterColumn,
+                SelectedValues = new List<string>()
+            });
+            _selectedFilterColumn = string.Empty;
+            
+            // Ensure filter values are loaded for this column
+            EnsureFilterValuesLoaded();
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveFilter(ChartFilter filter)
+    {
+        _request.Filters.Remove(filter);
+        // Update preview when filter is removed
+        UpdatePreview();
+    }
+
+    private void ToggleFilterValue(ChartFilter filter, string value, bool isSelected)
+    {
+        if (isSelected && !filter.SelectedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+        {
+            filter.SelectedValues.Add(value);
+        }
+        else if (!isSelected)
+        {
+            filter.SelectedValues.RemoveAll(v => v.Equals(value, StringComparison.OrdinalIgnoreCase));
+        }
+        
+        // Update preview when filter changes (synchronous - no database calls)
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private int GetUniqueGroupCount(string columnName)
+    {
+        if (_allRowsData == null || string.IsNullOrEmpty(columnName))
+            return 0;
+
+        var columnIndex = _headers.IndexOf(columnName);
+        if (columnIndex < 0)
+            return 0;
+
+        // Apply active filters to ALL rows
+        var filteredRows = ApplyFiltersToAllRows();
+
+        var uniqueValues = filteredRows
+            .Where(row => columnIndex < row.Count && !string.IsNullOrWhiteSpace(row[columnIndex]))
+            .Select(row => row[columnIndex].Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        return uniqueValues;
     }
 
     private void ToggleYAxisColumn(string columnName, bool isSelected)
@@ -482,10 +903,14 @@
             // Download the file
             await JSRuntime.InvokeVoidAsync("downloadFile", result.FileName, Convert.ToBase64String(result.ExcelFileBytes), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-            await NotificationService.ShowSuccessAsync("Chart created successfully! The file is downloading.");
+            var message = result.ChartsCreated > 1
+                ? $"Successfully created {result.ChartsCreated} charts in {result.ChartsCreated} worksheets! The file is downloading."
+                : "Chart created successfully! The file is downloading.";
+            
+            await NotificationService.ShowSuccessAsync(message);
 
-            // Optionally show data analysis
-            if (!string.IsNullOrEmpty(result.DataAnalysis))
+            // Optionally show data analysis (only for single charts)
+            if (!string.IsNullOrEmpty(result.DataAnalysis) && result.ChartsCreated == 1)
             {
                 await JSRuntime.InvokeVoidAsync("alert", $"Data Analysis:\n\n{result.DataAnalysis}");
             }
