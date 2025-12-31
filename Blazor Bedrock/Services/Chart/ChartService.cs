@@ -63,6 +63,9 @@ public class ChartService : IChartService
         // Apply filters to data FIRST - this ensures only filtered data is used for charts
         var filteredData = ApplyFilters(sheetData, request.Filters);
         
+        // Apply sorting after filtering
+        var sortedData = ApplySorting(filteredData, request.Sorts);
+        
         // If creating multiple charts, use grouping logic
         // Check both GroupByColumns (new multi-column support) and GroupByColumn (backward compatibility)
         bool hasGroupingColumns = (request.GroupByColumns != null && request.GroupByColumns.Any()) || !string.IsNullOrEmpty(request.GroupByColumn);
@@ -85,11 +88,11 @@ public class ChartService : IChartService
                 }
             }
             
-            return await CreateMultipleChartsAsync(filteredData, request, userId, tenantId);
+            return await CreateMultipleChartsAsync(sortedData, request, userId, tenantId);
         }
         
-        // Single chart creation (existing logic) - uses filtered data
-        return await CreateSingleChartAsync(filteredData, request, userId, tenantId);
+        // Single chart creation (existing logic) - uses filtered and sorted data
+        return await CreateSingleChartAsync(sortedData, request, userId, tenantId);
     }
 
     private Infrastructure.ExternalApis.SheetData ApplyFilters(Infrastructure.ExternalApis.SheetData sheetData, List<ChartFilter> filters)
@@ -136,6 +139,69 @@ public class ChartService : IChartService
         {
             SheetName = sheetData.SheetName,
             Rows = filteredRows
+        };
+    }
+
+    private Infrastructure.ExternalApis.SheetData ApplySorting(Infrastructure.ExternalApis.SheetData sheetData, List<ChartSort> sorts)
+    {
+        if (!sorts.Any())
+        {
+            return sheetData; // No sorting, return original data
+        }
+
+        var headers = sheetData.Rows[0];
+        var dataRows = sheetData.Rows.Skip(1).ToList();
+
+        IOrderedEnumerable<List<string>>? orderedRows = null;
+        bool firstSort = true;
+
+        foreach (var sort in sorts.OrderBy(s => s.SortOrder))
+        {
+            var columnIndex = headers.FindIndex(h => h.Equals(sort.ColumnName, StringComparison.OrdinalIgnoreCase));
+            if (columnIndex < 0) continue;
+
+            object GetSortValue(List<string> row)
+            {
+                if (columnIndex >= row.Count)
+                    return string.Empty;
+
+                var cellValue = row[columnIndex]?.Trim() ?? string.Empty;
+                
+                // Try to parse as numeric for proper numeric sorting
+                if (double.TryParse(cellValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                    return numValue;
+                
+                // Try to parse as date for proper date sorting
+                if (DateTime.TryParse(cellValue, out DateTime dateValue))
+                    return dateValue;
+                
+                // String comparison
+                return cellValue;
+            }
+
+            if (firstSort)
+            {
+                orderedRows = sort.Direction == SortDirection.Ascending
+                    ? dataRows.OrderBy(GetSortValue)
+                    : dataRows.OrderByDescending(GetSortValue);
+                firstSort = false;
+            }
+            else
+            {
+                orderedRows = sort.Direction == SortDirection.Ascending
+                    ? orderedRows!.ThenBy(GetSortValue)
+                    : orderedRows!.ThenByDescending(GetSortValue);
+            }
+        }
+
+        var sortedDataRows = orderedRows?.ToList() ?? dataRows;
+        var result = new List<List<string>> { headers };
+        result.AddRange(sortedDataRows);
+
+        return new Infrastructure.ExternalApis.SheetData
+        {
+            SheetName = sheetData.SheetName,
+            Rows = result
         };
     }
 

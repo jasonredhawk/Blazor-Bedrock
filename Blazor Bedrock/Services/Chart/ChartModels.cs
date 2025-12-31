@@ -29,6 +29,19 @@ public class ChartFilter
     public bool IsActive => SelectedValues.Any();
 }
 
+public enum SortDirection
+{
+    Ascending = 0,
+    Descending = 1
+}
+
+public class ChartSort
+{
+    public string ColumnName { get; set; } = string.Empty;
+    public SortDirection Direction { get; set; } = SortDirection.Ascending;
+    public int SortOrder { get; set; } = 0; // Order in which to apply sorts (0 = first, 1 = second, etc.)
+}
+
 public class ChartConfiguration
 {
     public string Title { get; set; } = string.Empty;
@@ -51,6 +64,7 @@ public class ChartCreationRequest
     
     // Advanced filtering and grouping
     public List<ChartFilter> Filters { get; set; } = new();
+    public List<ChartSort> Sorts { get; set; } = new(); // Sort order for data
     public ChartGroupingStrategy GroupingStrategy { get; set; } = ChartGroupingStrategy.None;
     public List<string> GroupByColumns { get; set; } = new(); // Columns to group by (supports multi-column grouping)
     public string? GroupByColumn { get; set; } // Single column to group by (backward compatibility)

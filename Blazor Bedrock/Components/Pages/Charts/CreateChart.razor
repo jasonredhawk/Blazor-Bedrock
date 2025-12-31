@@ -410,6 +410,76 @@
 
                                 <hr class="my-4" />
 
+                                <!-- Advanced: Data Sorting -->
+                                <h5 class="mb-3">Data Sorting (Optional)</h5>
+                                <p class="text-muted small mb-3">Sort your data by one or more columns before creating the chart. Sort order matters - first sort is applied first, then second, etc.</p>
+
+                                @if (_headers != null && _headers.Any())
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Add Sort Column</label>
+                                        <div class="input-group">
+                                            <InputSelect class="form-select" @bind-Value="_selectedSortColumn">
+                                                <option value="">-- Select column to sort by --</option>
+                                                @foreach (var header in _headers)
+                                                {
+                                                    <option value="@header">@header</option>
+                                                }
+                                            </InputSelect>
+                                            <button type="button" class="btn btn-outline-primary" @onclick="AddSort" disabled="@string.IsNullOrEmpty(_selectedSortColumn)">
+                                                <i class="bi bi-plus-circle me-1"></i>Add
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    @if (_request.Sorts.Any())
+                                    {
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Sort Order</label>
+                                            <div class="border rounded p-3">
+                                                @for (int i = 0; i < _request.Sorts.Count; i++)
+                                                {
+                                                    var sort = _request.Sorts[i];
+                                                    var index = i;
+                                                    <div class="d-flex align-items-center mb-2 p-2 bg-light rounded">
+                                                        <div class="me-3">
+                                                            <small class="text-muted">Sort #@(index + 1)</small>
+                                                        </div>
+                                                        <div class="flex-grow-1 me-2">
+                                                            <strong>@sort.ColumnName</strong>
+                                                        </div>
+                                                        <div class="me-2">
+                                                            <InputSelect class="form-select form-select-sm" style="width: 120px;" @bind-Value="sort.Direction" @bind-Value:after="UpdatePreview">
+                                                                <option value="@SortDirection.Ascending">Ascending</option>
+                                                                <option value="@SortDirection.Descending">Descending</option>
+                                                            </InputSelect>
+                                                        </div>
+                                                        <div class="btn-group btn-group-sm">
+                                                            @if (index > 0)
+                                                            {
+                                                                <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveSortUp(index)" title="Move Up">
+                                                                    <i class="bi bi-arrow-up"></i>
+                                                                </button>
+                                                            }
+                                                            @if (index < _request.Sorts.Count - 1)
+                                                            {
+                                                                <button type="button" class="btn btn-outline-secondary" @onclick="() => MoveSortDown(index)" title="Move Down">
+                                                                    <i class="bi bi-arrow-down"></i>
+                                                                </button>
+                                                            }
+                                                            <button type="button" class="btn btn-outline-danger" @onclick="() => RemoveSort(sort)" title="Remove">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                }
+
+                                <hr class="my-4" />
+
                                 <!-- Advanced: Multiple Charts -->
                                 <h5 class="mb-3">Multiple Charts (Optional)</h5>
                                 <div class="mb-3">
@@ -571,6 +641,10 @@
                                             var totalFilteredRows = ApplyFiltersToAllRows().Count;
                                             var totalAllRows = _allRowsData != null ? _allRowsData.Rows.Count - 1 : 0; // Subtract header
                                         }
+                                        @if (_request.Sorts.Any())
+                                        {
+                                            <text>, sorted by @string.Join(", ", _request.Sorts.OrderBy(s => s.SortOrder).Select(s => $"{s.ColumnName} ({s.Direction})"))</text>
+                                        }
                                         Showing first 50 rows of filtered data. 
                                         @if (_request.Filters.Any(f => f.IsActive))
                                         {
@@ -604,6 +678,7 @@
     private string _selectedFilterColumn = string.Empty;
     private Dictionary<string, List<string>> _filterValues = new(); // Column name -> unique values
     private Dictionary<string, string> _filterSearchTerms = new(); // Column name -> search term for filtering visible options
+    private string? _selectedSortColumn = string.Empty;
     private List<ChatGptPrompt>? _chartPrompts;
     private string? errorMessage;
     private bool _isLoading = true;
@@ -710,9 +785,10 @@
 
         // Get filtered rows
         var filteredRows = ApplyFiltersToAllRows();
+        var sortedRows = ApplySortingToRows(filteredRows);
         
-        // Get unique combinations
-        var uniqueCombinations = filteredRows
+        // Get unique combinations (sorting doesn't affect unique count, but use sorted data for consistency)
+        var uniqueCombinations = sortedRows
             .Where(row => columnIndices.All(idx => idx < row.Count))
             .Select(row => string.Join("|", columnIndices.Select(idx => row[idx]?.Trim() ?? "")))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -780,6 +856,12 @@
             {
                 // Convert from old format to new format
                 _request.GroupByColumns = new List<string> { _request.GroupByColumn };
+            }
+            
+            // Ensure Sorts list is initialized if it's null (backward compatibility)
+            if (_request.Sorts == null)
+            {
+                _request.Sorts = new List<ChartSort>();
             }
 
             // Load document data if document is selected
@@ -918,8 +1000,10 @@
             _selectedXAxisColumn = string.Empty;
             _selectedYAxisColumns.Clear();
             _request.Filters.Clear();
+            _request.Sorts.Clear();
             _filterValues.Clear();
             _filterSearchTerms.Clear();
+            _selectedSortColumn = string.Empty;
             return;
         }
 
@@ -968,14 +1052,16 @@
 
         UpdatePreview();
         
-        // Clear axis selections and filters when sheet changes
+        // Clear axis selections, filters, and sorts when sheet changes
         _selectedXAxisColumn = string.Empty;
         _selectedYAxisColumns.Clear();
         _request.Filters.Clear();
+        _request.Sorts.Clear();
         _request.GroupByColumns.Clear();
         _request.GroupByColumn = null;
         _filterValues.Clear();
         _filterSearchTerms.Clear();
+        _selectedSortColumn = string.Empty;
     }
 
     private void UpdatePreview()
@@ -993,9 +1079,12 @@
 
         // Apply filters to get filtered data
         var filteredRows = ApplyFiltersToAllRows();
+        
+        // Apply sorting to filtered data
+        var sortedRows = ApplySortingToRows(filteredRows);
 
-        // Preview rows (limit to 50 for performance) - show filtered results
-        _previewRows = filteredRows
+        // Preview rows (limit to 50 for performance) - show filtered and sorted results
+        _previewRows = sortedRows
             .Take(50)
             .ToList();
 
@@ -1146,6 +1235,74 @@
         return filtered;
     }
 
+    private List<List<string>> ApplySortingToRows(List<List<string>> rows)
+    {
+        if (!_request.Sorts.Any() || !rows.Any())
+            return rows;
+
+        var headers = _allRowsData?.Rows[0] ?? new List<string>();
+        if (!headers.Any())
+            return rows;
+
+        IOrderedEnumerable<List<string>>? orderedRows = null;
+        bool firstSort = true;
+
+        foreach (var sort in _request.Sorts.OrderBy(s => s.SortOrder))
+        {
+            var columnIndex = headers.IndexOf(sort.ColumnName);
+            if (columnIndex < 0) continue;
+
+            if (firstSort)
+            {
+                if (sort.Direction == SortDirection.Ascending)
+                {
+                    orderedRows = rows.OrderBy(row => GetSortValue(row, columnIndex));
+                }
+                else
+                {
+                    orderedRows = rows.OrderByDescending(row => GetSortValue(row, columnIndex));
+                }
+                firstSort = false;
+            }
+            else
+            {
+                if (sort.Direction == SortDirection.Ascending)
+                {
+                    orderedRows = orderedRows!.ThenBy(row => GetSortValue(row, columnIndex));
+                }
+                else
+                {
+                    orderedRows = orderedRows!.ThenByDescending(row => GetSortValue(row, columnIndex));
+                }
+            }
+        }
+
+        return orderedRows?.ToList() ?? rows;
+    }
+
+    private object GetSortValue(List<string> row, int columnIndex)
+    {
+        if (columnIndex >= row.Count)
+            return string.Empty;
+
+        var cellValue = row[columnIndex]?.Trim() ?? string.Empty;
+        
+        // Try to parse as numeric for proper numeric sorting
+        if (double.TryParse(cellValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+        {
+            return numValue;
+        }
+        
+        // Try to parse as date for proper date sorting
+        if (DateTime.TryParse(cellValue, out DateTime dateValue))
+        {
+            return dateValue;
+        }
+        
+        // String comparison
+        return cellValue;
+    }
+
     private void AddFilter()
     {
         if (string.IsNullOrEmpty(_selectedFilterColumn))
@@ -1171,6 +1328,86 @@
         _request.Filters.Remove(filter);
         // Update preview when filter is removed
         UpdatePreview();
+    }
+
+    private void AddSort()
+    {
+        if (string.IsNullOrEmpty(_selectedSortColumn))
+            return;
+
+        // Check if this column is already in the sort list
+        if (_request.Sorts.Any(s => s.ColumnName.Equals(_selectedSortColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            return; // Already added
+        }
+
+        var newSort = new ChartSort
+        {
+            ColumnName = _selectedSortColumn,
+            Direction = SortDirection.Ascending,
+            SortOrder = _request.Sorts.Count
+        };
+
+        _request.Sorts.Add(newSort);
+        _selectedSortColumn = string.Empty;
+        
+        // Update preview to reflect sorting
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private void RemoveSort(ChartSort sort)
+    {
+        var removedIndex = _request.Sorts.IndexOf(sort);
+        _request.Sorts.Remove(sort);
+        
+        // Reorder remaining sorts
+        for (int i = 0; i < _request.Sorts.Count; i++)
+        {
+            _request.Sorts[i].SortOrder = i;
+        }
+        
+        // Update preview to reflect sorting
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private void MoveSortUp(int index)
+    {
+        if (index <= 0 || index >= _request.Sorts.Count)
+            return;
+
+        var sort = _request.Sorts[index];
+        _request.Sorts.RemoveAt(index);
+        _request.Sorts.Insert(index - 1, sort);
+        
+        // Update sort orders
+        for (int i = 0; i < _request.Sorts.Count; i++)
+        {
+            _request.Sorts[i].SortOrder = i;
+        }
+        
+        UpdatePreview();
+        StateHasChanged();
+    }
+
+    private void MoveSortDown(int index)
+    {
+        if (index < 0 || index >= _request.Sorts.Count - 1)
+            return;
+
+        var sort = _request.Sorts[index];
+        _request.Sorts.RemoveAt(index);
+        _request.Sorts.Insert(index + 1, sort);
+        
+        // Update sort orders
+        for (int i = 0; i < _request.Sorts.Count; i++)
+        {
+            _request.Sorts[i].SortOrder = i;
+        }
+        
+        UpdatePreview();
+        StateHasChanged();
     }
 
     private void ToggleFilterValue(ChartFilter filter, string value, bool isSelected)
