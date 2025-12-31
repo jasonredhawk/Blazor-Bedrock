@@ -18,6 +18,7 @@ public interface IDocumentService
     Task<byte[]> GetDocumentFileAsync(int id, string userId, int tenantId);
     Task<(byte[] FileContent, string ContentType, string FileName)> GetDocumentFileWithMetadataAsync(int id, string userId, int tenantId);
     Task<List<SheetData>> GetStructuredDataAsync(int id, string userId, int tenantId, int maxRows = 100);
+    Task<List<string>> GetSheetNamesAsync(int id, string userId, int tenantId);
 }
 
 public class DocumentService : IDocumentService
@@ -191,6 +192,30 @@ public class DocumentService : IDocumentService
             }
             
             throw new NotSupportedException("Structured data extraction is only supported for Excel and CSV files");
+        });
+    }
+
+    public async Task<List<string>> GetSheetNamesAsync(int id, string userId, int tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            var document = await _context.Documents
+                .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId && d.TenantId == tenantId);
+            
+            if (document == null)
+                throw new FileNotFoundException("Document not found");
+
+            var contentType = document.ContentType?.ToLower() ?? "";
+            if (contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
+                document.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                document.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+            {
+                using var stream = new MemoryStream(document.FileContent);
+                var sheets = await _documentProcessor.ExtractStructuredDataFromExcelAsync(stream, 0);
+                return sheets.Select(s => s.SheetName).ToList();
+            }
+            
+            return new List<string>();
         });
     }
 }

@@ -9,6 +9,7 @@ public class ChatGptConversation
     public string? Model { get; set; }
     public int? PromptId { get; set; }
     public int? DocumentId { get; set; }
+    public string? SelectedSheetNames { get; set; } // JSON array of selected sheet names for Excel files
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
