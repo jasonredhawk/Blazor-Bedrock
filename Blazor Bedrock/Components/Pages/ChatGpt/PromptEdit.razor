@@ -33,6 +33,15 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="promptType" class="form-label">Prompt Type *</label>
+                        <InputSelect class="form-select" id="promptType" @bind-Value="_promptModel.PromptType">
+                            <option value="@PromptType.Chat">Chat - General chat prompts</option>
+                            <option value="@PromptType.Chart">Chart - Chart data analysis prompts</option>
+                        </InputSelect>
+                        <div class="form-text">Select where this prompt will be used. Chat prompts appear in the chat interface, Chart prompts appear when creating charts.</div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="promptText" class="form-label">Prompt Text *</label>
                         <textarea class="form-control" id="promptText" rows="12" @bind="_promptModel.PromptText" required></textarea>
                         <div class="form-text">Enter your prompt template text. This defines how ChatGPT should behave and respond.</div>
@@ -43,7 +52,7 @@
                         <label class="form-check-label" for="isSystemPrompt">Use as System Prompt</label>
                     </div>
                     <small class="text-muted d-block mb-4">
-                        If checked, this prompt will be used as the system prompt in chat conversations
+                        If checked, this prompt will be used as the system prompt in chat conversations (only applies to Chat type prompts)
                     </small>
                     
                     <div class="d-flex gap-2 mt-4">
@@ -87,6 +96,7 @@
     {
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public PromptType PromptType { get; set; } = PromptType.Chat;
         public string PromptText { get; set; } = string.Empty;
         public bool IsSystemPrompt { get; set; } = false;
     }
@@ -104,6 +114,7 @@
                 {
                     Name = _prompt.Name,
                     Description = _prompt.Description,
+                    PromptType = _prompt.PromptType,
                     PromptText = _prompt.PromptText,
                     IsSystemPrompt = _prompt.IsSystemPrompt
                 };
@@ -134,6 +145,7 @@
                     Id = _prompt.Id,
                     Name = _promptModel.Name,
                     Description = _promptModel.Description,
+                    PromptType = _promptModel.PromptType,
                     PromptText = _promptModel.PromptText,
                     IsSystemPrompt = _promptModel.IsSystemPrompt
                 };
@@ -155,6 +167,7 @@
                 {
                     Name = _promptModel.Name,
                     Description = _promptModel.Description,
+                    PromptType = _promptModel.PromptType,
                     PromptText = _promptModel.PromptText,
                     IsSystemPrompt = _promptModel.IsSystemPrompt
                 };

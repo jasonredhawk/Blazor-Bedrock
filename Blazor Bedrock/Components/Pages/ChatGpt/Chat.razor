@@ -425,8 +425,8 @@
                     _hasApiKey = true;
                     _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
                     
-                    // Load prompts
-                    _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId);
+                    // Load prompts (only Chat type for chat page)
+                    _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId, PromptType.Chat);
                     
                     // Load conversations
                     _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);

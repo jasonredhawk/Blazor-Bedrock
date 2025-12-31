@@ -1,7 +1,7 @@
-wwwroot\js\docx-renderer.js
 wwwroot\app.css
-wwwroot\js\toast.js
 wwwroot\js\applicationLogger.js
+wwwroot\js\docx-renderer.js
+wwwroot\js\toast.js
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\js\toast.js
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\app.css
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\wwwroot\js\docx-renderer.js

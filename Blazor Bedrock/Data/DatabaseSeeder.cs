@@ -278,6 +278,7 @@ public class DatabaseSeeder
                 PromptText = @"You are a helpful and knowledgeable assistant.
 
 Please provide a clear, accurate, and helpful answer to the user's question. If you need to make assumptions or if the question is unclear, please state that in your response.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = true
             },
             new ChatGptPrompt
@@ -287,6 +288,7 @@ Please provide a clear, accurate, and helpful answer to the user's question. If 
                 PromptText = @"You are a concise assistant that provides brief, focused answers.
 
 Please provide a concise answer (2-4 sentences) that directly addresses the question. Focus on the most relevant information. Be precise and avoid unnecessary details.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -302,10 +304,11 @@ Please provide a thorough, well-structured response. Include:
 - Use Markdown formatting (headings, bullet points, numbered lists) for better readability
 
 Be thorough and analytical while remaining clear and accessible.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             
-            // Document Analysis Prompts
+            // Document Analysis Prompts (Chat Prompts)
             new ChatGptPrompt
             {
                 Name = "Document Analysis",
@@ -315,6 +318,7 @@ Be thorough and analytical while remaining clear and accessible.",
 {documentText}
 
 Please analyze the document carefully and provide accurate, detailed answers based on the content provided. Reference specific sections or passages when relevant. If the document doesn't contain information needed to answer the question, say so clearly.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -329,6 +333,7 @@ Document Content:
 Question: {question}
 
 Please provide a detailed, accurate answer based on the document content. Reference specific sections or passages when relevant. If the document doesn't contain information needed to answer the question, say so clearly.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -348,10 +353,11 @@ Please provide a comprehensive analytical response. Focus on:
 3. Specific evidence or examples from the document
 
 Structure your response clearly with proper formatting. Use Markdown for better readability (headings, bullet points, bold text for emphasis).",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             
-            // Text Processing Prompts
+            // Text Processing Prompts (Chat Prompts)
             new ChatGptPrompt
             {
                 Name = "Text Summarization",
@@ -365,6 +371,7 @@ Format your summary with:
 - A brief overview (1-2 sentences)
 - Key points in bullet format
 - Main conclusions or takeaways",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -382,10 +389,11 @@ Format your response with:
 - **Point 3**: [key point]
 
 Be concise and use Markdown-formatted bullet points for clarity.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             
-            // Specialized Assistants
+            // Specialized Assistants (Chat Prompts)
             new ChatGptPrompt
             {
                 Name = "Scientific Advisor",
@@ -401,6 +409,7 @@ Please provide a well-structured, scientific response. Focus on:
 - Structured format (use headings, bullet points, or numbered lists as appropriate)
 
 If the question is outside your area of expertise or requires specific data not provided, please state that clearly.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -418,6 +427,7 @@ Please provide a comprehensive technical response. Include:
 - Structured format with clear sections
 
 Use technical language appropriately, but explain complex concepts clearly. If the question requires domain-specific knowledge that you don't have access to, please indicate that.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -435,10 +445,11 @@ Please provide:
 - Alternative approaches when relevant
 
 Format code blocks properly and explain your reasoning. If the question is unclear or requires more context, please ask for clarification.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             
-            // Creative & Style-Based Prompts
+            // Creative & Style-Based Prompts (Chat Prompts)
             new ChatGptPrompt
             {
                 Name = "Funny Assistant",
@@ -450,6 +461,7 @@ Question: {question}
 Please provide a funny and entertaining answer. Be witty, use humor, jokes, puns, or amusing analogies while still being accurate and informative. Use Markdown formatting and feel free to use emojis! 🎉
 
 Remember: Be funny, but be accurate! The humor should enhance understanding, not obscure it.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -463,6 +475,7 @@ Question: {question}
 Please provide a sarcastically witty answer. Use dry humor, ironic observations, and gentle snark while still being accurate and informative. Use Markdown formatting.
 
 Remember: Be sarcastic, but be helpful. The snark should illuminate, not alienate. 😏",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -481,10 +494,11 @@ Please answer in the simplest way possible. Use:
 - Markdown formatting with bullet points or numbered lists
 
 Make it so clear that even a child could understand! Simple doesn't mean wrong - be accurate, just explain it like you're talking to your smart 10-year-old cousin!",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             
-            // Business & Professional Prompts
+            // Business & Professional Prompts (Chat Prompts)
             new ChatGptPrompt
             {
                 Name = "Business Advisor",
@@ -501,6 +515,7 @@ Please provide a well-structured business response. Focus on:
 - Structured format with headings and bullet points
 
 If the question requires specific industry knowledge or data not provided, please state that clearly and suggest where such information might be found.",
+                PromptType = PromptType.Chat,
                 IsSystemPrompt = false
             },
             new ChatGptPrompt
@@ -519,6 +534,170 @@ Please provide:
 - Examples of improved versions when helpful
 
 Be constructive and specific in your feedback. Use Markdown formatting to clearly show suggestions and improvements.",
+                PromptType = PromptType.Chat,
+                IsSystemPrompt = false
+            },
+            
+            // Chart Data Analysis Prompts
+            new ChatGptPrompt
+            {
+                Name = "Comprehensive Chart Analysis",
+                Description = "Detailed analysis of chart data with comprehensive insights",
+                PromptText = @"Provide a comprehensive data analysis with the following sections:
+
+## EXECUTIVE SUMMARY
+A brief 2-3 sentence overview of the dataset and key findings.
+
+## DATA OVERVIEW
+- Total records analyzed
+- Date/time range (if applicable)
+- Key dimensions and metrics present
+- Data quality assessment (completeness, outliers, anomalies)
+
+## KEY TRENDS AND PATTERNS
+Identify and describe:
+- Temporal trends (if time-series data)
+- Seasonal patterns or cyclical behavior
+- Distribution patterns
+- Relationships between variables
+- Significant changes or shifts
+
+## STATISTICAL SUMMARY
+For numeric columns, provide:
+- Mean, median, mode
+- Min, max, range
+- Standard deviation and variance
+- Percentiles (25th, 50th, 75th, 90th, 95th if applicable)
+- Skewness and kurtosis if relevant
+
+## INSIGHTS AND OBSERVATIONS
+- Notable data points (highest, lowest, unusual values)
+- Correlations or relationships discovered
+- Anomalies or outliers and their significance
+- Patterns that stand out
+- Contextual observations
+
+## RECOMMENDATIONS
+- Actionable insights based on the analysis
+- Areas requiring attention or further investigation
+- Potential next steps or follow-up analysis
+
+Format each section clearly with section headers. Be detailed and specific, citing actual values from the data where relevant.",
+                PromptType = PromptType.Chart,
+                IsSystemPrompt = false
+            },
+            new ChatGptPrompt
+            {
+                Name = "Quick Chart Summary",
+                Description = "Brief, focused analysis of chart data",
+                PromptText = @"Provide a concise analysis of the chart data. Focus on:
+
+1. **Key Findings** (2-3 main insights)
+2. **Trends** (notable patterns or changes)
+3. **Recommendations** (actionable insights)
+
+Keep it brief and focused on the most important information. Use bullet points for clarity.",
+                PromptType = PromptType.Chart,
+                IsSystemPrompt = false
+            },
+            new ChatGptPrompt
+            {
+                Name = "Statistical Chart Analysis",
+                Description = "Heavy focus on statistical measures and quantitative insights",
+                PromptText = @"Provide a statistical analysis of the chart data. Focus on:
+
+## STATISTICAL MEASURES
+- Central tendency (mean, median, mode)
+- Dispersion (range, standard deviation, variance, IQR)
+- Distribution shape (skewness, kurtosis)
+- Percentiles and quartiles
+
+## RELATIONSHIPS
+- Correlations between variables
+- Regression insights if applicable
+- Covariance analysis
+
+## SIGNIFICANCE
+- Statistical significance of trends
+- Confidence intervals where relevant
+- Outlier identification and analysis
+
+## QUANTITATIVE INSIGHTS
+- Numerical summaries with exact values
+- Percentage changes and growth rates
+- Comparative metrics
+
+Be precise with numbers and use statistical terminology appropriately.",
+                PromptType = PromptType.Chart,
+                IsSystemPrompt = false
+            },
+            new ChatGptPrompt
+            {
+                Name = "Business Chart Analysis",
+                Description = "Business-focused analysis with actionable insights",
+                PromptText = @"Provide a business-focused analysis of the chart data. Structure your response with:
+
+## BUSINESS SUMMARY
+Executive-level summary of key business insights.
+
+## KEY METRICS
+- Critical KPIs and their values
+- Performance indicators
+- Benchmark comparisons (if applicable)
+
+## BUSINESS TRENDS
+- Revenue/profit trends
+- Growth patterns
+- Performance over time
+- Seasonal or cyclical patterns
+
+## OPPORTUNITIES & RISKS
+- Opportunities identified from the data
+- Potential risks or concerns
+- Areas requiring attention
+
+## ACTIONABLE RECOMMENDATIONS
+- Specific, actionable next steps
+- Strategic recommendations
+- Priority areas for focus
+
+Use business terminology and focus on practical, actionable insights.",
+                PromptType = PromptType.Chart,
+                IsSystemPrompt = false
+            },
+            new ChatGptPrompt
+            {
+                Name = "Scientific Chart Analysis",
+                Description = "Scientific approach with emphasis on methodology and accuracy",
+                PromptText = @"Provide a scientific analysis of the chart data. Structure your response with:
+
+## METHODOLOGY
+- Data collection context (if inferable)
+- Sample size and characteristics
+- Variables measured
+
+## FINDINGS
+- Quantitative results with precision
+- Statistical measures
+- Significant patterns or relationships
+
+## ANALYSIS
+- Interpretation of results
+- Scientific explanations
+- Contextual factors
+
+## LIMITATIONS
+- Data limitations or constraints
+- Potential sources of error
+- Assumptions made
+
+## CONCLUSIONS
+- Scientific conclusions based on data
+- Implications of findings
+- Recommendations for further study
+
+Use scientific terminology and maintain objectivity and precision.",
+                PromptType = PromptType.Chart,
                 IsSystemPrompt = false
             }
         };

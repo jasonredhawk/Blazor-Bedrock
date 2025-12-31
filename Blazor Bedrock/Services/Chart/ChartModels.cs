@@ -52,8 +52,12 @@ public class ChartCreationRequest
     // Advanced filtering and grouping
     public List<ChartFilter> Filters { get; set; } = new();
     public ChartGroupingStrategy GroupingStrategy { get; set; } = ChartGroupingStrategy.None;
-    public string? GroupByColumn { get; set; } // Column to group by when GroupingStrategy is ByFilterColumn
+    public List<string> GroupByColumns { get; set; } = new(); // Columns to group by (supports multi-column grouping)
+    public string? GroupByColumn { get; set; } // Single column to group by (backward compatibility)
     public bool CreateMultipleCharts { get; set; } = false;
+    
+    // AI Analysis
+    public int? AnalysisPromptId { get; set; } // Selected ChatGPT prompt for analysis
 }
 
 public class ChartCreationResult

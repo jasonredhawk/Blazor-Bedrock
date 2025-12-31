@@ -7,7 +7,7 @@ namespace Blazor_Bedrock.Services.ChatGpt;
 
 public interface IPromptService
 {
-    Task<List<ChatGptPrompt>> GetAllPromptsAsync(int? tenantId);
+    Task<List<ChatGptPrompt>> GetAllPromptsAsync(int? tenantId, PromptType? promptType = null);
     Task<ChatGptPrompt?> GetPromptByIdAsync(int id, int? tenantId);
     Task<ChatGptPrompt> CreatePromptAsync(ChatGptPrompt prompt, int? tenantId);
     Task<bool> UpdatePromptAsync(int id, ChatGptPrompt prompt, int? tenantId);
@@ -25,12 +25,19 @@ public class PromptService : IPromptService
         _dbSync = dbSync;
     }
 
-    public async Task<List<ChatGptPrompt>> GetAllPromptsAsync(int? tenantId)
+    public async Task<List<ChatGptPrompt>> GetAllPromptsAsync(int? tenantId, PromptType? promptType = null)
     {
         return await _dbSync.ExecuteAsync(async () =>
         {
-            return await _context.ChatGptPrompts
-                .Where(p => p.TenantId == null || p.TenantId == tenantId)
+            var query = _context.ChatGptPrompts
+                .Where(p => p.TenantId == null || p.TenantId == tenantId);
+            
+            if (promptType.HasValue)
+            {
+                query = query.Where(p => p.PromptType == promptType.Value);
+            }
+            
+            return await query
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync();
         });
@@ -72,6 +79,7 @@ public class PromptService : IPromptService
             existing.Name = prompt.Name;
             existing.PromptText = prompt.PromptText;
             existing.Description = prompt.Description;
+            existing.PromptType = prompt.PromptType;
             existing.IsSystemPrompt = prompt.IsSystemPrompt;
             existing.UpdatedAt = DateTime.UtcNow;
 

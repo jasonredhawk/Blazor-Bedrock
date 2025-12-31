@@ -29,13 +29,15 @@ public class ChartService : IChartService
     private readonly IChatGptService _chatGptService;
     private readonly ApplicationDbContext _context;
     private readonly IDatabaseSyncService _dbSync;
+    private readonly IPromptService _promptService;
 
-    public ChartService(IDocumentService documentService, IChatGptService chatGptService, ApplicationDbContext context, IDatabaseSyncService dbSync)
+    public ChartService(IDocumentService documentService, IChatGptService chatGptService, ApplicationDbContext context, IDatabaseSyncService dbSync, IPromptService promptService)
     {
         _documentService = documentService;
         _chatGptService = chatGptService;
         _context = context;
         _dbSync = dbSync;
+        _promptService = promptService;
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
@@ -62,23 +64,24 @@ public class ChartService : IChartService
         var filteredData = ApplyFilters(sheetData, request.Filters);
         
         // If creating multiple charts, use grouping logic
-        if (request.CreateMultipleCharts && !string.IsNullOrEmpty(request.GroupByColumn))
+        // Check both GroupByColumns (new multi-column support) and GroupByColumn (backward compatibility)
+        bool hasGroupingColumns = (request.GroupByColumns != null && request.GroupByColumns.Any()) || !string.IsNullOrEmpty(request.GroupByColumn);
+        
+        if (request.CreateMultipleCharts && hasGroupingColumns)
         {
-            // Set grouping strategy if not already set
-            if (request.GroupingStrategy == ChartGroupingStrategy.None)
+            // If GroupByColumns is empty but GroupByColumn is set, convert to GroupByColumns
+            if ((request.GroupByColumns == null || !request.GroupByColumns.Any()) && !string.IsNullOrEmpty(request.GroupByColumn))
             {
-                // Auto-detect strategy based on whether GroupByColumn matches a filter column
-                if (request.Filters.Any(f => f.IsActive && f.ColumnName.Equals(request.GroupByColumn, StringComparison.OrdinalIgnoreCase)))
+                request.GroupByColumns = new List<string> { request.GroupByColumn };
+            }
+            
+            // Auto-populate GroupByColumns from filter columns if not explicitly set
+            if (request.GroupByColumns == null || !request.GroupByColumns.Any())
+            {
+                var activeFilterColumns = request.Filters.Where(f => f.IsActive).Select(f => f.ColumnName).ToList();
+                if (activeFilterColumns.Any())
                 {
-                    request.GroupingStrategy = ChartGroupingStrategy.ByFilterColumn;
-                }
-                else if (request.Configuration.XAxisColumns.Contains(request.GroupByColumn, StringComparer.OrdinalIgnoreCase))
-                {
-                    request.GroupingStrategy = ChartGroupingStrategy.ByXAxis;
-                }
-                else
-                {
-                    request.GroupingStrategy = ChartGroupingStrategy.Custom;
+                    request.GroupByColumns = activeFilterColumns;
                 }
             }
             
@@ -167,26 +170,38 @@ public class ChartService : IChartService
         }
 
         var headers = sheetData.Rows[0];
-        string? groupByColumn = request.GroupByColumn;
+        List<string> groupByColumns = new List<string>();
 
-        // Determine grouping column based on strategy
-        if (string.IsNullOrEmpty(groupByColumn))
+        // Determine grouping columns - support both single and multi-column grouping
+        if (request.GroupByColumns != null && request.GroupByColumns.Any())
         {
+            // Use multi-column grouping
+            groupByColumns = request.GroupByColumns.ToList();
+        }
+        else if (!string.IsNullOrEmpty(request.GroupByColumn))
+        {
+            // Use single column grouping (backward compatibility)
+            groupByColumns = new List<string> { request.GroupByColumn };
+        }
+        else
+        {
+            // Determine grouping column based on strategy
+            string? groupByColumn = null;
             switch (request.GroupingStrategy)
             {
                 case ChartGroupingStrategy.ByFilterColumn:
-                    // Use the first active filter column
-                    var firstFilter = request.Filters.FirstOrDefault(f => f.IsActive);
-                    if (firstFilter != null)
+                    // Use active filter columns
+                    var activeFilters = request.Filters.Where(f => f.IsActive).ToList();
+                    if (activeFilters.Any())
                     {
-                        groupByColumn = firstFilter.ColumnName;
+                        groupByColumns = activeFilters.Select(f => f.ColumnName).ToList();
                     }
                     break;
                 case ChartGroupingStrategy.ByXAxis:
-                    // Use the first X-axis column
+                    // Use the X-axis column
                     if (request.Configuration.XAxisColumns.Any())
                     {
-                        groupByColumn = request.Configuration.XAxisColumns.First();
+                        groupByColumns = request.Configuration.XAxisColumns.ToList();
                     }
                     break;
                 case ChartGroupingStrategy.Custom:
@@ -197,44 +212,66 @@ public class ChartService : IChartService
                     var fallbackFilter = request.Filters.FirstOrDefault(f => f.IsActive);
                     if (fallbackFilter != null)
                     {
-                        groupByColumn = fallbackFilter.ColumnName;
+                        groupByColumns = new List<string> { fallbackFilter.ColumnName };
                     }
                     else if (request.Configuration.XAxisColumns.Any())
                     {
-                        groupByColumn = request.Configuration.XAxisColumns.First();
+                        groupByColumns = new List<string> { request.Configuration.XAxisColumns.First() };
                     }
                     break;
             }
         }
 
-        if (string.IsNullOrEmpty(groupByColumn))
+        if (!groupByColumns.Any())
         {
-            throw new InvalidOperationException("Grouping column must be specified for multiple chart creation. Please select a column to group by.");
+            throw new InvalidOperationException("Grouping column(s) must be specified for multiple chart creation. Please select column(s) to group by.");
         }
 
-        var groupByColumnIndex = headers.FindIndex(h => h.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase));
-        if (groupByColumnIndex < 0)
+        // Get indices of grouping columns
+        var groupByColumnIndices = groupByColumns
+            .Select(colName => headers.FindIndex(h => h.Equals(colName, StringComparison.OrdinalIgnoreCase)))
+            .Where(idx => idx >= 0)
+            .ToList();
+
+        if (!groupByColumnIndices.Any() || groupByColumnIndices.Count != groupByColumns.Count)
         {
-            throw new InvalidOperationException($"Grouping column '{groupByColumn}' not found in data.");
+            var missingColumns = groupByColumns.Where(col => !headers.Any(h => h.Equals(col, StringComparison.OrdinalIgnoreCase)));
+            throw new InvalidOperationException($"One or more grouping columns not found in data: {string.Join(", ", missingColumns)}");
         }
 
-        // Group data by the specified column
+        // Group data by the specified columns (creating composite keys)
         // Note: sheetData is already filtered, so we're only grouping the filtered data
         var groupedData = new Dictionary<string, List<List<string>>>();
         
-        // Add header row to each group as we create them
         for (int rowIndex = 1; rowIndex < sheetData.Rows.Count; rowIndex++)
         {
             var row = sheetData.Rows[rowIndex];
-            if (groupByColumnIndex < row.Count)
+            
+            // Create composite key from all grouping columns
+            var keyParts = new List<string>();
+            bool validRow = true;
+            foreach (var colIndex in groupByColumnIndices)
             {
-                var groupKey = row[groupByColumnIndex]?.Trim() ?? "Unknown";
-                if (!groupedData.ContainsKey(groupKey))
+                if (colIndex < row.Count)
                 {
-                    groupedData[groupKey] = new List<List<string>> { headers };
+                    keyParts.Add(row[colIndex]?.Trim() ?? "Unknown");
                 }
-                groupedData[groupKey].Add(row);
+                else
+                {
+                    validRow = false;
+                    break;
+                }
             }
+
+            if (!validRow) continue;
+
+            var groupKey = string.Join(" + ", keyParts);
+            
+            if (!groupedData.ContainsKey(groupKey))
+            {
+                groupedData[groupKey] = new List<List<string>> { headers };
+            }
+            groupedData[groupKey].Add(row);
         }
 
         // Remove any groups that only have headers (no data)
@@ -246,7 +283,7 @@ public class ChartService : IChartService
 
         if (!groupedData.Any())
         {
-            throw new InvalidOperationException("No data groups found after filtering and grouping. Please check your filters and grouping column.");
+            throw new InvalidOperationException("No data groups found after filtering and grouping. Please check your filters and grouping columns.");
         }
 
         // Create Excel package with multiple worksheets
@@ -542,7 +579,26 @@ public class ChartService : IChartService
             dataText.AppendLine($"Note: Showing first {rowsToInclude} of {totalRows} total filtered rows. Analysis is based on this sample.");
         }
 
-        var analysisPrompt = prompt ?? @"Provide a comprehensive data analysis with the following sections:
+        // Get custom prompt if specified, otherwise use default
+        string? customPrompt = prompt;
+        if (request.AnalysisPromptId.HasValue && request.AnalysisPromptId.Value > 0)
+        {
+            try
+            {
+                var selectedPrompt = await _promptService.GetPromptByIdAsync(request.AnalysisPromptId.Value, tenantId);
+                if (selectedPrompt != null && selectedPrompt.PromptType == PromptType.Chart)
+                {
+                    customPrompt = selectedPrompt.PromptText;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading custom prompt: {ex.Message}");
+                // Fall back to default prompt
+            }
+        }
+
+        var analysisPrompt = customPrompt ?? @"Provide a comprehensive data analysis with the following sections:
 
 ## EXECUTIVE SUMMARY
 A brief 2-3 sentence overview of the dataset and key findings.

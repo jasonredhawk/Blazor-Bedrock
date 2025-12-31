@@ -3,6 +3,7 @@
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
@@ -10,6 +11,7 @@
 @inject IDocumentService DocumentService
 @inject ITenantService TenantService
 @inject IFeatureFlagService FeatureFlagService
+@inject IPromptService PromptService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -244,6 +246,33 @@
                                     </div>
                                 </div>
 
+                                <!-- AI Analysis Prompt Selection -->
+                                @if (_request.Configuration.IncludeDataAnalysis)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Analysis Prompt (Optional)</label>
+                                        <small class="text-muted d-block mb-2">Select a custom prompt for data analysis. Leave empty to use default.</small>
+                                        @if (_chartPrompts == null)
+                                        {
+                                            <div class="text-muted">Loading prompts...</div>
+                                        }
+                                        else if (!_chartPrompts.Any())
+                                        {
+                                            <div class="text-muted">No chart prompts available. <a href="/chatgpt/prompts/create">Create one</a> with Prompt Type = Chart.</div>
+                                        }
+                                        else
+                                        {
+                                            <InputSelect class="form-select" @bind-Value="_request.AnalysisPromptId">
+                                                <option value="">Use Default Prompt</option>
+                                                @foreach (var prompt in _chartPrompts)
+                                                {
+                                                    <option value="@prompt.Id">@prompt.Name @(!string.IsNullOrEmpty(prompt.Description) ? $" - {prompt.Description}" : "")</option>
+                                                }
+                                            </InputSelect>
+                                        }
+                                    </div>
+                                }
+
                                 <hr class="my-4" />
 
                                 <!-- Advanced: Data Filtering -->
@@ -394,30 +423,46 @@
                                 @if (_request.CreateMultipleCharts)
                                 {
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">Group By Column</label>
-                                        <small class="text-muted d-block mb-2">Each unique value in this column will get its own worksheet and chart</small>
+                                        <label class="form-label fw-bold">Group By Column(s)</label>
+                                        <small class="text-muted d-block mb-2">Select one or more columns to group by. Each unique combination will get its own worksheet and chart. Only filtered data will be used.</small>
                                         @if (_headers != null && _headers.Any())
                                         {
-                                            <InputSelect class="form-select" @bind-Value="_request.GroupByColumn">
-                                                <option value="">-- Select column to group by --</option>
+                                            <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
                                                 @foreach (var header in _headers)
                                                 {
-                                                    <option value="@header">@header</option>
+                                                    var isSelected = _request.GroupByColumns.Contains(header, StringComparer.OrdinalIgnoreCase);
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" 
+                                                               type="checkbox" 
+                                                               id="groupBy-@header" 
+                                                               checked="@isSelected"
+                                                               @onchange="@((ChangeEventArgs e) => ToggleGroupByColumn(header, e.Value?.ToString() == "True"))" />
+                                                        <label class="form-check-label" for="groupBy-@header">
+                                                            @header
+                                                        </label>
+                                                    </div>
                                                 }
-                                            </InputSelect>
+                                            </div>
                                         }
                                     </div>
-
-                                    @if (!string.IsNullOrEmpty(_request.GroupByColumn))
+                                    @if (_request.GroupByColumns.Any())
                                     {
-                                        var groupCount = GetUniqueGroupCount(_request.GroupByColumn);
+                                        var groupCount = GetUniqueGroupCountForMultipleColumns(_request.GroupByColumns);
                                         <div class="alert alert-info">
                                             <i class="bi bi-info-circle me-2"></i>
-                                            <strong>Preview:</strong> <strong>@groupCount</strong> chart(s) will be created, one for each unique value in "@_request.GroupByColumn"
-                                            @if (_request.Filters.Any(f => f.IsActive && f.ColumnName.Equals(_request.GroupByColumn, StringComparison.OrdinalIgnoreCase)))
+                                            <strong>Preview:</strong> Approximately <strong>@groupCount</strong> chart(s) will be created, one for each unique combination of:
+                                            <strong>@string.Join(" + ", _request.GroupByColumns)</strong>
+                                            @if (_request.Filters.Any(f => f.IsActive && _request.GroupByColumns.Contains(f.ColumnName, StringComparer.OrdinalIgnoreCase)))
                                             {
                                                 <span class="text-muted d-block mt-1">(Only filtered values will be used)</span>
                                             }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="alert alert-warning">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>
+                                            Please select at least one column to group by.
                                         </div>
                                     }
                                 }
@@ -559,6 +604,7 @@
     private string _selectedFilterColumn = string.Empty;
     private Dictionary<string, List<string>> _filterValues = new(); // Column name -> unique values
     private Dictionary<string, string> _filterSearchTerms = new(); // Column name -> search term for filtering visible options
+    private List<ChatGptPrompt>? _chartPrompts;
     private string? errorMessage;
     private bool _isLoading = true;
     private bool _isCreatingChart = false;
@@ -570,6 +616,8 @@
     private int? _currentSavedChartId = null;
     private string _chartName = string.Empty;
     private string? _chartDescription = string.Empty;
+
+    [Parameter] [SupplyParameterFromQuery] public int? chartId { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -594,7 +642,83 @@
 
         await LoadDocuments();
         await LoadSavedChartsAsync();
+        await LoadChartPromptsAsync();
+        
+        // If chartId parameter is provided, load that chart
+        if (chartId.HasValue && chartId.Value > 0)
+        {
+            _selectedSavedChartId = chartId.Value;
+            await LoadSavedChartAsync();
+        }
+        
         _isLoading = false;
+    }
+
+    private async Task LoadChartPromptsAsync()
+    {
+        if (tenantId == null)
+            return;
+
+        try
+        {
+            _chartPrompts = await PromptService.GetAllPromptsAsync(tenantId, PromptType.Chart);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading chart prompts: {ex.Message}");
+        }
+    }
+
+    private void ToggleGroupByColumn(string columnName, bool isSelected)
+    {
+        if (isSelected && !_request.GroupByColumns.Contains(columnName, StringComparer.OrdinalIgnoreCase))
+        {
+            _request.GroupByColumns.Add(columnName);
+        }
+        else if (!isSelected)
+        {
+            _request.GroupByColumns.RemoveAll(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+        }
+        
+        // Also update backward-compatible GroupByColumn for single column scenarios
+        if (_request.GroupByColumns.Count == 1)
+        {
+            _request.GroupByColumn = _request.GroupByColumns.First();
+        }
+        else
+        {
+            _request.GroupByColumn = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private int GetUniqueGroupCountForMultipleColumns(List<string> columnNames)
+    {
+        if (_allRowsData == null || !columnNames.Any())
+            return 0;
+
+        var headers = _allRowsData.Rows[0];
+        var columnIndices = columnNames
+            .Select(colName => headers.IndexOf(colName))
+            .Where(idx => idx >= 0)
+            .ToList();
+
+        if (columnIndices.Count != columnNames.Count)
+            return 0;
+
+        // Get filtered rows
+        var filteredRows = ApplyFiltersToAllRows();
+        
+        // Get unique combinations
+        var uniqueCombinations = filteredRows
+            .Where(row => columnIndices.All(idx => idx < row.Count))
+            .Select(row => string.Join("|", columnIndices.Select(idx => row[idx]?.Trim() ?? "")))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        return uniqueCombinations;
     }
 
     private async Task LoadSavedChartsAsync()
@@ -646,6 +770,17 @@
             // Restore x-axis and y-axis selections from loaded configuration
             _selectedXAxisColumn = _request.Configuration.XAxisColumns?.FirstOrDefault() ?? string.Empty;
             _selectedYAxisColumns = _request.Configuration.YAxisColumns?.ToList() ?? new List<string>();
+
+            // Restore grouping columns (support both old and new format)
+            if (_request.GroupByColumns != null && _request.GroupByColumns.Any())
+            {
+                // Already in new format
+            }
+            else if (!string.IsNullOrEmpty(_request.GroupByColumn))
+            {
+                // Convert from old format to new format
+                _request.GroupByColumns = new List<string> { _request.GroupByColumn };
+            }
 
             // Load document data if document is selected
             if (_request.DocumentId > 0)
@@ -837,6 +972,8 @@
         _selectedXAxisColumn = string.Empty;
         _selectedYAxisColumns.Clear();
         _request.Filters.Clear();
+        _request.GroupByColumns.Clear();
+        _request.GroupByColumn = null;
         _filterValues.Clear();
         _filterSearchTerms.Clear();
     }
@@ -1118,9 +1255,32 @@
             return;
         }
 
+        // Validate grouping columns if creating multiple charts
+        // Allow empty if filters are active (will be auto-populated from filters)
+        if (_request.CreateMultipleCharts)
+        {
+            bool hasGroupingColumns = (_request.GroupByColumns != null && _request.GroupByColumns.Any()) || !string.IsNullOrEmpty(_request.GroupByColumn);
+            bool hasActiveFilters = _request.Filters.Any(f => f.IsActive);
+            
+            if (!hasGroupingColumns && !hasActiveFilters)
+            {
+                errorMessage = "Please select at least one column to group by for multiple charts, or add data filters (filter columns will be used for grouping).";
+                return;
+            }
+        }
+
         // Update request with selected columns
         _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
         _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+        
+        // Ensure GroupByColumns is populated (support backward compatibility)
+        if (_request.CreateMultipleCharts)
+        {
+            if (!_request.GroupByColumns.Any() && !string.IsNullOrEmpty(_request.GroupByColumn))
+            {
+                _request.GroupByColumns = new List<string> { _request.GroupByColumn };
+            }
+        }
 
         _isCreatingChart = true;
         errorMessage = null;

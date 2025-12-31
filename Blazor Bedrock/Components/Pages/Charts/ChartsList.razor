@@ -2,11 +2,16 @@
 @using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.Chart
+@using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IFeatureFlagService FeatureFlagService
 @inject ITenantService TenantService
+@inject IChartService ChartService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
 <PageTitle>Charts - Blazor Bedrock</PageTitle>
@@ -20,38 +25,121 @@
             </a>
         </div>
 
-        <div class="card shadow">
-            <div class="card-body p-4">
-                <div class="text-center py-5">
-                    <i class="bi bi-bar-chart display-1 text-muted"></i>
-                    <h4 class="mt-3">Chart Creation</h4>
-                    <p class="text-muted">
-                        Create professional charts from your Excel or CSV data files.
-                    </p>
-                    <p class="text-muted">
-                        Select columns, choose chart types, customize axes and legends, and generate Excel files with embedded charts.
-                    </p>
-                    <a href="/charts/create" class="btn btn-primary btn-lg mt-3">
-                        <i class="bi bi-plus-circle me-2"></i>Create Your First Chart
-                    </a>
-                </div>
-
-                <div class="mt-5">
-                    <h5>Features:</h5>
-                    <ul class="list-unstyled">
-                        <li><i class="bi bi-check-circle text-success me-2"></i>Multiple chart types: Line, Column, Bar, Pie, Scatter, Area</li>
-                        <li><i class="bi bi-check-circle text-success me-2"></i>Flexible column selection for X and Y axes</li>
-                        <li><i class="bi bi-check-circle text-success me-2"></i>Customizable titles, legends, and axis labels</li>
-                        <li><i class="bi bi-check-circle text-success me-2"></i>AI-powered data analysis (requires ChatGPT)</li>
-                        <li><i class="bi bi-check-circle text-success me-2"></i>Export to Excel with formatted data and charts</li>
-                    </ul>
+        @if (_savedCharts == null)
+        {
+            <div class="card shadow">
+                <div class="card-body p-4 text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
+        else if (!_savedCharts.Any())
+        {
+            <div class="card shadow">
+                <div class="card-body p-4">
+                    <div class="text-center py-5">
+                        <i class="bi bi-bar-chart display-1 text-muted"></i>
+                        <h4 class="mt-3">Chart Creation</h4>
+                        <p class="text-muted">
+                            Create professional charts from your Excel or CSV data files.
+                        </p>
+                        <p class="text-muted">
+                            Select columns, choose chart types, customize axes and legends, and generate Excel files with embedded charts.
+                        </p>
+                        <a href="/charts/create" class="btn btn-primary btn-lg mt-3">
+                            <i class="bi bi-plus-circle me-2"></i>Create Your First Chart
+                        </a>
+                    </div>
+
+                    <div class="mt-5">
+                        <h5>Features:</h5>
+                        <ul class="list-unstyled">
+                            <li><i class="bi bi-check-circle text-success me-2"></i>Multiple chart types: Line, Column, Bar, Pie, Scatter, Area</li>
+                            <li><i class="bi bi-check-circle text-success me-2"></i>Flexible column selection for X and Y axes</li>
+                            <li><i class="bi bi-check-circle text-success me-2"></i>Customizable titles, legends, and axis labels</li>
+                            <li><i class="bi bi-check-circle text-success me-2"></i>AI-powered data analysis (requires ChatGPT)</li>
+                            <li><i class="bi bi-check-circle text-success me-2"></i>Export to Excel with formatted data and charts</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-folder2 me-2"></i>Saved Chart Configurations</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Description</th>
+                                    <th>Last Used</th>
+                                    <th>Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var chart in _savedCharts)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@chart.Name</strong>
+                                        </td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(chart.Description))
+                                            {
+                                                <span class="text-muted">@chart.Description</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted fst-italic">No description</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (chart.LastUsedAt.HasValue)
+                                            {
+                                                <small>@chart.LastUsedAt.Value.ToString("MMM d, yyyy HH:mm")</small>
+                                            }
+                                            else
+                                            {
+                                                <small class="text-muted">Never</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            <small>@chart.UpdatedAt.ToString("MMM d, yyyy HH:mm")</small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a href="/charts/create?chartId=@chart.Id" class="btn btn-outline-primary" title="Load and Edit">
+                                                    <i class="bi bi-pencil me-1"></i>Load
+                                                </a>
+                                                <button type="button" class="btn btn-outline-danger" @onclick="() => DeleteChartAsync(chart.Id)" title="Delete">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
     </div>
 </FeatureGate>
 
 @code {
+    private List<SavedChart>? _savedCharts;
+    private string? userId;
+    private int? tenantId;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -61,7 +149,9 @@
             return;
         }
 
-        var tenantId = TenantService.GetCurrentTenantId();
+        userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tenantId = TenantService.GetCurrentTenantId();
+        
         if (tenantId == null)
         {
             Navigation.NavigateTo("/");
@@ -74,6 +164,52 @@
         {
             Navigation.NavigateTo("/");
             return;
+        }
+
+        await LoadSavedChartsAsync();
+    }
+
+    private async Task LoadSavedChartsAsync()
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        try
+        {
+            _savedCharts = await ChartService.GetSavedChartsAsync(userId, tenantId.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading saved charts: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteChartAsync(int chartId)
+    {
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+            return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this saved chart configuration?");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var deleted = await ChartService.DeleteSavedChartAsync(chartId, userId, tenantId.Value);
+            if (deleted)
+            {
+                await NotificationService.ShowSuccessAsync("Saved chart deleted successfully!");
+                await LoadSavedChartsAsync();
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync("Failed to delete saved chart.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error deleting saved chart: {ex.Message}");
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -161,6 +161,7 @@ namespace Blazor_Bedrock.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Description = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
+                    PromptType = table.Column<int>(type: "int", nullable: false),
                     IsSystemPrompt = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true)
@@ -704,6 +705,11 @@ namespace Blazor_Bedrock.Migrations
                 name: "IX_ChatGptPrompts_TenantId",
                 table: "ChatGptPrompts",
                 column: "TenantId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ChatGptPrompts_PromptType",
+                table: "ChatGptPrompts",
+                column: "PromptType");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Documents_TenantId_UserId",
