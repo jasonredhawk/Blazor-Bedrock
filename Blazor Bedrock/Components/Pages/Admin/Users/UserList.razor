@@ -2,6 +2,8 @@
 @using Blazor_Bedrock.Services.UserManagement
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -11,12 +13,54 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
+@inject ISubscriptionLimitationService LimitationService
+@inject IFeatureFlagService FeatureFlagService
 @rendermode InteractiveServer
 
 <PageTitle>User Management</PageTitle>
 
 <div class="container-fluid mt-4">
     <h4 class="mb-4">User Management</h4>
+    
+    @* Subscription Limitation Counter *@
+    @if (_subscriptionsEnabled && _limitations != null)
+    {
+        <div class="limitation-counter mb-3">
+            <div class="d-flex align-items-center">
+                <span class="text-muted me-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Users:
+                </span>
+                @if (_maxUsers.HasValue)
+                {
+                    <span class="@GetBadgeClass()">
+                        @_currentUserCount / @_maxUsers
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success">
+                        @_currentUserCount (Unlimited)
+                    </span>
+                }
+            </div>
+            @if (_maxUsers.HasValue)
+            {
+                @if (_currentUserCount >= _maxUsers)
+                {
+                    <div class="alert alert-warning alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached. Upgrade your subscription to add more.</small>
+                    </div>
+                }
+                else if (_currentUserCount >= _maxUsers * 0.9)
+                {
+                    <div class="alert alert-info alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-info-circle me-1"></i>Approaching limit (@((_maxUsers - _currentUserCount)) remaining).</small>
+                    </div>
+                }
+            }
+        </div>
+    }
     
     <div class="card shadow">
         <div class="card-body p-4">
@@ -88,6 +132,10 @@
     private List<ApplicationUser> _users = new();
     private string _searchText = string.Empty;
     private bool _canView = false;
+    private bool _subscriptionsEnabled = false;
+    private SubscriptionLimitations? _limitations;
+    private int _currentUserCount = 0;
+    private int? _maxUsers;
 
     private IEnumerable<ApplicationUser> FilteredUsers
     {
@@ -136,6 +184,35 @@
         }
 
         await LoadUsersAsync();
+        await LoadSubscriptionInfoAsync();
+    }
+
+    private async Task LoadSubscriptionInfoAsync()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        if (tenantId.HasValue)
+        {
+            _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+            
+            if (_subscriptionsEnabled)
+            {
+                _currentUserCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Users);
+                _limitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+                _maxUsers = _limitations?.MaxUsers;
+            }
+        }
+    }
+
+    private string GetBadgeClass()
+    {
+        if (!_maxUsers.HasValue) return "badge bg-secondary";
+        
+        var percentage = (double)_currentUserCount / _maxUsers.Value;
+        return percentage >= 1.0 
+            ? "badge bg-danger" 
+            : percentage >= 0.9 
+                ? "badge bg-warning" 
+                : "badge bg-success";
     }
 
     private async Task LoadUsersAsync()
@@ -164,6 +241,7 @@
         {
             await NotificationService.ShowSuccessAsync("User deleted successfully");
             await LoadUsersAsync();
+            await LoadSubscriptionInfoAsync(); // Refresh limitation counter
         }
         else
         {

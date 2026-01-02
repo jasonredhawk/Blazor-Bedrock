@@ -3,6 +3,7 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.Auth
 @using Blazor_Bedrock.Services.Chart
+@using Blazor_Bedrock.Services.Subscription
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IFeatureFlagService FeatureFlagService
@@ -24,6 +25,8 @@
                 <i class="bi bi-plus-circle me-2"></i>Create Chart
             </a>
         </div>
+        
+        <LimitationCounter Label="Charts" LimitationType="LimitationType.Charts" />
 
         @if (_savedCharts == null)
         {

@@ -3,6 +3,8 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
@@ -13,6 +15,8 @@
 @inject IPromptService PromptService
 @inject ITenantService TenantService
 @inject IDocumentService DocumentService
+@inject ISubscriptionLimitationService LimitationService
+@inject IFeatureFlagService FeatureFlagService
 @inject Blazor_Bedrock.Infrastructure.ExternalApis.IDocumentProcessor DocumentProcessor
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
@@ -183,6 +187,45 @@
                         {
                             <span class="badge bg-info">@_preferredModel</span>
                         }
+                        @* Subscription Limitation Counter *@
+                        @if (_subscriptionsEnabled && _conversationLimitations != null)
+                        {
+                            <div class="mt-2">
+                                <div class="d-flex align-items-center">
+                                    <span class="text-muted me-2" style="font-size: 0.875rem;">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        Conversations:
+                                    </span>
+                                    @if (_maxConversations.HasValue)
+                                    {
+                                        <span class="@GetConversationBadgeClass()" style="font-size: 0.875rem;">
+                                            @_currentConversationCount / @_maxConversations
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success" style="font-size: 0.875rem;">
+                                            @_currentConversationCount (Unlimited)
+                                        </span>
+                                    }
+                                </div>
+                                @if (_maxConversations.HasValue)
+                                {
+                                    @if (_currentConversationCount >= _maxConversations)
+                                    {
+                                        <div class="alert alert-warning alert-sm mt-2 mb-0 py-1" style="font-size: 0.75rem;">
+                                            <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached.</small>
+                                        </div>
+                                    }
+                                    else if (_currentConversationCount >= _maxConversations * 0.9)
+                                    {
+                                        <div class="alert alert-info alert-sm mt-2 mb-0 py-1" style="font-size: 0.75rem;">
+                                            <small><i class="bi bi-info-circle me-1"></i>Approaching limit.</small>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
                     </div>
                     
                     <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
@@ -243,6 +286,15 @@
                                 {
                                     <small class="text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                         Model: @_preferredModel
+                                    </small>
+                                }
+                                @if (_currentConversationId.HasValue && _conversationLimitations?.MaxQueriesPerConversation.HasValue == true)
+                                {
+                                    var userMessageCount = _messages.Count(m => m.Role == "user");
+                                    var maxQueries = _conversationLimitations.MaxQueriesPerConversation.Value;
+                                    <small class="@GetQueriesLimitClass(userMessageCount, maxQueries)" style="display: block; margin-top: 4px;">
+                                        <i class="bi bi-chat-dots me-1"></i>
+                                        Messages: @userMessageCount / @maxQueries
                                     </small>
                                 }
                             </div>
@@ -457,6 +509,10 @@
     private HashSet<string> _selectedSheetNames = new();
     private bool _isLoadingSheets = false;
     private bool _showSheetSelection = false;
+    private SubscriptionLimitations? _conversationLimitations;
+    private bool _subscriptionsEnabled = false;
+    private int _currentConversationCount = 0;
+    private int? _maxConversations;
 
     protected override async Task OnInitializedAsync()
     {
@@ -483,6 +539,15 @@
                     
                     // Load documents
                     _availableDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+                    
+                    // Load subscription limitations
+                    _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+                    if (_subscriptionsEnabled)
+                    {
+                        _conversationLimitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+                        _currentConversationCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Conversations);
+                        _maxConversations = _conversationLimitations?.MaxConversations;
+                    }
                     
                     // Check for documentId in query string
                     var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
@@ -650,6 +715,13 @@
             // Keep prompt selection for new conversation
             _currentPromptIdForConversation = _selectedPromptId;
             _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            
+            // Refresh limitation counter
+            if (_subscriptionsEnabled)
+            {
+                _currentConversationCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Conversations);
+            }
+            
             StateHasChanged();
         }
     }
@@ -770,6 +842,13 @@
                 
                 // Reload conversations list
                 _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                
+                // Refresh limitation counter
+                if (_subscriptionsEnabled)
+                {
+                    _currentConversationCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Conversations);
+                }
+                
                 await NotificationService.ShowSuccessAsync("Conversation deleted successfully.");
                 StateHasChanged();
             }
@@ -1369,5 +1448,27 @@
     private void NavigateToSettings()
     {
         Navigation.NavigateTo("/chatgpt/settings");
+    }
+
+    private string GetQueriesLimitClass(int currentCount, int maxCount)
+    {
+        var percentage = (double)currentCount / maxCount;
+        return percentage >= 1.0 
+            ? "text-danger fw-bold" 
+            : percentage >= 0.9 
+                ? "text-warning" 
+                : "text-muted";
+    }
+
+    private string GetConversationBadgeClass()
+    {
+        if (!_maxConversations.HasValue) return "badge bg-secondary";
+        
+        var percentage = (double)_currentConversationCount / _maxConversations.Value;
+        return percentage >= 1.0 
+            ? "badge bg-danger" 
+            : percentage >= 0.9 
+                ? "badge bg-warning" 
+                : "badge bg-success";
     }
 }

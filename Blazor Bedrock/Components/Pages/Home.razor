@@ -5,12 +5,17 @@
 @using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Data
+@using Microsoft.EntityFrameworkCore
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject ITenantService TenantService
 @inject NavigationManager Navigation
 @inject IDatabaseSyncService DbSync
 @inject IFeatureFlagService FeatureFlagService
+@inject ISubscriptionLimitationService LimitationService
+@inject ApplicationDbContext _context
 @inject IConfiguration Configuration
 @rendermode InteractiveServer
 
@@ -90,6 +95,84 @@
             </div>
         }
 
+        @* Subscription Information *@
+        @if (_subscriptionsEnabled && _subscriptionInfo != null)
+        {
+            <div class="row mt-5 mb-4">
+                <div class="col-md-12">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-credit-card me-2"></i>
+                                Subscription Information
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            @if (_subscriptionInfo.PlanName != null)
+                            {
+                                <div class="mb-3">
+                                    <strong>Plan:</strong> @_subscriptionInfo.PlanName
+                                </div>
+                                <div class="row g-3">
+                                    @if (_subscriptionInfo.UsersLimit.HasValue)
+                                    {
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                                <span><i class="bi bi-people me-2"></i>Users:</span>
+                                                <span class="badge @GetBadgeClass(_subscriptionInfo.UsersCurrent, _subscriptionInfo.UsersLimit.Value)">
+                                                    @_subscriptionInfo.UsersCurrent / @_subscriptionInfo.UsersLimit.Value
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (_subscriptionInfo.DocumentsLimit.HasValue)
+                                    {
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                                <span><i class="bi bi-file-earmark me-2"></i>Documents:</span>
+                                                <span class="badge @GetBadgeClass(_subscriptionInfo.DocumentsCurrent, _subscriptionInfo.DocumentsLimit.Value)">
+                                                    @_subscriptionInfo.DocumentsCurrent / @_subscriptionInfo.DocumentsLimit.Value
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (_subscriptionInfo.ChartsLimit.HasValue)
+                                    {
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                                <span><i class="bi bi-bar-chart me-2"></i>Charts:</span>
+                                                <span class="badge @GetBadgeClass(_subscriptionInfo.ChartsCurrent, _subscriptionInfo.ChartsLimit.Value)">
+                                                    @_subscriptionInfo.ChartsCurrent / @_subscriptionInfo.ChartsLimit.Value
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (_subscriptionInfo.ConversationsLimit.HasValue)
+                                    {
+                                        <div class="col-md-6">
+                                            <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                                <span><i class="bi bi-chat-dots me-2"></i>Conversations:</span>
+                                                <span class="badge @GetBadgeClass(_subscriptionInfo.ConversationsCurrent, _subscriptionInfo.ConversationsLimit.Value)">
+                                                    @_subscriptionInfo.ConversationsCurrent / @_subscriptionInfo.ConversationsLimit.Value
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    No subscription plan assigned. All features are unlimited.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
         <div class="row mt-5">
             <div class="col-md-12">
                 <div class="card shadow-sm border-0">
@@ -123,6 +206,21 @@
     private bool _showOrganizationPrompt = false;
     private string _projectTitle = "Blazor Bedrock";
     private List<FeatureInfo> _enabledFeatures = new();
+    private bool _subscriptionsEnabled = false;
+    private SubscriptionInfo? _subscriptionInfo;
+
+    private class SubscriptionInfo
+    {
+        public string? PlanName { get; set; }
+        public int? UsersLimit { get; set; }
+        public int UsersCurrent { get; set; }
+        public int? DocumentsLimit { get; set; }
+        public int DocumentsCurrent { get; set; }
+        public int? ChartsLimit { get; set; }
+        public int ChartsCurrent { get; set; }
+        public int? ConversationsLimit { get; set; }
+        public int ConversationsCurrent { get; set; }
+    }
 
     private class FeatureInfo
     {
@@ -169,6 +267,9 @@
                 {
                     // Load enabled features
                     await LoadEnabledFeaturesAsync(userId, currentTenantId.Value);
+                    
+                    // Load subscription information
+                    await LoadSubscriptionInfoAsync(currentTenantId.Value);
                 }
             }
         }
@@ -177,6 +278,70 @@
             // For non-authenticated users, show public features
             await LoadPublicFeaturesAsync();
         }
+    }
+
+    private async Task LoadSubscriptionInfoAsync(int tenantId)
+    {
+        _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+        
+        if (_subscriptionsEnabled)
+        {
+            var limitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+            
+            if (limitations != null)
+            {
+                _subscriptionInfo = new SubscriptionInfo
+                {
+                    PlanName = "Active Plan", // We'll get the actual plan name from the tenant
+                    UsersLimit = limitations.MaxUsers,
+                    UsersCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Users),
+                    DocumentsLimit = limitations.MaxDocuments,
+                    DocumentsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Documents),
+                    ChartsLimit = limitations.MaxCharts,
+                    ChartsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Charts),
+                    ConversationsLimit = limitations.MaxConversations,
+                    ConversationsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Conversations)
+                };
+                
+                // Get actual plan name from tenant - need to load with subscription plan
+                if (_subscriptionInfo != null)
+                {
+                    await DbSync.ExecuteAsync(async () =>
+                    {
+                        var tenant = await _context.Tenants
+                            .Include(t => t.SubscriptionPlan)
+                            .FirstOrDefaultAsync(t => t.Id == tenantId);
+                        
+                        if (tenant?.SubscriptionPlan != null)
+                        {
+                            _subscriptionInfo.PlanName = tenant.SubscriptionPlan.Name;
+                        }
+                    });
+                }
+            }
+            else
+            {
+                // Subscriptions enabled but no plan assigned - show unlimited
+                _subscriptionInfo = new SubscriptionInfo
+                {
+                    PlanName = null,
+                    UsersCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Users),
+                    DocumentsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Documents),
+                    ChartsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Charts),
+                    ConversationsCurrent = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Conversations)
+                };
+            }
+        }
+    }
+
+    private string GetBadgeClass(int current, int max)
+    {
+        var percentage = (double)current / max;
+        return percentage >= 1.0 
+            ? "bg-danger" 
+            : percentage >= 0.9 
+                ? "bg-warning" 
+                : "bg-success";
     }
 
     private async Task LoadEnabledFeaturesAsync(string userId, int tenantId)

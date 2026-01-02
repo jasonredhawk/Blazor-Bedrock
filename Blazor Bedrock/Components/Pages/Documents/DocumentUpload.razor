@@ -1,6 +1,8 @@
 @page "/documents/upload"
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -9,14 +11,57 @@
 @inject ITenantService TenantService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
+@inject ISubscriptionLimitationService LimitationService
+@inject IFeatureFlagService FeatureFlagService
 @rendermode InteractiveServer
 
 <PageTitle>Upload Document - Blazor Bedrock</PageTitle>
 
-<div class="container mt-4">
-    <h2>Upload Document</h2>
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Upload Document</h4>
     
-    <div>
+    @* Subscription Limitation Counter *@
+    @if (_subscriptionsEnabled && _limitations != null)
+    {
+        <div class="limitation-counter mb-3">
+            <div class="d-flex align-items-center">
+                <span class="text-muted me-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Documents:
+                </span>
+                @if (_maxDocuments.HasValue)
+                {
+                    <span class="@GetBadgeClass()">
+                        @_currentDocumentCount / @_maxDocuments
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success">
+                        @_currentDocumentCount (Unlimited)
+                    </span>
+                }
+            </div>
+            @if (_maxDocuments.HasValue)
+            {
+                @if (_currentDocumentCount >= _maxDocuments)
+                {
+                    <div class="alert alert-warning alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached. Upgrade your subscription to add more.</small>
+                    </div>
+                }
+                else if (_currentDocumentCount >= _maxDocuments * 0.9)
+                {
+                    <div class="alert alert-info alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-info-circle me-1"></i>Approaching limit (@((_maxDocuments - _currentDocumentCount)) remaining).</small>
+                    </div>
+                }
+            }
+        </div>
+    }
+    
+    <div class="card shadow">
+        <div class="card-body p-4">
         <div class="mb-3">
             <label class="form-label">Select Document</label>
             <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.xlsx,.xls,.csv" />
@@ -72,6 +117,7 @@
                 <span class="badge bg-light text-dark ms-2">Ready</span>
             }
         </button>
+        </div>
     </div>
 </div>
 
@@ -82,6 +128,10 @@
     private string? errorMessage;
     private string? userId;
     private int? tenantId;
+    private bool _subscriptionsEnabled = false;
+    private SubscriptionLimitations? _limitations;
+    private int _currentDocumentCount = 0;
+    private int? _maxDocuments;
 
     private bool IsUploadButtonDisabled => selectedFile == null || isUploading;
 
@@ -101,6 +151,37 @@
         {
             errorMessage = "Unable to identify user or organization.";
         }
+        else
+        {
+            await LoadSubscriptionInfoAsync();
+        }
+    }
+
+    private async Task LoadSubscriptionInfoAsync()
+    {
+        if (tenantId.HasValue)
+        {
+            _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+            
+            if (_subscriptionsEnabled)
+            {
+                _currentDocumentCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Documents);
+                _limitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+                _maxDocuments = _limitations?.MaxDocuments;
+            }
+        }
+    }
+
+    private string GetBadgeClass()
+    {
+        if (!_maxDocuments.HasValue) return "badge bg-secondary";
+        
+        var percentage = (double)_currentDocumentCount / _maxDocuments.Value;
+        return percentage >= 1.0 
+            ? "badge bg-danger" 
+            : percentage >= 0.9 
+                ? "badge bg-warning" 
+                : "badge bg-success";
     }
 
     private async Task HandleFileSelected(InputFileChangeEventArgs e)

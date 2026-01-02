@@ -1,6 +1,8 @@
 @page "/documents"
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -9,79 +11,130 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject IJSRuntime JSRuntime
+@inject ISubscriptionLimitationService LimitationService
+@inject IFeatureFlagService FeatureFlagService
 @rendermode InteractiveServer
 
 <PageTitle>Documents - Blazor Bedrock</PageTitle>
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Documents</h2>
-        <a href="/documents/upload" class="btn btn-primary">Upload Document</a>
-    </div>
-
-    <div class="mb-3">
-        <input type="text" class="form-control" placeholder="Search documents..." @bind="searchTerm" @oninput="FilterDocuments" />
-    </div>
-
-    @if (!string.IsNullOrEmpty(errorMessage))
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Documents</h4>
+    
+    @* Subscription Limitation Counter *@
+    @if (_subscriptionsEnabled && _limitations != null)
     {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            @errorMessage
-            <button type="button" class="btn-close" @onclick="() => { errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
-        </div>
-    }
-
-    @if (documents == null)
-    {
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
+        <div class="limitation-counter mb-3">
+            <div class="d-flex align-items-center">
+                <span class="text-muted me-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Documents:
+                </span>
+                @if (_maxDocuments.HasValue)
+                {
+                    <span class="@GetBadgeClass()">
+                        @_currentDocumentCount / @_maxDocuments
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-success">
+                        @_currentDocumentCount (Unlimited)
+                    </span>
+                }
             </div>
+            @if (_maxDocuments.HasValue)
+            {
+                @if (_currentDocumentCount >= _maxDocuments)
+                {
+                    <div class="alert alert-warning alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached. Upgrade your subscription to add more.</small>
+                    </div>
+                }
+                else if (_currentDocumentCount >= _maxDocuments * 0.9)
+                {
+                    <div class="alert alert-info alert-sm mt-2 mb-0 py-1">
+                        <small><i class="bi bi-info-circle me-1"></i>Approaching limit (@((_maxDocuments - _currentDocumentCount)) remaining).</small>
+                    </div>
+                }
+            }
         </div>
     }
-    else if (!filteredDocuments.Any())
-    {
-        <div class="alert alert-info">
-            @(documents.Any() ? "No documents match your search." : "No documents uploaded yet. Upload your first document to get started.")
+
+    <div class="card shadow">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="input-group" style="max-width: 300px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" placeholder="Search documents..." @bind="searchTerm" @oninput="FilterDocuments" />
+                </div>
+                <a href="/documents/upload" class="btn btn-primary">
+                    <i class="bi bi-upload me-2"></i>Upload Document
+                </a>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @errorMessage
+                    <button type="button" class="btn-close" @onclick="() => { errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+                </div>
+            }
+
+            @if (documents == null)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (!filteredDocuments.Any())
+            {
+                <div class="alert alert-info">
+                    @(documents.Any() ? "No documents match your search." : "No documents uploaded yet. Upload your first document to get started.")
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th>Title / Filename</th>
+                                <th>Author</th>
+                                <th>Upload Date</th>
+                                <th>Size</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var doc in filteredDocuments)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@(doc.Title ?? doc.FileName)</strong>
+                                        @if (!string.IsNullOrEmpty(doc.Title) && doc.Title != doc.FileName)
+                                        {
+                                            <br /><small class="text-muted">@doc.FileName</small>
+                                        }
+                                    </td>
+                                    <td>@(doc.Author ?? "-")</td>
+                                    <td>@doc.UploadedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                    <td>@((doc.FileSize / 1024.0).ToString("F1")) KB</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="/documents/@doc.Id" class="btn btn-sm btn-outline-primary">View</a>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocument(doc.Id)">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
-    }
-    else
-    {
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Title / Filename</th>
-                        <th>Author</th>
-                        <th>Upload Date</th>
-                        <th>Size</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var doc in filteredDocuments)
-                    {
-                        <tr>
-                            <td>
-                                <strong>@(doc.Title ?? doc.FileName)</strong>
-                                @if (!string.IsNullOrEmpty(doc.Title) && doc.Title != doc.FileName)
-                                {
-                                    <br /><small class="text-muted">@doc.FileName</small>
-                                }
-                            </td>
-                            <td>@(doc.Author ?? "-")</td>
-                            <td>@doc.UploadedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                            <td>@((doc.FileSize / 1024.0).ToString("F1")) KB</td>
-                            <td>
-                                <a href="/documents/@doc.Id" class="btn btn-sm btn-outline-primary">View</a>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocument(doc.Id)">Delete</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
+    </div>
 </div>
 
 @code {
@@ -91,6 +144,10 @@
     private string? errorMessage;
     private string? userId;
     private int? tenantId;
+    private bool _subscriptionsEnabled = false;
+    private SubscriptionLimitations? _limitations;
+    private int _currentDocumentCount = 0;
+    private int? _maxDocuments;
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,6 +162,44 @@
         }
 
         await LoadDocuments();
+        await LoadSubscriptionInfoAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Refresh counter when navigating back to this page
+        if (tenantId.HasValue)
+        {
+            await LoadSubscriptionInfoAsync();
+        }
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task LoadSubscriptionInfoAsync()
+    {
+        if (tenantId.HasValue)
+        {
+            _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+            
+            if (_subscriptionsEnabled)
+            {
+                _currentDocumentCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType.Documents);
+                _limitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+                _maxDocuments = _limitations?.MaxDocuments;
+            }
+        }
+    }
+
+    private string GetBadgeClass()
+    {
+        if (!_maxDocuments.HasValue) return "badge bg-secondary";
+        
+        var percentage = (double)_currentDocumentCount / _maxDocuments.Value;
+        return percentage >= 1.0 
+            ? "badge bg-danger" 
+            : percentage >= 0.9 
+                ? "badge bg-warning" 
+                : "badge bg-success";
     }
 
     private async Task LoadDocuments()
@@ -159,6 +254,7 @@
         {
             await DocumentService.DeleteDocumentAsync(documentId, userId, tenantId.Value);
             await LoadDocuments();
+            await LoadSubscriptionInfoAsync(); // Refresh limitation counter
         }
         catch (Exception ex)
         {

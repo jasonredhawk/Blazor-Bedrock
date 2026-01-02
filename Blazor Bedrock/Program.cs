@@ -178,6 +178,7 @@ builder.Services.AddScoped<IMigrationService, MigrationService>();
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.ISubscriptionPlanService, Blazor_Bedrock.Services.Subscription.SubscriptionPlanService>();
 builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.IOrganizationSubscriptionService, Blazor_Bedrock.Services.Subscription.OrganizationSubscriptionService>();
+builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.ISubscriptionLimitationService, Blazor_Bedrock.Services.Subscription.SubscriptionLimitationService>();
 
 // Data Protection for API key encryption
 builder.Services.AddDataProtection();

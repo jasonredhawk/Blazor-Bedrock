@@ -1,0 +1,115 @@
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
+@inject ISubscriptionLimitationService LimitationService
+@inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
+
+@if (_subscriptionsEnabled)
+{
+    <div class="limitation-counter mb-3">
+        <div class="d-flex align-items-center justify-content-between">
+            <span class="text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                @Label:
+            </span>
+            @if (_limitations != null && _maxValue.HasValue)
+            {
+                <span class="@GetBadgeClass()">
+                    @_currentCount / @_maxValue
+                </span>
+            }
+            else
+            {
+                <span class="badge bg-success">
+                    @_currentCount (Unlimited)
+                </span>
+            }
+        </div>
+        @if (_limitations != null && _maxValue.HasValue)
+        {
+            @if (_currentCount >= _maxValue)
+            {
+                <div class="alert alert-warning alert-sm mt-2 mb-0 py-1">
+                    <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached. Upgrade your subscription to add more.</small>
+                </div>
+            }
+            else if (_currentCount >= _maxValue * 0.9)
+            {
+                <div class="alert alert-info alert-sm mt-2 mb-0 py-1">
+                    <small><i class="bi bi-info-circle me-1"></i>Approaching limit (@((_maxValue - _currentCount)) remaining).</small>
+                </div>
+            }
+        }
+    </div>
+}
+else if (_isInitialized && !_subscriptionsEnabled)
+{
+    @* Don't render anything if subscriptions are disabled *@
+}
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public LimitationType LimitationType { get; set; }
+    [Parameter] public bool ShowDebugInfo { get; set; } = false;
+
+    private SubscriptionLimitations? _limitations;
+    private int _currentCount = 0;
+    private int? _maxValue;
+    private bool _subscriptionsEnabled = false;
+    private bool _isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+            _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
+            
+            if (_subscriptionsEnabled && tenantId.HasValue)
+            {
+                _currentCount = await LimitationService.GetCurrentCountAsync(tenantId, LimitationType);
+                _limitations = await LimitationService.GetTenantLimitationsAsync(tenantId);
+
+                if (_limitations != null)
+                {
+                    _maxValue = LimitationType switch
+                    {
+                        LimitationType.Users => _limitations.MaxUsers,
+                        LimitationType.Documents => _limitations.MaxDocuments,
+                        LimitationType.Charts => _limitations.MaxCharts,
+                        LimitationType.Conversations => _limitations.MaxConversations,
+                        _ => null
+                    };
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in LimitationCounter: {ex.Message}");
+        }
+        finally
+        {
+            _isInitialized = true;
+        }
+    }
+
+    private string GetBadgeClass()
+    {
+        if (!_maxValue.HasValue) return "badge bg-secondary";
+        
+        var percentage = (double)_currentCount / _maxValue.Value;
+        return percentage >= 1.0 
+            ? "badge bg-danger" 
+            : percentage >= 0.9 
+                ? "badge bg-warning" 
+                : "badge bg-success";
+    }
+}
+
+<style>
+    .alert-sm {
+        font-size: 0.875rem;
+        padding: 0.25rem 0.5rem;
+    }
+</style>
