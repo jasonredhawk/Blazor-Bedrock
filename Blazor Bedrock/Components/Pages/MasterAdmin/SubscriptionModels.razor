@@ -1,0 +1,155 @@
+@page "/masteradmin/subscription-models"
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ISubscriptionPlanService SubscriptionPlanService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Subscription Models</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Subscription Models</h4>
+    
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_isInitialized)
+            {
+                @if (_plans.Any())
+                {
+                    <div class="row">
+                        @foreach (var plan in _plans)
+                        {
+                            <div class="col-md-6 col-lg-3 mb-4">
+                                <div class="card h-100 @(plan.IsActive ? "border-primary" : "border-secondary")">
+                                    <div class="card-header bg-primary text-white">
+                                        <h5 class="card-title mb-0">@plan.Name</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        @if (!string.IsNullOrEmpty(plan.Description))
+                                        {
+                                            <p class="card-text text-muted small">@plan.Description</p>
+                                        }
+                                        
+                                        <div class="mb-3">
+                                            <h6>Pricing</h6>
+                                            @if (plan.MonthlyPrice.HasValue)
+                                            {
+                                                <div>Monthly: <strong>$@plan.MonthlyPrice.Value.ToString("F2")</strong></div>
+                                            }
+                                            @if (plan.YearlyPrice.HasValue)
+                                            {
+                                                <div>Yearly: <strong>$@plan.YearlyPrice.Value.ToString("F2")</strong></div>
+                                                @if (plan.MonthlyPrice.HasValue && plan.YearlyPrice.HasValue && plan.MonthlyPrice.Value > 0)
+                                                {
+                                                    var savings = (plan.MonthlyPrice.Value * 12) - plan.YearlyPrice.Value;
+                                                    var savingsPercent = (savings / (plan.MonthlyPrice.Value * 12)) * 100;
+                                                    <small class="text-success">Save $@savings.ToString("F2") (@savingsPercent.ToString("F1")%)</small>
+                                                }
+                                            }
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <h6>Limits</h6>
+                                            <ul class="list-unstyled small">
+                                                <li>Documents: @(plan.MaxDocuments?.ToString() ?? "Unlimited")</li>
+                                                <li>Conversations: @(plan.MaxConversations?.ToString() ?? "Unlimited")</li>
+                                                <li>Queries/Conversation: @(plan.MaxQueriesPerConversation?.ToString() ?? "Unlimited")</li>
+                                                <li>Users: @(plan.MaxUsers?.ToString() ?? "Unlimited")</li>
+                                                <li>Charts: @(plan.MaxCharts?.ToString() ?? "Unlimited")</li>
+                                                <li>ChatGPT Analysis: @(plan.CanUseChatGptAnalysis ? "Yes" : "No")</li>
+                                            </ul>
+                                        </div>
+
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            @if (plan.IsActive)
+                                            {
+                                                <span class="badge bg-success">Active</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            }
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditPlan(plan.Id)">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-credit-card display-1 text-muted"></i>
+                        <p class="text-muted mt-3">No subscription plans found.</p>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<SubscriptionPlan> _plans = new();
+    private bool _isInitialized = false;
+    private bool _isMasterAdmin = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.FindByIdAsync(userId);
+                _isMasterAdmin = user?.IsMasterAdmin ?? false;
+                
+                if (!_isMasterAdmin)
+                {
+                    await NotificationService.ShowErrorAsync("You do not have permission to access this page.");
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        await LoadPlansAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadPlansAsync()
+    {
+        _plans = await SubscriptionPlanService.GetAllPlansAsync();
+    }
+
+    private void EditPlan(int planId)
+    {
+        Navigation.NavigateTo($"/masteradmin/subscription-models/edit/{planId}");
+    }
+}

@@ -263,7 +263,7 @@
         }
 
         // Stripe Payments
-        if (await FeatureFlagService.IsEnabledAsync("Stripe_Enabled"))
+        if (await FeatureFlagService.IsEnabledAsync("Subscriptions"))
         {
             features.Add(new FeatureInfo
             {

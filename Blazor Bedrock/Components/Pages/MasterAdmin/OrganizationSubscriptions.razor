@@ -1,0 +1,300 @@
+@page "/masteradmin/organization-subscriptions"
+@using Blazor_Bedrock.Services.Subscription
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IOrganizationSubscriptionService OrganizationSubscriptionService
+@inject ISubscriptionPlanService SubscriptionPlanService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Organization Subscriptions</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">Organization Subscriptions</h4>
+    
+    <div class="card shadow">
+        <div class="card-body p-4">
+            @if (_isInitialized)
+            {
+                @if (_organizations.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Organization</th>
+                                    <th>Current Plan</th>
+                                    <th>Monthly Price</th>
+                                    <th>Yearly Price</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var org in _organizations)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@org.Tenant.Name</strong>
+                                            @if (!string.IsNullOrEmpty(org.Tenant.Description))
+                                            {
+                                                <br/><small class="text-muted">@org.Tenant.Description</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (org.CurrentPlan != null)
+                                            {
+                                                <span class="badge bg-primary">@org.CurrentPlan.Name</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">No Plan</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (org.EffectiveMonthlyPrice.HasValue)
+                                            {
+                                                <span>$@org.EffectiveMonthlyPrice.Value.ToString("F2")</span>
+                                                @if (org.Subscription?.CustomMonthlyPrice.HasValue == true)
+                                                {
+                                                    <br/><small class="text-info">(Custom)</small>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (org.EffectiveYearlyPrice.HasValue)
+                                            {
+                                                <span>$@org.EffectiveYearlyPrice.Value.ToString("F2")</span>
+                                                @if (org.Subscription?.CustomYearlyPrice.HasValue == true)
+                                                {
+                                                    <br/><small class="text-info">(Custom)</small>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (org.Subscription != null)
+                                            {
+                                                <span class="badge @(org.Subscription.Status == "active" ? "bg-success" : "bg-warning")">
+                                                    @org.Subscription.Status
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">No Subscription</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => EditSubscription(org.Tenant.Id)">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5">
+                        <i class="bi bi-building display-1 text-muted"></i>
+                        <p class="text-muted mt-3">No organizations found.</p>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (_showEditModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Subscription - @_selectedOrg?.Tenant.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Subscription Plan</label>
+                        <select class="form-select" @bind="_selectedPlanId" @bind:event="onchange">
+                            <option value="0">-- Select Plan --</option>
+                            @foreach (var plan in _availablePlans)
+                            {
+                                <option value="@plan.Id">@plan.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Custom Monthly Price (leave empty to use plan default)</label>
+                        <input type="number" class="form-control" step="0.01" @bind="_customMonthlyPrice" />
+                        <small class="text-muted">If set, this will override the plan's monthly price for this organization.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Custom Yearly Price (leave empty to use plan default)</label>
+                        <input type="number" class="form-control" step="0.01" @bind="_customYearlyPrice" />
+                        <small class="text-muted">If set, this will override the plan's yearly price for this organization.</small>
+                    </div>
+
+                    @if (_selectedPlanId > 0)
+                    {
+                        var selectedPlan = _availablePlans.FirstOrDefault(p => p.Id == _selectedPlanId);
+                        @if (selectedPlan != null)
+                        {
+                            <div class="alert alert-info">
+                                <strong>Plan Details:</strong><br/>
+                                Monthly: $@(selectedPlan.MonthlyPrice?.ToString("F2") ?? "N/A")<br/>
+                                Yearly: $@(selectedPlan.YearlyPrice?.ToString("F2") ?? "N/A")<br/>
+                                @if (selectedPlan.MonthlyPrice.HasValue && selectedPlan.YearlyPrice.HasValue && selectedPlan.MonthlyPrice.Value > 0)
+                                {
+                                    var savings = (selectedPlan.MonthlyPrice.Value * 12) - selectedPlan.YearlyPrice.Value;
+                                    var savingsPercent = (savings / (selectedPlan.MonthlyPrice.Value * 12)) * 100;
+                                    <span>Yearly Savings: $@savings.ToString("F2") (@savingsPercent.ToString("F1")%)</span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEditModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveSubscription" disabled="@_isSaving">
+                        @if (_isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TenantWithSubscription> _organizations = new();
+    private List<SubscriptionPlan> _availablePlans = new();
+    private bool _isInitialized = false;
+    private bool _isMasterAdmin = false;
+    private bool _showEditModal = false;
+    private TenantWithSubscription? _selectedOrg = null;
+    private int _selectedPlanId = 0;
+    private decimal? _customMonthlyPrice = null;
+    private decimal? _customYearlyPrice = null;
+    private bool _isSaving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.FindByIdAsync(userId);
+                _isMasterAdmin = user?.IsMasterAdmin ?? false;
+                
+                if (!_isMasterAdmin)
+                {
+                    await NotificationService.ShowErrorAsync("You do not have permission to access this page.");
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        await LoadDataAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _organizations = await OrganizationSubscriptionService.GetAllOrganizationsWithSubscriptionsAsync();
+        _availablePlans = await SubscriptionPlanService.GetAllPlansAsync();
+    }
+
+    private void EditSubscription(int tenantId)
+    {
+        _selectedOrg = _organizations.FirstOrDefault(o => o.Tenant.Id == tenantId);
+        if (_selectedOrg != null)
+        {
+            _selectedPlanId = _selectedOrg.CurrentPlan?.Id ?? 0;
+            _customMonthlyPrice = _selectedOrg.Subscription?.CustomMonthlyPrice;
+            _customYearlyPrice = _selectedOrg.Subscription?.CustomYearlyPrice;
+            _showEditModal = true;
+        }
+    }
+
+    private void CloseEditModal()
+    {
+        _showEditModal = false;
+        _selectedOrg = null;
+        _selectedPlanId = 0;
+        _customMonthlyPrice = null;
+        _customYearlyPrice = null;
+    }
+
+    private async Task SaveSubscription()
+    {
+        if (_selectedOrg == null || _selectedPlanId == 0)
+        {
+            await NotificationService.ShowErrorAsync("Please select a subscription plan.");
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await OrganizationSubscriptionService.UpdateSubscriptionAsync(
+                _selectedOrg.Tenant.Id,
+                _selectedPlanId,
+                _customMonthlyPrice,
+                _customYearlyPrice
+            );
+
+            await NotificationService.ShowSuccessAsync("Subscription updated successfully.");
+            CloseEditModal();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error updating subscription: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

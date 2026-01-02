@@ -29,6 +29,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<UserProfile> UserProfiles { get; set; }
     public DbSet<Document> Documents { get; set; }
     public DbSet<SavedChart> SavedCharts { get; set; }
+    public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
+    public DbSet<TenantSubscription> TenantSubscriptions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -52,6 +54,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.ApplyConfiguration(new UserProfileConfiguration());
         builder.ApplyConfiguration(new DocumentConfiguration());
         builder.ApplyConfiguration(new SavedChartConfiguration());
+        builder.ApplyConfiguration(new SubscriptionPlanConfiguration());
+        builder.ApplyConfiguration(new TenantSubscriptionConfiguration());
 
         // Rename Identity tables to match our naming convention
         builder.Entity<ApplicationUser>().ToTable("Users");

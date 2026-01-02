@@ -41,6 +41,10 @@ public class MenuService : IMenuService
         {
             var menuItems = new List<MenuItem>();
             
+            // Check if user is MasterAdmin
+            var user = await _userManager.FindByIdAsync(userId);
+            var isMasterAdmin = user?.IsMasterAdmin ?? false;
+            
             // Check if user is Admin for the current tenant (tenant-specific check)
             var isAdmin = false;
             if (tenantId.HasValue)
@@ -55,13 +59,9 @@ public class MenuService : IMenuService
             }
             
             // Also check global Admin role as fallback
-            if (!isAdmin)
+            if (!isAdmin && user != null)
             {
-                var user = await _userManager.FindByIdAsync(userId);
-                if (user != null)
-                {
-                    isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
-                }
+                isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             }
 
             // Home - always show
@@ -113,16 +113,7 @@ public class MenuService : IMenuService
                         });
                     }
 
-                    // Feature Settings (if enabled)
-                    if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
-                    {
-                        settingsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Feature Settings",
-                            Href = "/admin/feature-settings",
-                            Icon = "bi bi-toggle-on"
-                        });
-                    }
+                    // Feature Settings removed - now in MasterAdmin menu
                 }
                 else
                 {
@@ -356,26 +347,66 @@ public class MenuService : IMenuService
                 }
             }
 
-            // Stripe (if enabled, requires tenant)
-            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Stripe_Enabled"))
+            // Subscription (if enabled, requires tenant) - for all users
+            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Subscriptions"))
             {
                 menuItems.Add(new MenuItem
                 {
-                    Title = "Payments",
-                    Href = "/stripe/subscriptions",
+                    Title = "Subscription",
+                    Href = "/subscription",
                     Icon = "bi bi-credit-card"
                 });
             }
 
-            // SuperAdmin - Migrations
-            if (isAdmin && await _featureFlagService.IsEnabledAsync("Migrations_Enabled"))
+            // MasterAdmin Menu (only for MasterAdmin users)
+            if (isMasterAdmin)
             {
-                menuItems.Add(new MenuItem
+                var masterAdminMenu = new MenuItem
                 {
-                    Title = "Migrations",
-                    Href = "/superadmin/migrations",
-                    Icon = "bi bi-database"
+                    Title = "MasterAdmin",
+                    Icon = "bi bi-shield-fill",
+                    Children = new List<MenuItem>()
+                };
+
+                // Subscription Models
+                masterAdminMenu.Children.Add(new MenuItem
+                {
+                    Title = "Subscription Models",
+                    Href = "/masteradmin/subscription-models",
+                    Icon = "bi bi-credit-card-2-front"
                 });
+
+                // Organization Subscriptions
+                masterAdminMenu.Children.Add(new MenuItem
+                {
+                    Title = "Organization Subscriptions",
+                    Href = "/masteradmin/organization-subscriptions",
+                    Icon = "bi bi-building"
+                });
+
+                // Feature Settings (moved from Settings)
+                if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
+                {
+                    masterAdminMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Feature Settings",
+                        Href = "/admin/feature-settings",
+                        Icon = "bi bi-toggle-on"
+                    });
+                }
+
+                // Migrations (moved from root)
+                if (await _featureFlagService.IsEnabledAsync("Migrations_Enabled"))
+                {
+                    masterAdminMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Migrations",
+                        Href = "/superadmin/migrations",
+                        Icon = "bi bi-database"
+                    });
+                }
+
+                menuItems.Add(masterAdminMenu);
             }
 
             return menuItems;
