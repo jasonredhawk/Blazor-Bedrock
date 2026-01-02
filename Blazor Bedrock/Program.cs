@@ -14,6 +14,7 @@ using Blazor_Bedrock.Services.Document;
 using Blazor_Bedrock.Services.Chart;
 using Blazor_Bedrock.Services.Migrations;
 using Blazor_Bedrock.Services.Stripe;
+using Blazor_Bedrock.Services.RAG;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -187,6 +188,12 @@ builder.Services.AddDataProtection();
 builder.Services.AddHttpClient<IChatGptService, ChatGptService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 
+// HttpClient for OpenAI File Thread API (Threads/Messages API)
+builder.Services.AddHttpClient<IOpenAIFileThreadService, OpenAIFileThreadService>();
+
+// RAG Service
+builder.Services.AddHttpClient<IRagService, RagService>();
+
 var app = builder.Build();
 
 // Update the logger provider to use the app's service provider
@@ -319,4 +326,82 @@ app.MapGet("/api/documents/{id}/file", async (int id, HttpContext context, IDocu
     }
 }).RequireAuthorization();
 
+// RAG endpoints
+app.MapPost("/api/rag/process-document/{documentId}", async (int documentId, HttpContext context, IRagService ragService, ITenantService tenantService) =>
+{
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId) || tenantId == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        await ragService.ProcessDocumentAsync(documentId, userId, tenantId);
+        return Results.Ok(new { message = "Document processed successfully" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+}).RequireAuthorization();
+
+app.MapPost("/api/rag/ask", async (HttpContext context, IRagService ragService, ITenantService tenantService) =>
+{
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId) || tenantId == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var request = await context.Request.ReadFromJsonAsync<AskQuestionRequest>();
+        if (request == null || request.DocumentId == null)
+        {
+            return Results.BadRequest(new { error = "Question and DocumentId are required" });
+        }
+
+        var answer = await ragService.AskQuestionAsync(request.Question, request.DocumentId.Value, userId, tenantId, request.TopK ?? 5);
+        return Results.Ok(new { answer });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+}).RequireAuthorization();
+
+app.MapGet("/api/rag/document/{documentId}/processed", async (int documentId, HttpContext context, IRagService ragService, ITenantService tenantService) =>
+{
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId) || tenantId == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var isProcessed = await ragService.IsDocumentProcessedAsync(documentId, userId, tenantId);
+        return Results.Ok(new { isProcessed });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+}).RequireAuthorization();
+
 app.Run();
+
+// Request/Response DTOs for RAG endpoints
+public record AskQuestionRequest
+{
+    public string Question { get; set; } = string.Empty;
+    public int? DocumentId { get; set; }
+    public int? TopK { get; set; }
+}

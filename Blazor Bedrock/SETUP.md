@@ -99,6 +99,22 @@ The database will be created and seeded with:
 ```
 3. Enable the feature flag: `Stripe_Enabled`
 
+#### Pinecone (RAG - Retrieval Augmented Generation)
+1. Sign up for a free account at [Pinecone](https://www.pinecone.io/)
+2. Create a new project and get your API key from the dashboard
+3. Update `appsettings.json`:
+```json
+{
+  "Pinecone": {
+    "ApiKey": "YOUR_PINECONE_API_KEY",
+    "IndexName": "blazor-bedrock",
+    "Region": "us-east-1"
+  }
+}
+```
+4. The RAG service will automatically create indexes per tenant when documents are processed
+5. **Note**: You also need an OpenAI API key configured in your profile settings (used for embeddings and chat)
+
 ### 4. Run the Application
 
 ```bash
@@ -126,6 +142,7 @@ Feature flags are stored in the database and can be toggled to enable/disable mo
 - `Stripe_Enabled` - Stripe Payments
 - `Migrations_Enabled` - Migration Management
 - `Logger_Enabled` - Application Logger
+- `RAG_Enabled` - RAG (Retrieval Augmented Generation) with Pinecone
 
 ## Google Cloud Run Deployment
 

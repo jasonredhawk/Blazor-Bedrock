@@ -10,6 +10,8 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Components.Forms
+@using System.IO
 @using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
 @inject IChatGptService ChatGptService
 @inject IPromptService PromptService
@@ -23,6 +25,8 @@
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@inject IOpenAIFileThreadService FileThreadService
+@inject Blazor_Bedrock.Services.RAG.IRagService RagService
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 
@@ -336,24 +340,89 @@
                                     }
                                 </select>
                             </div>
-                            @if (_selectedDocumentId.HasValue || _conversationDocumentId.HasValue)
+                            @if (_selectedDocumentId.HasValue)
                             {
-                                var docId = _selectedDocumentId ?? _conversationDocumentId;
-                                var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == docId);
+                                var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == _selectedDocumentId);
                                 @if (selectedDoc != null)
                                 {
-                                    <span class="badge bg-info" title="@selectedDoc.FileName">
-                                        <i class="bi bi-file-earmark me-1"></i>@(selectedDoc.Title ?? selectedDoc.FileName)
-                                    </span>
-                                    @if (!_isLoading && _currentConversationId.HasValue)
-                                    {
-                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
-                                            <i class="bi bi-x"></i>
+                                    var isAlreadyUploaded = _documentIdToFileIdMap.ContainsKey(_selectedDocumentId.Value);
+                                    var isRagProcessed = _ragProcessedDocuments.Contains(_selectedDocumentId.Value);
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-primary" 
+                                                @onclick="() => UploadSelectedDocumentToOpenAI()" 
+                                                disabled="@(_isLoading || _isUploadingFile || isAlreadyUploaded)"
+                                                title="@(isAlreadyUploaded ? "Document already uploaded to OpenAI" : "Upload document to OpenAI Threads API")">
+                                            <i class="bi bi-cloud-upload me-1"></i>
+                                            @(isAlreadyUploaded ? "Uploaded" : "Upload to OpenAI")
                                         </button>
-                                    }
+                                        <button class="btn btn-sm @(isRagProcessed ? "btn-success" : "btn-outline-primary")" 
+                                                @onclick="() => ProcessDocumentForRAG()" 
+                                                disabled="@(_isLoading || _isProcessingRAG)"
+                                                title="@(isRagProcessed ? "Document processed for RAG" : "Process document for RAG (Pinecone)")">
+                                            <i class="bi bi-@(isRagProcessed ? "check-circle" : "database") me-1"></i>
+                                            @(_isProcessingRAG ? "Processing..." : (isRagProcessed ? "RAG Ready" : "Process for RAG"))
+                                        </button>
+                                        @if (!_isLoading && _currentConversationId.HasValue)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            }
+                            @if (_conversationDocumentId.HasValue && _conversationDocumentId != _selectedDocumentId)
+                            {
+                                var convDoc = _availableDocuments.FirstOrDefault(d => d.Id == _conversationDocumentId);
+                                @if (convDoc != null)
+                                {
+                                    <span class="badge bg-info" title="@convDoc.FileName">
+                                        <i class="bi bi-file-earmark me-1"></i>@(convDoc.Title ?? convDoc.FileName)
+                                    </span>
                                 }
                             }
                         </div>
+                        @* OpenAI Uploaded Files Section *@
+                        @if (_uploadedOpenAIFiles.Any() || _isUploadingFile)
+                        {
+                            <div class="mt-2 p-2 border rounded" style="background-color: #f0f8ff;">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <small class="fw-bold text-muted">
+                                        <i class="bi bi-cloud-check me-1"></i>Documents Uploaded to OpenAI (Threads API):
+                                    </small>
+                                </div>
+                                <small class="text-muted d-block mb-2">
+                                    Selected documents are automatically uploaded to OpenAI for use with the Threads API. You can ask questions about these documents.
+                                </small>
+                                @if (_uploadedOpenAIFiles.Any())
+                                {
+                                    <div class="mt-2">
+                                        <div class="d-flex flex-wrap gap-2">
+                                            @foreach (var file in _uploadedOpenAIFiles)
+                                            {
+                                                <span class="badge bg-success d-flex align-items-center gap-1">
+                                                    <i class="bi bi-file-earmark-check"></i>
+                                                    @file.FileName
+                                                    <button class="btn btn-sm p-0 ms-1" style="background: none; border: none; color: white; font-size: 0.8rem;" 
+                                                            @onclick="() => RemoveUploadedFile(file.FileId)" 
+                                                            title="Remove file from OpenAI"
+                                                            disabled="@_isLoading">
+                                                        <i class="bi bi-x-circle"></i>
+                                                    </button>
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                @if (_isUploadingFile)
+                                {
+                                    <div class="mt-2">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        <small class="text-muted">Uploading document to OpenAI...</small>
+                                    </div>
+                                }
+                            </div>
+                        }
                         @* Sheet Selection UI for Excel files *@
                         @if (_showSheetSelection && _availableSheetNames.Any())
                         {
@@ -513,6 +582,16 @@
     private bool _subscriptionsEnabled = false;
     private int _currentConversationCount = 0;
     private int? _maxConversations;
+    
+    // OpenAI File Thread Service state
+    private string? _openAIThreadId;
+    private List<UploadedOpenAIFile> _uploadedOpenAIFiles = new();
+    private Dictionary<int, string> _documentIdToFileIdMap = new(); // Maps document ID to OpenAI file ID
+    private bool _isUploadingFile = false;
+    
+    // RAG Service state
+    private HashSet<int> _ragProcessedDocuments = new(); // Track which documents are processed for RAG
+    private bool _isProcessingRAG = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -539,6 +618,9 @@
                     
                     // Load documents
                     _availableDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+                    
+                    // Check RAG processed status for all documents (runs in background, doesn't block UI)
+                    _ = CheckAllDocumentsRAGStatus(userId, tenantId.Value);
                     
                     // Load subscription limitations
                     _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
@@ -697,6 +779,8 @@
             _currentConversationId = null;
             // Keep prompt selection but reset conversation tracking
             _currentPromptIdForConversation = _selectedPromptId;
+            // Clear OpenAI files and thread when clearing conversation
+            await ClearOpenAIFiles();
             StateHasChanged();
         }
     }
@@ -715,6 +799,9 @@
             // Keep prompt selection for new conversation
             _currentPromptIdForConversation = _selectedPromptId;
             _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            
+            // Clear OpenAI files and thread when creating new conversation
+            await ClearOpenAIFiles();
             
             // Refresh limitation counter
             if (_subscriptionsEnabled)
@@ -750,8 +837,21 @@
         _currentConversationId = conversationId;
         _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
         
+        // Clear OpenAI files when switching conversations (each conversation has its own thread)
+        await ClearOpenAIFiles();
+        
         // Load the prompt and document that were used for this conversation
         var conversation = _conversations.FirstOrDefault(c => c.Id == conversationId);
+        
+        // If the conversation has a document, upload it to OpenAI
+        if (conversation?.DocumentId.HasValue == true)
+        {
+            var doc = _availableDocuments.FirstOrDefault(d => d.Id == conversation.DocumentId.Value);
+            if (doc != null && !_documentIdToFileIdMap.ContainsKey(doc.Id))
+            {
+                await UploadDocumentToOpenAI(doc);
+            }
+        }
         if (conversation != null)
         {
             if (conversation.PromptId.HasValue)
@@ -783,6 +883,8 @@
                 if (selectedDoc != null)
                 {
                     await LoadSheetNamesForDocument(selectedDoc);
+                    // Check RAG processed status
+                    await CheckRAGProcessedStatus();
                 }
             }
             else
@@ -889,6 +991,8 @@
             if (selectedDoc != null)
             {
                 await LoadSheetNamesForDocument(selectedDoc);
+                // Check RAG processed status
+                await CheckRAGProcessedStatus();
             }
             
             // If there's an active conversation, update it with the new document
@@ -932,6 +1036,81 @@
             }
         }
         StateHasChanged();
+    }
+
+    private async Task UploadSelectedDocumentToOpenAI()
+    {
+        if (!_selectedDocumentId.HasValue) return;
+        
+        var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == _selectedDocumentId.Value);
+        if (selectedDoc != null)
+        {
+            await UploadDocumentToOpenAI(selectedDoc);
+        }
+    }
+
+    private async Task UploadDocumentToOpenAI(Document document)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+            return;
+        }
+
+        // Check if file type is supported
+        if (!FileThreadService.IsFileTypeSupported(document.FileName))
+        {
+            var extension = Path.GetExtension(document.FileName);
+            await NotificationService.ShowWarningAsync(
+                $"{document.FileName} uses a file type ({extension}) that is not supported by OpenAI's file_search tool in the Threads API. " +
+                "Supported formats include: PDF, DOCX, TXT, MD, CSV, JSON, and code files (.py, .js, .java, etc.). " +
+                "This file will not be uploaded to OpenAI.");
+            return;
+        }
+
+        _isUploadingFile = true;
+        StateHasChanged();
+
+        try
+        {
+            // Create thread if it doesn't exist
+            if (string.IsNullOrEmpty(_openAIThreadId))
+            {
+                _openAIThreadId = await FileThreadService.CreateThreadAsync(userId, tenantId);
+            }
+
+            // Get document file content
+            var fileContent = await DocumentService.GetDocumentFileAsync(document.Id, userId, tenantId.Value);
+            
+            // Upload to OpenAI
+            using var memoryStream = new MemoryStream(fileContent);
+            var fileId = await FileThreadService.UploadFileAsync(memoryStream, document.FileName, userId, tenantId);
+            
+            // Track the mapping and add to uploaded files list
+            _documentIdToFileIdMap[document.Id] = fileId;
+            _uploadedOpenAIFiles.Add(new UploadedOpenAIFile
+            {
+                FileId = fileId,
+                FileName = document.FileName,
+                DocumentId = document.Id
+            });
+
+            await NotificationService.ShowSuccessAsync($"Successfully uploaded {document.FileName} to OpenAI");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to upload {document.FileName} to OpenAI: {ex.Message}");
+        }
+        finally
+        {
+            _isUploadingFile = false;
+            StateHasChanged();
+        }
     }
 
     private async Task LoadSheetNamesForDocument(Document document)
@@ -1065,6 +1244,17 @@
 
     private async Task ClearSelectedDocument()
     {
+        // Remove from OpenAI if it was uploaded
+        if (_selectedDocumentId.HasValue && _documentIdToFileIdMap.TryGetValue(_selectedDocumentId.Value, out var fileId))
+        {
+            var file = _uploadedOpenAIFiles.FirstOrDefault(f => f.FileId == fileId);
+            if (file != null)
+            {
+                _uploadedOpenAIFiles.Remove(file);
+                _documentIdToFileIdMap.Remove(_selectedDocumentId.Value);
+            }
+        }
+        
         _selectedDocumentId = null;
         _showSheetSelection = false;
         _availableSheetNames.Clear();
@@ -1165,11 +1355,14 @@
             // Build conversation history from existing messages
             var conversationMessages = new List<ChatMessage>();
             
-            // Get the document if one is associated with this conversation
+            // Only use document extraction if NOT using RAG or Threads API
+            // When using RAG or Threads API, documents are handled differently (Pinecone vectors or file attachments)
             Document? conversationDocument = null;
             int? activeDocumentId = _selectedDocumentId ?? _conversationDocumentId;
+            var isUsingRAG = activeDocumentId.HasValue && _ragProcessedDocuments.Contains(activeDocumentId.Value);
             
-            if (activeDocumentId.HasValue)
+            // Skip document extraction if using RAG or Threads API
+            if (activeDocumentId.HasValue && !isUsingRAG && (!_uploadedOpenAIFiles.Any() || string.IsNullOrEmpty(_openAIThreadId)))
             {
                 conversationDocument = _availableDocuments.FirstOrDefault(d => d.Id == activeDocumentId.Value);
             }
@@ -1393,8 +1586,36 @@
             StateHasChanged();
             await ScrollToBottom();
 
-            // Send full conversation history to ChatGPT (automatically gets API key and model from settings)
-            var response = await ChatGptService.SendConversationMessageAsync(userId, tenantId, conversationMessages);
+            // Determine which API to use: RAG > Threads API > regular Chat API
+            string response;
+            var activeDocId = _selectedDocumentId ?? _conversationDocumentId;
+            
+            if (activeDocId.HasValue && _ragProcessedDocuments.Contains(activeDocId.Value))
+            {
+                // Use RAG (Pinecone + GPT-4o)
+                response = await RagService.AskQuestionAsync(userMessageText, activeDocId.Value, userId, tenantId);
+            }
+            else if (_uploadedOpenAIFiles.Any() && !string.IsNullOrEmpty(_openAIThreadId))
+            {
+                // Use OpenAI Threads API with uploaded files
+                // Don't use the old document extraction method when using Threads API
+                var fileIds = _uploadedOpenAIFiles.Select(f => f.FileId).ToList();
+                var filenames = _uploadedOpenAIFiles.Select(f => f.FileName).ToList();
+                response = await FileThreadService.AskQuestionAsync(
+                    userMessageText,
+                    _openAIThreadId,
+                    userId,
+                    tenantId,
+                    fileIds,
+                    filenames,
+                    _preferredModel ?? "gpt-4o"
+                );
+            }
+            else
+            {
+                // Use regular Chat API (existing behavior with document extraction)
+                response = await ChatGptService.SendConversationMessageAsync(userId, tenantId, conversationMessages);
+            }
 
             // Save assistant response to database
             var assistantMessage = new ChatGptMessage
@@ -1470,5 +1691,130 @@
             : percentage >= 0.9 
                 ? "badge bg-warning" 
                 : "badge bg-success";
+    }
+
+    // OpenAI File Thread Service methods
+    private class UploadedOpenAIFile
+    {
+        public string FileId { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public int? DocumentId { get; set; } // Track which document this came from
+    }
+
+
+    private void RemoveUploadedFile(string fileId)
+    {
+        var file = _uploadedOpenAIFiles.FirstOrDefault(f => f.FileId == fileId);
+        if (file != null)
+        {
+            _uploadedOpenAIFiles.Remove(file);
+            
+            // Remove from document mapping if it was from a document
+            if (file.DocumentId.HasValue)
+            {
+                _documentIdToFileIdMap.Remove(file.DocumentId.Value);
+                
+                // If this was the selected document, clear the selection
+                if (_selectedDocumentId == file.DocumentId.Value)
+                {
+                    _selectedDocumentId = null;
+                    _conversationDocumentId = null;
+                }
+            }
+            
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearOpenAIFiles()
+    {
+        _uploadedOpenAIFiles.Clear();
+        _documentIdToFileIdMap.Clear();
+        _openAIThreadId = null;
+        StateHasChanged();
+    }
+
+    // RAG Service methods
+    private async Task ProcessDocumentForRAG()
+    {
+        if (!_selectedDocumentId.HasValue) return;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null)
+        {
+            await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+            return;
+        }
+
+        _isProcessingRAG = true;
+        StateHasChanged();
+
+        try
+        {
+            await RagService.ProcessDocumentAsync(_selectedDocumentId.Value, userId, tenantId);
+            _ragProcessedDocuments.Add(_selectedDocumentId.Value);
+            await NotificationService.ShowSuccessAsync("Document processed successfully for RAG. You can now ask questions about it!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to process document for RAG: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessingRAG = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckAllDocumentsRAGStatus(string userId, int tenantId)
+    {
+        foreach (var doc in _availableDocuments)
+        {
+            try
+            {
+                var isProcessed = await RagService.IsDocumentProcessedAsync(doc.Id, userId, tenantId);
+                if (isProcessed)
+                {
+                    _ragProcessedDocuments.Add(doc.Id);
+                }
+            }
+            catch
+            {
+                // Ignore errors for individual documents
+            }
+        }
+        // Update UI on the UI thread
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CheckRAGProcessedStatus()
+    {
+        if (!_selectedDocumentId.HasValue) return;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(userId) || tenantId == null) return;
+
+        try
+        {
+            var isProcessed = await RagService.IsDocumentProcessedAsync(_selectedDocumentId.Value, userId, tenantId);
+            if (isProcessed)
+            {
+                _ragProcessedDocuments.Add(_selectedDocumentId.Value);
+            }
+            else
+            {
+                _ragProcessedDocuments.Remove(_selectedDocumentId.Value);
+            }
+        }
+        catch
+        {
+            // Ignore errors when checking status
+        }
     }
 }

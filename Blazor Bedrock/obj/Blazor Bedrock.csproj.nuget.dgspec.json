@@ -87,6 +87,10 @@
               "target": "Package",
               "version": "[9.0.0, )"
             },
+            "Pinecone.Client": {
+              "target": "Package",
+              "version": "[4.0.2, )"
+            },
             "Pomelo.EntityFrameworkCore.MySql": {
               "target": "Package",
               "version": "[9.0.0, )"
