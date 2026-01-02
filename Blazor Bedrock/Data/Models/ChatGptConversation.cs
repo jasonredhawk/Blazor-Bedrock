@@ -10,6 +10,10 @@ public class ChatGptConversation
     public int? PromptId { get; set; }
     public int? DocumentId { get; set; }
     public string? SelectedSheetNames { get; set; } // JSON array of selected sheet names for Excel files
+    public string? OpenAiThreadId { get; set; } // OpenAI Assistants API thread ID
+    public string? OpenAiAssistantId { get; set; } // OpenAI Assistants API assistant ID
+    public string? OpenAiFileIds { get; set; } // JSON array of OpenAI file IDs for document attachments
+    public string? UploadedDocumentIds { get; set; } // JSON array of uploaded document IDs (for tracking which documents are in OpenAI memory)
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

@@ -12,6 +12,10 @@ public class ChatGptConversationConfiguration : IEntityTypeConfiguration<ChatGpt
         builder.Property(c => c.Title).IsRequired().HasMaxLength(500);
         builder.Property(c => c.Model).HasMaxLength(100);
         builder.Property(c => c.SelectedSheetNames).HasMaxLength(2000); // JSON array of sheet names
+        builder.Property(c => c.OpenAiThreadId).HasMaxLength(200); // OpenAI thread ID
+        builder.Property(c => c.OpenAiAssistantId).HasMaxLength(200); // OpenAI assistant ID
+        builder.Property(c => c.OpenAiFileIds).HasMaxLength(2000); // JSON array of OpenAI file IDs
+        builder.Property(c => c.UploadedDocumentIds).HasMaxLength(2000); // JSON array of uploaded document IDs
         
         builder.HasOne(c => c.User)
             .WithMany(u => u.ChatGptConversations)

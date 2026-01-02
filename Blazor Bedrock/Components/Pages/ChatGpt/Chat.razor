@@ -23,6 +23,7 @@
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@inject ILogger<Chat> Logger
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 
@@ -233,6 +234,10 @@
                         {
                             @foreach (var conv in _conversations)
                             {
+                                var hasUploadedDoc = !string.IsNullOrEmpty(conv.OpenAiThreadId) && 
+                                                    !string.IsNullOrEmpty(conv.OpenAiAssistantId) &&
+                                                    !string.IsNullOrEmpty(conv.OpenAiFileIds);
+                                
                                 <div class="conversation-item @(conv.Id == _currentConversationId ? "active" : "")"
                                      @onclick="() => LoadConversation(conv.Id)">
                                     <div class="d-flex align-items-center justify-content-between">
@@ -241,6 +246,10 @@
                                             <div style="flex: 1; min-width: 0;">
                                                 <div style="@GetConversationItemStyle(conv.Id)">
                                                     @conv.Title
+                                                    @if (hasUploadedDoc)
+                                                    {
+                                                        <i class="bi bi-cloud-check-fill text-success ms-1" style="font-size: 0.75rem;" title="Document in OpenAI memory"></i>
+                                                    }
                                                 </div>
                                                 @if (conv.UpdatedAt.HasValue)
                                                 {
@@ -277,6 +286,61 @@
                 <div style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
                     @* Chat Header - Fixed at top *@
                     <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex: 0 0 auto; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
+                        @* Document Upload Status Banner *@
+                        @if (_currentConversationId.HasValue)
+                        {
+                            var currentConv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                            var hasUploadedDocument = currentConv != null && 
+                                                     !string.IsNullOrEmpty(currentConv.OpenAiThreadId) && 
+                                                     !string.IsNullOrEmpty(currentConv.OpenAiAssistantId) &&
+                                                     !string.IsNullOrEmpty(currentConv.OpenAiFileIds);
+                            
+                            if (hasUploadedDocument && currentConv != null)
+                            {
+                                var fileIds = !string.IsNullOrEmpty(currentConv.OpenAiFileIds)
+                                    ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConv.OpenAiFileIds) ?? new List<string>()
+                                    : new List<string>();
+                                
+                                var uploadedDocs = _availableDocuments.Where(d => 
+                                    currentConv.DocumentId.HasValue && d.Id == currentConv.DocumentId.Value ||
+                                    fileIds.Any()).ToList();
+                                
+                                @if (uploadedDocs.Any() || fileIds.Any())
+                                {
+                                    <div class="alert alert-success alert-dismissible fade show mb-2 py-2" role="alert" style="font-size: 0.875rem;">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-check-circle-fill me-2"></i>
+                                            <div style="flex: 1;">
+                                                <strong>@(fileIds.Count > 1 ? "Documents" : "Document") in OpenAI Memory:</strong> 
+                                                @if (uploadedDocs.Any())
+                                                {
+                                                    <span>@string.Join(", ", uploadedDocs.Select(d => d.Title ?? d.FileName))</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@fileIds.Count file(s)</span>
+                                                }
+                                                @if (fileIds.Count > 1)
+                                                {
+                                                    <span class="badge bg-light text-dark ms-2">@fileIds.Count files</span>
+                                                }
+                                                <br />
+                                                <small class="text-muted">
+                                                    <i class="bi bi-link-45deg me-1"></i>Thread ID: <code style="font-size: 0.75rem;">@currentConv.OpenAiThreadId</code>
+                                                    @if (!string.IsNullOrEmpty(currentConv.OpenAiAssistantId))
+                                                    {
+                                                        <span class="ms-2">
+                                                            <i class="bi bi-robot me-1"></i>Assistant ID: <code style="font-size: 0.75rem;">@currentConv.OpenAiAssistantId.Substring(0, Math.Min(8, currentConv.OpenAiAssistantId.Length))...</code>
+                                                        </span>
+                                                    }
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        }
+                        
                         <div class="d-flex align-items-center justify-content-between mb-2" style="width: 100%; box-sizing: border-box;">
                             <div style="flex: 1; min-width: 0; overflow: hidden;">
                                 <h6 class="mb-0" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -336,21 +400,75 @@
                                     }
                                 </select>
                             </div>
+                            @if (_selectedDocumentId.HasValue)
+                            {
+                                <button class="btn btn-sm btn-primary" 
+                                        @onclick="UploadDocumentToOpenAI" 
+                                        disabled="@(_isLoading || _isUploadingDocument)"
+                                        title="Upload document to OpenAI and create/update conversation">
+                                    @if (_isUploadingDocument)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-cloud-upload me-1"></i>
+                                    }
+                                    Upload to OpenAI
+                                </button>
+                            }
                             @if (_selectedDocumentId.HasValue || _conversationDocumentId.HasValue)
                             {
                                 var docId = _selectedDocumentId ?? _conversationDocumentId;
                                 var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == docId);
                                 @if (selectedDoc != null)
                                 {
-                                    <span class="badge bg-info" title="@selectedDoc.FileName">
-                                        <i class="bi bi-file-earmark me-1"></i>@(selectedDoc.Title ?? selectedDoc.FileName)
-                                    </span>
-                                    @if (!_isLoading && _currentConversationId.HasValue)
+                                    // Check if document is already uploaded (has thread/file IDs)
+                                    // Always check the current conversation from the loaded list
+                                    ChatGptConversation? currentConv = null;
+                                    if (_currentConversationId.HasValue)
                                     {
-                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
-                                            <i class="bi bi-x"></i>
-                                        </button>
+                                        currentConv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
                                     }
+                                    
+                                    var isUploaded = currentConv != null && 
+                                                    !string.IsNullOrEmpty(currentConv.OpenAiThreadId) && 
+                                                    !string.IsNullOrEmpty(currentConv.OpenAiAssistantId) &&
+                                                    !string.IsNullOrEmpty(currentConv.OpenAiFileIds);
+                                    
+                                    // Check if this specific document is in the uploaded files
+                                    var fileIds = !string.IsNullOrEmpty(currentConv?.OpenAiFileIds)
+                                        ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConv.OpenAiFileIds) ?? new List<string>()
+                                        : new List<string>();
+                                    var hasMultipleDocs = fileIds.Count > 1;
+                                    
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge @(isUploaded ? "bg-success" : "bg-warning")" style="font-size: 0.875rem;">
+                                            @if (isUploaded)
+                                            {
+                                                <i class="bi bi-cloud-check-fill me-1"></i>
+                                                <span>In OpenAI Memory</span>
+                                                @if (hasMultipleDocs)
+                                                {
+                                                    <span class="ms-1">(@fileIds.Count files)</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-cloud-upload me-1"></i>
+                                                <span>Not Uploaded</span>
+                                            }
+                                        </span>
+                                        <span class="badge bg-info" title="@selectedDoc.FileName" style="font-size: 0.875rem;">
+                                            <i class="bi bi-file-earmark me-1"></i>@(selectedDoc.Title ?? selectedDoc.FileName)
+                                        </span>
+                                        @if (!_isLoading && _currentConversationId.HasValue)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        }
+                                    </div>
                                 }
                             }
                         </div>
@@ -400,6 +518,81 @@
                             </div>
                         }
                     </div>
+                    
+                    @* Persistent Uploaded Documents List - Always visible when documents are uploaded *@
+                    @if (_currentConversationId.HasValue)
+                    {
+                        // Always get the latest conversation data
+                        var currentConv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                        
+                        // Check if conversation has uploaded documents (check both UploadedDocumentIds and OpenAiFileIds as fallback)
+                        var hasUploadedDocs = currentConv != null && 
+                                             !string.IsNullOrEmpty(currentConv.OpenAiThreadId) && 
+                                             !string.IsNullOrEmpty(currentConv.OpenAiAssistantId) &&
+                                             (!string.IsNullOrEmpty(currentConv.UploadedDocumentIds) || !string.IsNullOrEmpty(currentConv.OpenAiFileIds));
+                        
+                        if (hasUploadedDocs && currentConv != null)
+                        {
+                            // Try to get uploaded document IDs, fallback to file IDs count
+                            var uploadedDocIds = !string.IsNullOrEmpty(currentConv.UploadedDocumentIds)
+                                ? System.Text.Json.JsonSerializer.Deserialize<List<int>>(currentConv.UploadedDocumentIds) ?? new List<int>()
+                                : new List<int>();
+                            
+                            // If no document IDs but we have file IDs, try to match by DocumentId
+                            if (!uploadedDocIds.Any() && currentConv.DocumentId.HasValue)
+                            {
+                                uploadedDocIds.Add(currentConv.DocumentId.Value);
+                            }
+                            
+                            var uploadedDocs = _availableDocuments.Where(d => uploadedDocIds.Contains(d.Id)).ToList();
+                            
+                            // Show the list if we have documents or if we have file IDs (indicating documents are uploaded)
+                            var fileIds = !string.IsNullOrEmpty(currentConv.OpenAiFileIds)
+                                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConv.OpenAiFileIds) ?? new List<string>()
+                                : new List<string>();
+                            
+                            @if (uploadedDocs.Any() || fileIds.Any())
+                            {
+                                <div class="border-bottom bg-light p-3" style="flex: 0 0 auto; z-index: 5;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <h6 class="mb-0">
+                                            <i class="bi bi-cloud-check-fill text-success me-2"></i>
+                                            Documents in OpenAI Memory
+                                        </h6>
+                                        <span class="badge bg-success">@(uploadedDocs.Any() ? uploadedDocs.Count : fileIds.Count)</span>
+                                    </div>
+                                    @if (uploadedDocs.Any())
+                                    {
+                                        <div class="d-flex flex-wrap gap-2">
+                                            @foreach (var doc in uploadedDocs)
+                                            {
+                                                <span class="badge bg-info d-flex align-items-center" style="font-size: 0.875rem; padding: 6px 12px;">
+                                                    <i class="bi bi-file-earmark me-1"></i>
+                                                    @(doc.Title ?? doc.FileName)
+                                                    <i class="bi bi-check-circle-fill text-success ms-2" title="Uploaded to OpenAI"></i>
+                                                </span>
+                                            }
+                                        </div>
+                                    }
+                                    else if (fileIds.Any())
+                                    {
+                                        <div class="text-muted">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            @fileIds.Count document(s) uploaded to OpenAI
+                                        </div>
+                                    }
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        These documents are available for questions. Thread: <code style="font-size: 0.75rem;">@currentConv.OpenAiThreadId</code>
+                                        @if (!string.IsNullOrEmpty(currentConv.OpenAiAssistantId))
+                                        {
+                                            <span class="ms-2">Assistant: <code style="font-size: 0.75rem;">@currentConv.OpenAiAssistantId.Substring(0, Math.Min(8, currentConv.OpenAiAssistantId.Length))...</code></span>
+                                        }
+                                    </small>
+                                </div>
+                            }
+                        }
+                    }
                     
                     @* Messages Area - Only scrollable area *@
                     <div class="messages-container" @ref="_messagesContainer" style="flex: 1 1 0; min-height: 0; max-height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;">
@@ -497,6 +690,7 @@
     private List<ChatGptMessage> _messages = new();
     private string _messageText = string.Empty;
     private bool _isLoading = false;
+    private bool _isUploadingDocument = false;
     private ElementReference _messagesContainer;
     private ElementReference _messageTextarea;
     private List<ChatGptPrompt> _availablePrompts = new();
@@ -793,6 +987,15 @@
                 _availableSheetNames.Clear();
                 _selectedSheetNames.Clear();
             }
+            
+            // Reload conversations to ensure we have the latest data including uploaded document IDs
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            if (!string.IsNullOrEmpty(userId))
+            {
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            }
         }
         else
         {
@@ -1063,6 +1266,152 @@
         StateHasChanged();
     }
 
+    private async Task UploadDocumentToOpenAI()
+    {
+        if (!_selectedDocumentId.HasValue || _isUploadingDocument)
+            return;
+
+        _isUploadingDocument = true;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                return;
+            }
+
+            var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == _selectedDocumentId.Value);
+            if (selectedDoc == null)
+            {
+                await NotificationService.ShowErrorAsync("Document not found.");
+                return;
+            }
+
+            // Get selected sheets if it's an Excel file
+            List<string>? selectedSheets = null;
+            if (_selectedSheetNames.Any())
+            {
+                selectedSheets = _selectedSheetNames.ToList();
+            }
+
+            // Create or update conversation with document
+            ChatGptConversation? conversation = null;
+            if (!_currentConversationId.HasValue)
+            {
+                // Create new conversation with document
+                var title = $"Chat with {selectedDoc.Title ?? selectedDoc.FileName}";
+                conversation = await ChatGptService.CreateConversationAsync(
+                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, selectedSheets);
+                
+                var newConversationId = conversation.Id;
+                _currentConversationId = newConversationId;
+                _conversationDocumentId = _selectedDocumentId.Value;
+                _messages = new List<ChatGptMessage>();
+                _currentPromptIdForConversation = _selectedPromptId;
+                
+                // Reload conversations to get the updated conversation with thread/file IDs
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                
+                // Get the updated conversation from the reloaded list
+                conversation = _conversations.FirstOrDefault(c => c.Id == newConversationId);
+                
+                // Show detailed success message with thread/file IDs
+                var threadInfo = conversation != null && !string.IsNullOrEmpty(conversation.OpenAiThreadId) 
+                    ? $" Thread ID: {conversation.OpenAiThreadId.Substring(0, Math.Min(8, conversation.OpenAiThreadId.Length))}..." 
+                    : "";
+                
+                if (conversation != null && !string.IsNullOrEmpty(conversation.OpenAiThreadId) && 
+                    !string.IsNullOrEmpty(conversation.OpenAiAssistantId) && !string.IsNullOrEmpty(conversation.OpenAiFileIds))
+                {
+                    // Reload conversations to get updated data
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    conversation = _conversations.FirstOrDefault(c => c.Id == newConversationId);
+                    
+                    await NotificationService.ShowSuccessAsync(
+                        $"✅ Document '{selectedDoc.Title ?? selectedDoc.FileName}' uploaded to OpenAI memory and conversation created.{threadInfo} You can now ask questions about this document!");
+                }
+                else
+                {
+                    await NotificationService.ShowWarningAsync(
+                        $"⚠️ Document '{selectedDoc.Title ?? selectedDoc.FileName}' attached to conversation, but OpenAI upload may have failed. Please try again.");
+                }
+            }
+            else
+            {
+                // Update existing conversation with document (adds to existing files, doesn't replace)
+                await ChatGptService.UpdateConversationDocumentAsync(
+                    _currentConversationId.Value, _selectedDocumentId.Value, selectedSheets);
+                _conversationDocumentId = _selectedDocumentId.Value;
+                
+                // Reload to get updated conversation with thread/file IDs
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                
+                var threadInfo = conversation != null && !string.IsNullOrEmpty(conversation.OpenAiThreadId)
+                    ? $" Thread ID: {conversation.OpenAiThreadId.Substring(0, Math.Min(8, conversation.OpenAiThreadId.Length))}..." 
+                    : "";
+                
+                if (conversation != null && !string.IsNullOrEmpty(conversation.OpenAiThreadId) && 
+                    !string.IsNullOrEmpty(conversation.OpenAiAssistantId) && !string.IsNullOrEmpty(conversation.OpenAiFileIds))
+                {
+                    // Reload conversations to get updated data including uploaded document IDs
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                    
+                    var uploadedDocIds = !string.IsNullOrEmpty(conversation?.UploadedDocumentIds)
+                        ? System.Text.Json.JsonSerializer.Deserialize<List<int>>(conversation.UploadedDocumentIds) ?? new List<int>()
+                        : new List<int>();
+                    var fileCount = uploadedDocIds.Count;
+                    var fileCountText = fileCount > 1 ? $" ({fileCount} documents total)" : "";
+                    
+                    await NotificationService.ShowSuccessAsync(
+                        $"✅ Document '{selectedDoc.Title ?? selectedDoc.FileName}' uploaded to OpenAI memory and attached to conversation.{fileCountText}{threadInfo} You can now ask questions about your documents!");
+                }
+                else
+                {
+                    await NotificationService.ShowWarningAsync(
+                        $"⚠️ Document '{selectedDoc.Title ?? selectedDoc.FileName}' attached to conversation, but OpenAI upload may have failed. Please try again.");
+                }
+            }
+
+            // Reset dropdown and sheet selection
+            _selectedDocumentId = null;
+            _showSheetSelection = false;
+            _availableSheetNames.Clear();
+            _selectedSheetNames.Clear();
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error uploading document to OpenAI: {ex.Message}");
+            
+            // If conversation was created but upload failed, we should still show it
+            if (_currentConversationId.HasValue)
+            {
+                // Reload conversations to get current state
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var tenantId = TenantService.GetCurrentTenantId();
+                if (!string.IsNullOrEmpty(userId) && tenantId != null)
+                {
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                }
+            }
+        }
+        finally
+        {
+            _isUploadingDocument = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ClearSelectedDocument()
     {
         _selectedDocumentId = null;
@@ -1133,14 +1482,30 @@
                         await ChatGptService.UpdateConversationPromptAsync(_currentConversationId.Value, _selectedPromptId);
                     }
                     
-                    // Update document ID if it has changed
+                    // Check if conversation has uploaded documents via Assistants API
+                    var hasUploadedDocs = !string.IsNullOrEmpty(currentConversation.OpenAiThreadId) && 
+                                         !string.IsNullOrEmpty(currentConversation.OpenAiAssistantId) &&
+                                         !string.IsNullOrEmpty(currentConversation.OpenAiFileIds);
+                    
+                    // Only update document ID if it has changed AND we're not using uploaded documents
+                    // (If we have uploaded documents, don't clear them by setting DocumentId to null)
                     if (currentConversation.DocumentId != _selectedDocumentId)
                     {
-                        var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
-                        await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, _selectedDocumentId, selectedSheets);
-                        _conversationDocumentId = _selectedDocumentId;
-                        // Reload conversations to get updated data
-                        _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                        // Don't clear uploaded documents if we're trying to set DocumentId to null
+                        // but we have uploaded documents via Assistants API
+                        if (!_selectedDocumentId.HasValue && hasUploadedDocs)
+                        {
+                            // Skip updating - we have uploaded documents, don't clear them
+                            Console.WriteLine($"[SendMessage] Skipping document update - conversation has uploaded documents via Assistants API");
+                        }
+                        else
+                        {
+                            var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
+                            await ChatGptService.UpdateConversationDocumentAsync(_currentConversationId.Value, _selectedDocumentId, selectedSheets);
+                            _conversationDocumentId = _selectedDocumentId;
+                            // Reload conversations to get updated data
+                            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                        }
                     }
                     // Update sheet selection if it has changed
                     else if (_selectedDocumentId.HasValue)
@@ -1162,88 +1527,115 @@
                 }
             }
 
+            // Reload conversations to ensure we have the latest data before checking
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            
             // Build conversation history from existing messages
             var conversationMessages = new List<ChatMessage>();
             
-            // Get the document if one is associated with this conversation
-            Document? conversationDocument = null;
-            int? activeDocumentId = _selectedDocumentId ?? _conversationDocumentId;
+            // Check if conversation uses OpenAI Assistants API (has thread, assistant, and file IDs)
+            // If so, skip the old document text embedding - the Assistants API handles documents directly
+            ChatGptConversation? conversationForApi = null;
+            bool useAssistantsApi = false;
             
-            if (activeDocumentId.HasValue)
+            if (_currentConversationId.HasValue)
             {
-                conversationDocument = _availableDocuments.FirstOrDefault(d => d.Id == activeDocumentId.Value);
+                conversationForApi = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                useAssistantsApi = conversationForApi != null && 
+                                   !string.IsNullOrEmpty(conversationForApi.OpenAiThreadId) && 
+                                   !string.IsNullOrEmpty(conversationForApi.OpenAiAssistantId) &&
+                                   !string.IsNullOrEmpty(conversationForApi.OpenAiFileIds);
+                
+                // Debug logging
+                if (conversationForApi != null)
+                {
+                    Console.WriteLine($"[SendMessage] Conversation {_currentConversationId.Value}: Thread={conversationForApi.OpenAiThreadId ?? "null"}, Assistant={conversationForApi.OpenAiAssistantId ?? "null"}, Files={conversationForApi.OpenAiFileIds ?? "null"}, UseAssistants={useAssistantsApi}");
+                }
             }
             
-            // Truncate document text if it's too large to avoid token limit errors
-            // Model context limit: 8192 tokens
-            // Rough estimate: 1 token ≈ 4 characters
-            // We'll use 8,000 characters (~2,000 tokens) for document to leave room for:
-            // - System prompt (~500-1000 tokens)
-            // - Conversation history (~2,500 tokens)
-            // - User message (~500 tokens)
-            // - Response buffer (~2,000 tokens)
-            const int maxDocumentChars = 8000;
+            // Only embed document text if NOT using Assistants API (fallback for old conversations)
+            Document? conversationDocument = null;
             string? documentText = null;
             bool documentTruncated = false;
             
-            if (conversationDocument != null)
+            if (!useAssistantsApi)
             {
-                // Get selected sheets from conversation or current selection
-                List<string>? selectedSheets = null;
-                if (_currentConversationId.HasValue)
+                int? activeDocumentId = _selectedDocumentId ?? _conversationDocumentId;
+                
+                if (activeDocumentId.HasValue)
                 {
-                    var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
-                    if (conversation != null && !string.IsNullOrEmpty(conversation.SelectedSheetNames))
+                    conversationDocument = _availableDocuments.FirstOrDefault(d => d.Id == activeDocumentId.Value);
+                }
+                
+                // Truncate document text if it's too large to avoid token limit errors
+                // Model context limit: 8192 tokens
+                // Rough estimate: 1 token ≈ 4 characters
+                // We'll use 8,000 characters (~2,000 tokens) for document to leave room for:
+                // - System prompt (~500-1000 tokens)
+                // - Conversation history (~2,500 tokens)
+                // - User message (~500 tokens)
+                // - Response buffer (~2,000 tokens)
+                const int maxDocumentChars = 8000;
+                
+                if (conversationDocument != null)
+                {
+                    // Get selected sheets from conversation or current selection
+                    List<string>? selectedSheets = null;
+                    if (_currentConversationId.HasValue)
                     {
-                        try
+                        var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                        if (conversation != null && !string.IsNullOrEmpty(conversation.SelectedSheetNames))
                         {
-                            selectedSheets = System.Text.Json.JsonSerializer.Deserialize<List<string>>(conversation.SelectedSheetNames);
+                            try
+                            {
+                                selectedSheets = System.Text.Json.JsonSerializer.Deserialize<List<string>>(conversation.SelectedSheetNames);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
-                }
-                
-                // If no saved selection, use current selection
-                if (selectedSheets == null || !selectedSheets.Any())
-                {
-                    selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
-                }
-                
-                // Check if this is an Excel file
-                var contentType = conversationDocument.ContentType?.ToLower() ?? "";
-                var isExcel = contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
-                              conversationDocument.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
-                              conversationDocument.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase);
-                
-                if (isExcel && (selectedSheets != null && selectedSheets.Any()))
-                {
-                    // Extract text from selected sheets only
-                    using var fileStream = new MemoryStream(conversationDocument.FileContent);
-                    documentText = await DocumentProcessor.ExtractTextFromExcelAsync(fileStream, selectedSheets);
-                }
-                else if (!string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
-                {
-                    // Use the stored extracted text for non-Excel files or when all sheets are selected
-                    documentText = conversationDocument.ExtractedText;
-                }
-                
-                // Truncate if needed
-                if (!string.IsNullOrWhiteSpace(documentText) && documentText.Length > maxDocumentChars)
-                {
-                    // Try to truncate at a word boundary for better readability
-                    var truncated = documentText.Substring(0, maxDocumentChars);
-                    var lastSpace = truncated.LastIndexOfAny(new[] { ' ', '\n', '\r', '\t' });
-                    if (lastSpace > maxDocumentChars * 0.9) // Only use word boundary if it's not too far back
+                    
+                    // If no saved selection, use current selection
+                    if (selectedSheets == null || !selectedSheets.Any())
                     {
-                        truncated = truncated.Substring(0, lastSpace);
+                        selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
                     }
                     
-                    documentText = truncated + "\n\n[Document truncated due to size limit. Only the first portion is included.]";
-                    documentTruncated = true;
+                    // Check if this is an Excel file
+                    var contentType = conversationDocument.ContentType?.ToLower() ?? "";
+                    var isExcel = contentType.Contains("spreadsheet") || contentType.Contains("excel") || 
+                                  conversationDocument.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                                  conversationDocument.FileName.EndsWith(".xls", StringComparison.OrdinalIgnoreCase);
                     
-                    // Notify user that document was truncated
-                    await NotificationService.ShowWarningAsync(
-                        $"The document '{conversationDocument.Title ?? conversationDocument.FileName}' is very large and has been truncated to fit within API limits. Only the first portion is included in the conversation.");
+                    if (isExcel && (selectedSheets != null && selectedSheets.Any()))
+                    {
+                        // Extract text from selected sheets only
+                        using var fileStream = new MemoryStream(conversationDocument.FileContent);
+                        documentText = await DocumentProcessor.ExtractTextFromExcelAsync(fileStream, selectedSheets);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(conversationDocument.ExtractedText))
+                    {
+                        // Use the stored extracted text for non-Excel files or when all sheets are selected
+                        documentText = conversationDocument.ExtractedText;
+                    }
+                    
+                    // Truncate if needed
+                    if (!string.IsNullOrWhiteSpace(documentText) && documentText.Length > maxDocumentChars)
+                    {
+                        // Try to truncate at a word boundary for better readability
+                        var truncated = documentText.Substring(0, maxDocumentChars);
+                        var lastSpace = truncated.LastIndexOfAny(new[] { ' ', '\n', '\r', '\t' });
+                        if (lastSpace > maxDocumentChars * 0.9) // Only use word boundary if it's not too far back
+                        {
+                            truncated = truncated.Substring(0, lastSpace);
+                        }
+                        
+                        documentText = truncated + "\n\n[Document truncated due to size limit. Only the first portion is included.]";
+                        documentTruncated = true;
+                        
+                        // Notify user that document was truncated
+                        await NotificationService.ShowWarningAsync(
+                            $"The document '{conversationDocument.Title ?? conversationDocument.FileName}' is very large and has been truncated to fit within API limits. Only the first portion is included in the conversation.");
+                    }
                 }
             }
             
@@ -1390,11 +1782,29 @@
             
             // Clear input immediately for better UX
             _messageText = string.Empty;
+            
+            // Reload conversations BEFORE StateHasChanged to ensure persistent list has latest data
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+            
             StateHasChanged();
             await ScrollToBottom();
 
-            // Send full conversation history to ChatGPT (automatically gets API key and model from settings)
-            var response = await ChatGptService.SendConversationMessageAsync(userId, tenantId, conversationMessages);
+            // Check if conversation uses OpenAI Assistants API (has thread and file IDs)
+            string response;
+            
+            if (useAssistantsApi)
+            {
+                // Use Assistants API for document-based conversations
+                Console.WriteLine($"[SendMessage] Using Assistants API for conversation {_currentConversationId.Value}");
+                response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                    userId, tenantId, _currentConversationId.Value, userMessageText);
+            }
+            else
+            {
+                // Use regular Chat API (fallback or when no documents)
+                Console.WriteLine($"[SendMessage] Using regular Chat API for conversation {_currentConversationId.Value}");
+                response = await ChatGptService.SendConversationMessageAsync(userId, tenantId, conversationMessages);
+            }
 
             // Save assistant response to database
             var assistantMessage = new ChatGptMessage
@@ -1408,6 +1818,9 @@
             await ChatGptService.UpdateConversationTimestampAsync(_currentConversationId.Value);
             
             _messages.Add(assistantMessage);
+            
+            // Reload conversations to ensure persistent list stays visible
+            _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             
             // Generate title if this is the first user message (conversation just started)
             // Check if there's only one user message (the one we just added)

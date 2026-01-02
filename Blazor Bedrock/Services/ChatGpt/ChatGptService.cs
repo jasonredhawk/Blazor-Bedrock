@@ -2,6 +2,7 @@ using Blazor_Bedrock.Data;
 using Blazor_Bedrock.Data.Models;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Blazor_Bedrock.Services;
+using Blazor_Bedrock.Services.Document;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
@@ -24,6 +25,7 @@ public interface IChatGptService
     Task<string> SendChatMessageAsync(string userId, int? tenantId, string message, string? model = null, string? systemPrompt = null);
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
     Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
+    Task<string> SendConversationMessageWithDocumentsAsync(string userId, int? tenantId, int conversationId, string message);
     Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null);
     Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null);
     Task UpdateConversationSheetSelectionAsync(int conversationId, List<string>? selectedSheetNames);
@@ -45,6 +47,8 @@ public class ChatGptService : IChatGptService
     private readonly HttpClient _httpClient;
     private readonly ILogger<ChatGptService> _logger;
     private readonly IDatabaseSyncService _dbSync;
+    private readonly IOpenAIFileThreadService _fileThreadService;
+    private readonly IDocumentService _documentService;
 
     public ChatGptService(
         ApplicationDbContext context,
@@ -52,7 +56,9 @@ public class ChatGptService : IChatGptService
         IDocumentProcessor documentProcessor,
         HttpClient httpClient,
         ILogger<ChatGptService> logger,
-        IDatabaseSyncService dbSync)
+        IDatabaseSyncService dbSync,
+        IOpenAIFileThreadService fileThreadService,
+        IDocumentService documentService)
     {
         _context = context;
         _dataProtectionProvider = dataProtectionProvider;
@@ -60,6 +66,8 @@ public class ChatGptService : IChatGptService
         _httpClient = httpClient;
         _logger = logger;
         _dbSync = dbSync;
+        _fileThreadService = fileThreadService;
+        _documentService = documentService;
         
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Blazor-Bedrock/1.0");
     }
@@ -341,6 +349,49 @@ public class ChatGptService : IChatGptService
                     : null
             };
 
+            // If document is attached, upload to OpenAI and create thread
+            if (documentId.HasValue && tenantId.HasValue)
+            {
+                try
+                {
+                    var apiKey = await GetDecryptedApiKeyAsync(userId, tenantId);
+                    var document = await _documentService.GetDocumentByIdAsync(documentId.Value, userId, tenantId.Value);
+                    
+                    if (document != null)
+                    {
+                        // Upload document to OpenAI first
+                        using var fileStream = new MemoryStream(document.FileContent);
+                        var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                        
+                        // Create assistant with file_search capability and vector store containing the file
+                        var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, model, new List<string> { openAiFileId });
+                        
+                        // Create thread
+                        var threadId = await _fileThreadService.CreateThreadAsync(apiKey);
+                        
+                        // Store OpenAI IDs and document ID
+                        conversation.OpenAiThreadId = threadId;
+                        conversation.OpenAiAssistantId = assistantId;
+                        conversation.OpenAiFileIds = System.Text.Json.JsonSerializer.Serialize(new List<string> { openAiFileId });
+                        conversation.UploadedDocumentIds = System.Text.Json.JsonSerializer.Serialize(new List<int> { documentId.Value });
+                        
+                        _logger.LogInformation("Successfully uploaded document {DocumentId} to OpenAI. Thread: {ThreadId}, Assistant: {AssistantId}, File: {FileId}", 
+                            documentId.Value, threadId, assistantId, openAiFileId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Document {DocumentId} not found when trying to upload to OpenAI", documentId.Value);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error setting up OpenAI thread for document {DocumentId} in conversation. Error: {ErrorMessage}", 
+                        documentId.Value, ex.Message);
+                    // Continue without thread - will fall back to regular chat API
+                    // The UI will check if thread/file IDs are set and show appropriate message
+                }
+            }
+
             _context.ChatGptConversations.Add(conversation);
             await _context.SaveChangesAsync();
             return conversation;
@@ -354,10 +405,116 @@ public class ChatGptService : IChatGptService
             var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
             if (existingConversation != null)
             {
+                var previousDocumentId = existingConversation.DocumentId;
                 existingConversation.DocumentId = documentId;
                 existingConversation.SelectedSheetNames = selectedSheetNames != null && selectedSheetNames.Any() 
                     ? System.Text.Json.JsonSerializer.Serialize(selectedSheetNames) 
                     : null;
+                
+                // If document changed, update OpenAI thread
+                if (documentId != previousDocumentId && existingConversation.TenantId.HasValue)
+                {
+                    try
+                    {
+                        var apiKey = await GetDecryptedApiKeyAsync(existingConversation.UserId, existingConversation.TenantId);
+                        
+                        if (documentId.HasValue)
+                        {
+                            // Upload new document and create/update assistant and thread
+                            var document = await _documentService.GetDocumentByIdAsync(documentId.Value, existingConversation.UserId, existingConversation.TenantId.Value);
+                            if (document != null)
+                            {
+                                // Upload document to OpenAI first
+                                using var fileStream = new MemoryStream(document.FileContent);
+                                var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                                
+                                // Get existing file IDs
+                                var existingFileIds = !string.IsNullOrEmpty(existingConversation.OpenAiFileIds)
+                                    ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(existingConversation.OpenAiFileIds) ?? new List<string>()
+                                    : new List<string>();
+                                
+                                if (!existingFileIds.Contains(openAiFileId))
+                                {
+                                    existingFileIds.Add(openAiFileId);
+                                }
+                                
+                                // Create or get assistant
+                                if (string.IsNullOrEmpty(existingConversation.OpenAiAssistantId))
+                                {
+                                    // Create new assistant with all files in vector store
+                                    var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, existingConversation.Model, existingFileIds);
+                                    existingConversation.OpenAiAssistantId = assistantId;
+                                }
+                                else
+                                {
+                                    // Add new file to existing assistant's vector store
+                                    // Get the existing vector store ID from the assistant
+                                    var assistantJson = await _fileThreadService.GetAssistantAsync(existingConversation.OpenAiAssistantId, apiKey);
+                                    using var assistantDoc = System.Text.Json.JsonDocument.Parse(assistantJson);
+                                    var assistantRoot = assistantDoc.RootElement;
+                                    
+                                    string? existingVectorStoreId = null;
+                                    if (assistantRoot.TryGetProperty("tool_resources", out var toolResources) &&
+                                        toolResources.TryGetProperty("file_search", out var fileSearch) &&
+                                        fileSearch.TryGetProperty("vector_store_ids", out var vectorStoreIds) &&
+                                        vectorStoreIds.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                                        vectorStoreIds.GetArrayLength() > 0)
+                                    {
+                                        existingVectorStoreId = vectorStoreIds[0].GetString();
+                                    }
+                                    
+                                    if (!string.IsNullOrEmpty(existingVectorStoreId))
+                                    {
+                                        // Add file to existing vector store
+                                        await _fileThreadService.AddFilesToVectorStoreAsync(existingVectorStoreId, new List<string> { openAiFileId }, apiKey);
+                                    }
+                                    else
+                                    {
+                                        // No existing vector store - create one and update assistant
+                                        var vectorStoreId = await _fileThreadService.CreateVectorStoreAsync(apiKey);
+                                        await _fileThreadService.AddFilesToVectorStoreAsync(vectorStoreId, existingFileIds, apiKey);
+                                        await _fileThreadService.UpdateAssistantWithVectorStoreAsync(existingConversation.OpenAiAssistantId, vectorStoreId, apiKey);
+                                    }
+                                }
+                                
+                                // Create new thread if one doesn't exist, or keep existing thread
+                                if (string.IsNullOrEmpty(existingConversation.OpenAiThreadId))
+                                {
+                                    var threadId = await _fileThreadService.CreateThreadAsync(apiKey);
+                                    existingConversation.OpenAiThreadId = threadId;
+                                }
+                                
+                                existingConversation.OpenAiFileIds = System.Text.Json.JsonSerializer.Serialize(existingFileIds);
+                                
+                                // Update uploaded document IDs - add new document to existing list
+                                var existingDocIds = !string.IsNullOrEmpty(existingConversation.UploadedDocumentIds)
+                                    ? System.Text.Json.JsonSerializer.Deserialize<List<int>>(existingConversation.UploadedDocumentIds) ?? new List<int>()
+                                    : new List<int>();
+                                
+                                if (!existingDocIds.Contains(documentId.Value))
+                                {
+                                    existingDocIds.Add(documentId.Value);
+                                }
+                                
+                                existingConversation.UploadedDocumentIds = System.Text.Json.JsonSerializer.Serialize(existingDocIds);
+                            }
+                        }
+                        else
+                        {
+                            // Document removed - clear OpenAI thread info
+                            existingConversation.OpenAiThreadId = null;
+                            existingConversation.OpenAiAssistantId = null;
+                            existingConversation.OpenAiFileIds = null;
+                            existingConversation.UploadedDocumentIds = null;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating OpenAI thread for document in conversation {ConversationId}", conversationId);
+                        // Continue without thread update
+                    }
+                }
+                
                 existingConversation.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
@@ -472,6 +629,68 @@ public class ChatGptService : IChatGptService
                 await _context.SaveChangesAsync();
             }
         });
+    }
+
+    public async Task<string> SendConversationMessageWithDocumentsAsync(string userId, int? tenantId, int conversationId, string message)
+    {
+        if (tenantId == null)
+        {
+            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
+        }
+
+        var conversation = await _dbSync.ExecuteAsync(async () =>
+        {
+            return await _context.ChatGptConversations
+                .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId && c.TenantId == tenantId);
+        });
+
+        if (conversation == null)
+        {
+            throw new InvalidOperationException("Conversation not found");
+        }
+
+        // If conversation has OpenAI thread, assistant, and file IDs, use Assistants API
+        if (!string.IsNullOrEmpty(conversation.OpenAiThreadId) && 
+            !string.IsNullOrEmpty(conversation.OpenAiAssistantId) && 
+            !string.IsNullOrEmpty(conversation.OpenAiFileIds))
+        {
+            try
+            {
+                var apiKey = await GetDecryptedApiKeyAsync(userId, tenantId);
+                var fileIds = System.Text.Json.JsonSerializer.Deserialize<List<string>>(conversation.OpenAiFileIds) ?? new List<string>();
+                
+                _logger.LogInformation("Using Assistants API - Thread: {ThreadId}, Assistant: {AssistantId}, Files: {FileCount}", 
+                    conversation.OpenAiThreadId, conversation.OpenAiAssistantId, fileIds.Count);
+                
+                var response = await _fileThreadService.AskQuestionAsync(
+                    message, 
+                    conversation.OpenAiThreadId, 
+                    conversation.OpenAiAssistantId,
+                    fileIds, 
+                    apiKey);
+                
+                _logger.LogInformation("Assistants API response received successfully");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error using OpenAI Assistants API: {ErrorMessage}. Thread: {ThreadId}, Assistant: {AssistantId}", 
+                    ex.Message, conversation.OpenAiThreadId, conversation.OpenAiAssistantId);
+                // Fall through to regular chat API
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Conversation {ConversationId} missing required IDs for Assistants API. Thread: {ThreadId}, Assistant: {AssistantId}, Files: {FileIds}", 
+                conversationId, 
+                conversation.OpenAiThreadId ?? "null",
+                conversation.OpenAiAssistantId ?? "null",
+                conversation.OpenAiFileIds ?? "null");
+        }
+
+        // Fall back to regular chat API
+        var messages = new List<ChatMessage> { new ChatMessage { Role = "user", Content = message } };
+        return await SendConversationMessageAsync(userId, tenantId, messages);
     }
 
     public async Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage)
