@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.IO;
 
 namespace Blazor_Bedrock.Services.ChatGpt;
 
@@ -359,10 +360,50 @@ public class ChatGptService : IChatGptService
                     
                     if (document != null)
                     {
-                        // Upload document to OpenAI first
-                        progress?.Report($"Uploading {document.FileName}... (10%)");
-                        using var fileStream = new MemoryStream(document.FileContent);
-                        var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                        // For CSV files, convert to text format for better OpenAI processing
+                        // OpenAI's file_search doesn't fully support CSV, so we convert it to text
+                        Stream uploadStream;
+                        string uploadFileName;
+                        bool isCsv = document.ContentType?.Contains("csv", StringComparison.OrdinalIgnoreCase) == true ||
+                                    document.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+                        
+                        if (isCsv)
+                        {
+                            progress?.Report($"Converting CSV to text format (this may take a moment for large files)... (10%)");
+                            // Convert CSV to text format - this ensures all rows are included
+                            // OpenAI's file_search doesn't fully support CSV, so converting to text improves processing
+                            using var csvStream = new MemoryStream(document.FileContent);
+                            var textContent = await _documentProcessor.ExtractTextFromCsvAsync(csvStream);
+                            var textBytes = System.Text.Encoding.UTF8.GetBytes(textContent);
+                            uploadStream = new MemoryStream(textBytes);
+                            uploadFileName = Path.ChangeExtension(document.FileName, ".txt");
+                            
+                            var rowCount = textContent.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                            _logger.LogInformation("Converted CSV file {FileName} ({OriginalSize} bytes) to text format: {RowCount} rows, {TextSize} bytes", 
+                                document.FileName, document.FileContent.Length, rowCount, textBytes.Length);
+                            
+                            if (rowCount < 1000)
+                            {
+                                _logger.LogWarning("CSV file {FileName} appears to have fewer rows than expected. Original file size: {Size} bytes", 
+                                    document.FileName, document.FileContent.Length);
+                            }
+                        }
+                        else
+                        {
+                            uploadStream = new MemoryStream(document.FileContent);
+                            uploadFileName = document.FileName;
+                        }
+                        
+                        // Upload document to OpenAI
+                        progress?.Report($"Uploading {uploadFileName}... (20%)");
+                        var openAiFileId = await _fileThreadService.UploadFileAsync(uploadStream, uploadFileName, apiKey);
+                        
+                        // Dispose the stream if we created it for CSV conversion
+                        if (isCsv)
+                        {
+                            uploadStream.Dispose();
+                        }
+                        
                         progress?.Report($"File uploaded successfully. Creating vector store... (30%)");
                         
                         // Create assistant with file_search capability and vector store containing the file
@@ -429,10 +470,49 @@ public class ChatGptService : IChatGptService
                             var document = await _documentService.GetDocumentByIdAsync(documentId.Value, existingConversation.UserId, existingConversation.TenantId.Value);
                             if (document != null)
                             {
-                                // Upload document to OpenAI first
-                                progress?.Report($"Uploading {document.FileName}... (10%)");
-                                using var fileStream = new MemoryStream(document.FileContent);
-                                var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                                // For CSV files, convert to text format for better OpenAI processing
+                                Stream uploadStream;
+                                string uploadFileName;
+                                bool isCsv = document.ContentType?.Contains("csv", StringComparison.OrdinalIgnoreCase) == true ||
+                                            document.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+                                
+                                if (isCsv)
+                                {
+                                    progress?.Report($"Converting CSV to text format (this may take a moment for large files)... (10%)");
+                                    // Convert CSV to text format - this ensures all rows are included
+                                    // OpenAI's file_search doesn't fully support CSV, so converting to text improves processing
+                                    using var csvStream = new MemoryStream(document.FileContent);
+                                    var textContent = await _documentProcessor.ExtractTextFromCsvAsync(csvStream);
+                                    var textBytes = System.Text.Encoding.UTF8.GetBytes(textContent);
+                                    uploadStream = new MemoryStream(textBytes);
+                                    uploadFileName = Path.ChangeExtension(document.FileName, ".txt");
+                                    
+                                    var rowCount = textContent.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                                    _logger.LogInformation("Converted CSV file {FileName} ({OriginalSize} bytes) to text format: {RowCount} rows, {TextSize} bytes", 
+                                        document.FileName, document.FileContent.Length, rowCount, textBytes.Length);
+                                    
+                                    if (rowCount < 1000)
+                                    {
+                                        _logger.LogWarning("CSV file {FileName} appears to have fewer rows than expected. Original file size: {Size} bytes", 
+                                            document.FileName, document.FileContent.Length);
+                                    }
+                                }
+                                else
+                                {
+                                    uploadStream = new MemoryStream(document.FileContent);
+                                    uploadFileName = document.FileName;
+                                }
+                                
+                                // Upload document to OpenAI
+                                progress?.Report($"Uploading {uploadFileName}... (20%)");
+                                var openAiFileId = await _fileThreadService.UploadFileAsync(uploadStream, uploadFileName, apiKey);
+                                
+                                // Dispose the stream if we created it for CSV conversion
+                                if (isCsv)
+                                {
+                                    uploadStream.Dispose();
+                                }
+                                
                                 progress?.Report($"File uploaded successfully. Creating vector store... (30%)");
                                 
                                 // Get existing file IDs
