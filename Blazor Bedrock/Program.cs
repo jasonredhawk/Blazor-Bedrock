@@ -185,6 +185,7 @@ builder.Services.AddDataProtection();
 
 // HttpClient for ChatGPT API calls (AddHttpClient registers the service automatically)
 builder.Services.AddHttpClient<IChatGptService, ChatGptService>();
+builder.Services.AddHttpClient<IOpenAIFileThreadService, OpenAIFileThreadService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 
 var app = builder.Build();
