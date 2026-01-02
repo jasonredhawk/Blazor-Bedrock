@@ -347,7 +347,7 @@
                             </div>
                             @if (_selectedDocumentId.HasValue)
                             {
-                                <div style="flex: 1; min-width: 0;">
+                                <div class="d-flex align-items-center gap-2" style="flex-shrink: 0;">
                                     <button class="btn btn-sm btn-primary" 
                                             @onclick="UploadDocumentToOpenAI" 
                                             disabled="@(_isLoading || _isUploadingDocument)"
@@ -362,77 +362,33 @@
                                         }
                                         Upload to OpenAI
                                     </button>
-                                    @if (_isUploadingDocument && !string.IsNullOrEmpty(_uploadProgress))
+                                    @if (!_isLoading && _currentConversationId.HasValue)
                                     {
-                                        <div class="mt-2">
-                                            <div class="progress" style="height: 6px;">
-                                                <div class="progress-bar progress-bar-striped @(_uploadProgressPercent < 100 ? "progress-bar-animated" : "")" 
-                                                     role="progressbar" 
-                                                     style="width: @_uploadProgressPercent%;"
-                                                     aria-valuenow="@_uploadProgressPercent" 
-                                                     aria-valuemin="0" 
-                                                     aria-valuemax="100"></div>
-                                            </div>
-                                            <small class="text-muted d-block mt-1" style="font-size: 0.75rem;">@_uploadProgress</small>
-                                        </div>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
+                                            <i class="bi bi-x"></i>
+                                        </button>
                                     }
                                 </div>
                             }
-                            @if (_selectedDocumentId.HasValue || _conversationDocumentId.HasValue)
-                            {
-                                var docId = _selectedDocumentId ?? _conversationDocumentId;
-                                var selectedDoc = _availableDocuments.FirstOrDefault(d => d.Id == docId);
-                                @if (selectedDoc != null)
-                                {
-                                    // Check if document is already uploaded (has thread/file IDs)
-                                    // Always check the current conversation from the loaded list
-                                    ChatGptConversation? currentConv = null;
-                                    if (_currentConversationId.HasValue)
-                                    {
-                                        currentConv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
-                                    }
-                                    
-                                    var isUploaded = currentConv != null && 
-                                                    !string.IsNullOrEmpty(currentConv.OpenAiThreadId) && 
-                                                    !string.IsNullOrEmpty(currentConv.OpenAiAssistantId) &&
-                                                    !string.IsNullOrEmpty(currentConv.OpenAiFileIds);
-                                    
-                                    // Check if this specific document is in the uploaded files
-                                    var fileIds = !string.IsNullOrEmpty(currentConv?.OpenAiFileIds)
-                                        ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConv.OpenAiFileIds) ?? new List<string>()
-                                        : new List<string>();
-                                    var hasMultipleDocs = fileIds.Count > 1;
-                                    
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge @(isUploaded ? "bg-success" : "bg-warning")" style="font-size: 0.875rem;">
-                                            @if (isUploaded)
-                                            {
-                                                <i class="bi bi-cloud-check-fill me-1"></i>
-                                                <span>In OpenAI Memory</span>
-                                                @if (hasMultipleDocs)
-                                                {
-                                                    <span class="ms-1">(@fileIds.Count files)</span>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <i class="bi bi-cloud-upload me-1"></i>
-                                                <span>Not Uploaded</span>
-                                            }
-                                        </span>
-                                        <span class="badge bg-info" title="@selectedDoc.FileName" style="font-size: 0.875rem;">
-                                            <i class="bi bi-file-earmark me-1"></i>@(selectedDoc.Title ?? selectedDoc.FileName)
-                                        </span>
-                                        @if (!_isLoading && _currentConversationId.HasValue)
-                                        {
-                                            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDocument" title="Remove document from conversation">
-                                                <i class="bi bi-x"></i>
-                                            </button>
-                                        }
-                                    </div>
-                                }
-                            }
                         </div>
+                        @* Upload Progress Bar *@
+                        @if (_isUploadingDocument && !string.IsNullOrEmpty(_uploadProgress))
+                        {
+                            <div class="mt-2" style="max-width: 600px;">
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <small class="text-muted" style="font-size: 0.75rem;">@_uploadProgress</small>
+                                    <small class="text-muted" style="font-size: 0.75rem;">@_uploadProgressPercent%</small>
+                                </div>
+                                <div class="progress" style="height: 4px; border-radius: 2px; background-color: #e9ecef;">
+                                    <div class="progress-bar @(_uploadProgressPercent < 100 ? "progress-bar-striped progress-bar-animated" : "")" 
+                                         role="progressbar" 
+                                         style="width: @_uploadProgressPercent%; background-color: #0d6efd; transition: width 0.3s ease;"
+                                         aria-valuenow="@_uploadProgressPercent" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100"></div>
+                                </div>
+                            </div>
+                        }
                         @* Sheet Selection UI for Excel files *@
                         @if (_showSheetSelection && _availableSheetNames.Any())
                         {

@@ -3,6 +3,7 @@ using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeOpenXml;
 using System.Text;
 using System.Globalization;
+using System.Linq;
 using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Listener;
@@ -161,6 +162,9 @@ public class DocumentProcessor : IDocumentProcessor
             fileStream.Position = 0;
         }
         
+        var allRows = new List<List<string>>();
+        int rowCount = 0;
+        
         using (var reader = new StreamReader(fileStream, Encoding.UTF8, leaveOpen: true))
         {
             string? line;
@@ -168,12 +172,72 @@ public class DocumentProcessor : IDocumentProcessor
             {
                 // Parse CSV line (handling quoted values)
                 var values = ParseCsvLine(line);
-                if (values.Any(v => !string.IsNullOrWhiteSpace(v)))
+                if (values.Any(v => !string.IsNullOrWhiteSpace(v)) || values.Count > 0)
                 {
-                    text.AppendLine(string.Join(" | ", values));
+                    allRows.Add(values);
+                    rowCount++;
                 }
             }
         }
+        
+        if (allRows.Count == 0)
+        {
+            return "CSV file is empty.";
+        }
+        
+        // Add metadata header to help ChatGPT understand this is CSV data
+        text.AppendLine("=== CSV DATA FILE ===");
+        text.AppendLine("This file contains CSV (Comma-Separated Values) data converted to text format.");
+        text.AppendLine("The data is structured as a table with column headers and data rows.");
+        text.AppendLine();
+        
+        if (allRows.Count > 0)
+        {
+            text.AppendLine("=== COLUMN HEADERS ===");
+            text.AppendLine(string.Join(" | ", allRows[0]));
+            text.AppendLine();
+            text.AppendLine($"Total columns: {allRows[0].Count}");
+            text.AppendLine($"Total data rows: {Math.Max(0, rowCount - 1)}");
+            text.AppendLine();
+            
+            // Add column index for reference
+            text.AppendLine("Column Index:");
+            for (int i = 0; i < allRows[0].Count; i++)
+            {
+                var headerName = !string.IsNullOrWhiteSpace(allRows[0][i]) ? allRows[0][i] : $"Column_{i + 1}";
+                text.AppendLine($"  Column {i}: {headerName}");
+            }
+            text.AppendLine();
+        }
+        
+        // Add the actual CSV data
+        text.AppendLine("=== DATA ROWS ===");
+        text.AppendLine("Format: Each row contains values separated by ' | '. The first row above contains column names.");
+        text.AppendLine();
+        
+        if (allRows.Count > 0)
+        {
+            // Include all rows - pad shorter rows to match header column count
+            for (int i = 1; i < allRows.Count; i++)
+            {
+                var row = new List<string>(allRows[i]);
+                // Pad row to match header column count if needed
+                while (row.Count < allRows[0].Count)
+                {
+                    row.Add("");
+                }
+                // Truncate if row has more columns than header (shouldn't happen, but be safe)
+                if (row.Count > allRows[0].Count)
+                {
+                    row = row.Take(allRows[0].Count).ToList();
+                }
+                text.AppendLine(string.Join(" | ", row));
+            }
+        }
+        
+        text.AppendLine();
+        text.AppendLine($"=== END OF CSV DATA ===");
+        text.AppendLine($"Summary: {rowCount} total rows (1 header + {Math.Max(0, rowCount - 1)} data rows), {(allRows.Count > 0 ? allRows[0].Count : 0)} columns");
         
         return text.ToString();
     }

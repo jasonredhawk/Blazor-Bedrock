@@ -50,6 +50,7 @@ public class ChatGptService : IChatGptService
     private readonly IDatabaseSyncService _dbSync;
     private readonly IOpenAIFileThreadService _fileThreadService;
     private readonly IDocumentService _documentService;
+    private readonly IPromptService _promptService;
 
     public ChatGptService(
         ApplicationDbContext context,
@@ -59,7 +60,8 @@ public class ChatGptService : IChatGptService
         ILogger<ChatGptService> logger,
         IDatabaseSyncService dbSync,
         IOpenAIFileThreadService fileThreadService,
-        IDocumentService documentService)
+        IDocumentService documentService,
+        IPromptService promptService)
     {
         _context = context;
         _dataProtectionProvider = dataProtectionProvider;
@@ -69,6 +71,7 @@ public class ChatGptService : IChatGptService
         _dbSync = dbSync;
         _fileThreadService = fileThreadService;
         _documentService = documentService;
+        _promptService = promptService;
         
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Blazor-Bedrock/1.0");
     }
@@ -406,9 +409,23 @@ public class ChatGptService : IChatGptService
                         
                         progress?.Report($"File uploaded successfully. Creating vector store... (30%)");
                         
+                        // Get prompt instructions if prompt is selected
+                        string? assistantInstructions = null;
+                        if (promptId.HasValue)
+                        {
+                            var prompt = await _promptService.GetPromptByIdAsync(promptId.Value, tenantId);
+                            if (prompt != null)
+                            {
+                                assistantInstructions = prompt.PromptText;
+                                // Remove {documentText} placeholder since documents are handled via file_search
+                                assistantInstructions = assistantInstructions.Replace("{documentText}", "");
+                                assistantInstructions = assistantInstructions.Trim();
+                            }
+                        }
+                        
                         // Create assistant with file_search capability and vector store containing the file
                         // Note: CreateAssistantAsync will handle vector store creation internally
-                        var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, model, new List<string> { openAiFileId }, progress);
+                        var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, model, new List<string> { openAiFileId }, progress, assistantInstructions);
                         
                         // Create thread
                         progress?.Report($"Creating conversation thread... (90%)");
@@ -528,8 +545,22 @@ public class ChatGptService : IChatGptService
                                 // Create or get assistant
                                 if (string.IsNullOrEmpty(existingConversation.OpenAiAssistantId))
                                 {
+                                    // Get prompt instructions if prompt is selected
+                                    string? assistantInstructions = null;
+                                    if (existingConversation.PromptId.HasValue)
+                                    {
+                                        var prompt = await _promptService.GetPromptByIdAsync(existingConversation.PromptId.Value, existingConversation.TenantId);
+                                        if (prompt != null)
+                                        {
+                                            assistantInstructions = prompt.PromptText;
+                                            // Remove {documentText} placeholder since documents are handled via file_search
+                                            assistantInstructions = assistantInstructions.Replace("{documentText}", "");
+                                            assistantInstructions = assistantInstructions.Trim();
+                                        }
+                                    }
+                                    
                                     // Create new assistant with all files in vector store
-                                    var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, existingConversation.Model, existingFileIds, progress);
+                                    var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, existingConversation.Model, existingFileIds, progress, assistantInstructions);
                                     existingConversation.OpenAiAssistantId = assistantId;
                                 }
                                 else
@@ -722,6 +753,47 @@ public class ChatGptService : IChatGptService
             {
                 existingConversation.PromptId = promptId;
                 existingConversation.UpdatedAt = DateTime.UtcNow;
+                
+                // If conversation uses Assistants API, update the assistant's instructions
+                if (!string.IsNullOrEmpty(existingConversation.OpenAiAssistantId) && existingConversation.TenantId.HasValue)
+                {
+                    try
+                    {
+                        var apiKey = await GetDecryptedApiKeyAsync(existingConversation.UserId, existingConversation.TenantId);
+                        
+                        // Get prompt instructions
+                        string assistantInstructions;
+                        if (promptId.HasValue)
+                        {
+                            var prompt = await _promptService.GetPromptByIdAsync(promptId.Value, existingConversation.TenantId);
+                            if (prompt != null)
+                            {
+                                assistantInstructions = prompt.PromptText;
+                                // Remove {documentText} placeholder since documents are handled via file_search
+                                assistantInstructions = assistantInstructions.Replace("{documentText}", "");
+                                assistantInstructions = assistantInstructions.Trim();
+                            }
+                            else
+                            {
+                                assistantInstructions = "You are a helpful assistant that can answer questions about uploaded documents. Use the file_search tool to find relevant information from the documents.";
+                            }
+                        }
+                        else
+                        {
+                            assistantInstructions = "You are a helpful assistant that can answer questions about uploaded documents. Use the file_search tool to find relevant information from the documents.";
+                        }
+                        
+                        await _fileThreadService.UpdateAssistantInstructionsAsync(existingConversation.OpenAiAssistantId, assistantInstructions, apiKey);
+                        _logger.LogInformation("Updated assistant {AssistantId} instructions for conversation {ConversationId}", 
+                            existingConversation.OpenAiAssistantId, conversationId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating assistant instructions for conversation {ConversationId}", conversationId);
+                        // Continue - prompt is still saved to conversation
+                    }
+                }
+                
                 await _context.SaveChangesAsync();
             }
         });

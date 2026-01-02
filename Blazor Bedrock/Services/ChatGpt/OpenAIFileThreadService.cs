@@ -10,9 +10,10 @@ public interface IOpenAIFileThreadService
 {
     Task<string> UploadFileAsync(Stream fileStream, string fileName, string apiKey);
     Task<string> CreateThreadAsync(string apiKey);
-    Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null);
+    Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null, string? instructions = null);
     Task<string> GetAssistantAsync(string assistantId, string apiKey);
     Task<string> UpdateAssistantWithVectorStoreAsync(string assistantId, string vectorStoreId, string apiKey);
+    Task<string> UpdateAssistantInstructionsAsync(string assistantId, string instructions, string apiKey);
     Task<string> CreateVectorStoreAsync(string apiKey, string? name = null);
     Task<string> AddFilesToVectorStoreAsync(string vectorStoreId, List<string> fileIds, string apiKey, IProgress<string>? progress = null);
     Task<string> AskQuestionAsync(string question, string threadId, string assistantId, List<string> fileIds, string apiKey);
@@ -269,7 +270,7 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
         }
     }
 
-    public async Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null)
+    public async Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null, string? instructions = null)
     {
         try
         {
@@ -282,11 +283,15 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
                 await AddFilesToVectorStoreAsync(vectorStoreId, fileIds, apiKey, progress);
             }
             
+            // Use provided instructions or default
+            var defaultInstructions = "You are a helpful assistant that can answer questions about uploaded documents. Use the file_search tool to find relevant information from the documents.";
+            var assistantInstructions = !string.IsNullOrWhiteSpace(instructions) ? instructions : defaultInstructions;
+            
             var assistantPayload = new
             {
                 model = model ?? "gpt-4o",
                 name = "Document Assistant",
-                instructions = "You are a helpful assistant that can answer questions about uploaded documents. Use the file_search tool to find relevant information from the documents.",
+                instructions = assistantInstructions,
                 tools = new[] { new { type = "file_search" } },
                 tool_resources = vectorStoreId != null ? new
                 {
@@ -401,6 +406,47 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating OpenAI assistant with vector store");
+            throw;
+        }
+    }
+
+    public async Task<string> UpdateAssistantInstructionsAsync(string assistantId, string instructions, string apiKey)
+    {
+        try
+        {
+            var updatePayload = new
+            {
+                instructions = instructions
+            };
+            var updateJson = JsonSerializer.Serialize(updatePayload);
+            
+            var request = new HttpRequestMessage(
+                HttpMethod.Post, // OpenAI Assistants API uses POST for updates
+                $"https://api.openai.com/v1/assistants/{assistantId}")
+            {
+                Content = new StringContent(updateJson, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Headers.Add("User-Agent", "Blazor-Bedrock/1.0");
+            request.Headers.Add("OpenAI-Beta", "assistants=v2");
+
+            var response = await _httpClient.SendAsync(request);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("OpenAI API error updating assistant instructions: Status {StatusCode}, Response: {ErrorContent}", 
+                    response.StatusCode, errorContent);
+                throw new HttpRequestException($"OpenAI API returned error {response.StatusCode}: {errorContent}");
+            }
+            
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("id").GetString() ?? throw new Exception("Failed to get assistant ID from OpenAI response");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating OpenAI assistant instructions");
             throw;
         }
     }
