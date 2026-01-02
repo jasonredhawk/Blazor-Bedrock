@@ -286,61 +286,6 @@
                 <div style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
                     @* Chat Header - Fixed at top *@
                     <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex: 0 0 auto; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
-                        @* Document Upload Status Banner *@
-                        @if (_currentConversationId.HasValue)
-                        {
-                            var currentConv = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
-                            var hasUploadedDocument = currentConv != null && 
-                                                     !string.IsNullOrEmpty(currentConv.OpenAiThreadId) && 
-                                                     !string.IsNullOrEmpty(currentConv.OpenAiAssistantId) &&
-                                                     !string.IsNullOrEmpty(currentConv.OpenAiFileIds);
-                            
-                            if (hasUploadedDocument && currentConv != null)
-                            {
-                                var fileIds = !string.IsNullOrEmpty(currentConv.OpenAiFileIds)
-                                    ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentConv.OpenAiFileIds) ?? new List<string>()
-                                    : new List<string>();
-                                
-                                var uploadedDocs = _availableDocuments.Where(d => 
-                                    currentConv.DocumentId.HasValue && d.Id == currentConv.DocumentId.Value ||
-                                    fileIds.Any()).ToList();
-                                
-                                @if (uploadedDocs.Any() || fileIds.Any())
-                                {
-                                    <div class="alert alert-success alert-dismissible fade show mb-2 py-2" role="alert" style="font-size: 0.875rem;">
-                                        <div class="d-flex align-items-center">
-                                            <i class="bi bi-check-circle-fill me-2"></i>
-                                            <div style="flex: 1;">
-                                                <strong>@(fileIds.Count > 1 ? "Documents" : "Document") in OpenAI Memory:</strong> 
-                                                @if (uploadedDocs.Any())
-                                                {
-                                                    <span>@string.Join(", ", uploadedDocs.Select(d => d.Title ?? d.FileName))</span>
-                                                }
-                                                else
-                                                {
-                                                    <span>@fileIds.Count file(s)</span>
-                                                }
-                                                @if (fileIds.Count > 1)
-                                                {
-                                                    <span class="badge bg-light text-dark ms-2">@fileIds.Count files</span>
-                                                }
-                                                <br />
-                                                <small class="text-muted">
-                                                    <i class="bi bi-link-45deg me-1"></i>Thread ID: <code style="font-size: 0.75rem;">@currentConv.OpenAiThreadId</code>
-                                                    @if (!string.IsNullOrEmpty(currentConv.OpenAiAssistantId))
-                                                    {
-                                                        <span class="ms-2">
-                                                            <i class="bi bi-robot me-1"></i>Assistant ID: <code style="font-size: 0.75rem;">@currentConv.OpenAiAssistantId.Substring(0, Math.Min(8, currentConv.OpenAiAssistantId.Length))...</code>
-                                                        </span>
-                                                    }
-                                                </small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                }
-                            }
-                        }
-                        
                         <div class="d-flex align-items-center justify-content-between mb-2" style="width: 100%; box-sizing: border-box;">
                             <div style="flex: 1; min-width: 0; overflow: hidden;">
                                 <h6 class="mb-0" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -402,20 +347,36 @@
                             </div>
                             @if (_selectedDocumentId.HasValue)
                             {
-                                <button class="btn btn-sm btn-primary" 
-                                        @onclick="UploadDocumentToOpenAI" 
-                                        disabled="@(_isLoading || _isUploadingDocument)"
-                                        title="Upload document to OpenAI and create/update conversation">
-                                    @if (_isUploadingDocument)
+                                <div style="flex: 1; min-width: 0;">
+                                    <button class="btn btn-sm btn-primary" 
+                                            @onclick="UploadDocumentToOpenAI" 
+                                            disabled="@(_isLoading || _isUploadingDocument)"
+                                            title="Upload document to OpenAI and create/update conversation">
+                                        @if (_isUploadingDocument)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-cloud-upload me-1"></i>
+                                        }
+                                        Upload to OpenAI
+                                    </button>
+                                    @if (_isUploadingDocument && !string.IsNullOrEmpty(_uploadProgress))
                                     {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <div class="mt-2">
+                                            <div class="progress" style="height: 6px;">
+                                                <div class="progress-bar progress-bar-striped @(_uploadProgressPercent < 100 ? "progress-bar-animated" : "")" 
+                                                     role="progressbar" 
+                                                     style="width: @_uploadProgressPercent%;"
+                                                     aria-valuenow="@_uploadProgressPercent" 
+                                                     aria-valuemin="0" 
+                                                     aria-valuemax="100"></div>
+                                            </div>
+                                            <small class="text-muted d-block mt-1" style="font-size: 0.75rem;">@_uploadProgress</small>
+                                        </div>
                                     }
-                                    else
-                                    {
-                                        <i class="bi bi-cloud-upload me-1"></i>
-                                    }
-                                    Upload to OpenAI
-                                </button>
+                                </div>
                             }
                             @if (_selectedDocumentId.HasValue || _conversationDocumentId.HasValue)
                             {
@@ -691,6 +652,8 @@
     private string _messageText = string.Empty;
     private bool _isLoading = false;
     private bool _isUploadingDocument = false;
+    private string _uploadProgress = string.Empty;
+    private int _uploadProgressPercent = 0;
     private ElementReference _messagesContainer;
     private ElementReference _messageTextarea;
     private List<ChatGptPrompt> _availablePrompts = new();
@@ -1271,8 +1234,9 @@
         if (!_selectedDocumentId.HasValue || _isUploadingDocument)
             return;
 
-        _isUploadingDocument = true;
-        StateHasChanged();
+            _isUploadingDocument = true;
+            _uploadProgress = "Starting upload...";
+            StateHasChanged();
 
         try
         {
@@ -1300,14 +1264,27 @@
                 selectedSheets = _selectedSheetNames.ToList();
             }
 
+            // Create progress reporter
+            var progress = new Progress<string>(message =>
+            {
+                _uploadProgress = message;
+                
+                // Try to parse percentage from message (e.g., "Processing files... 50%")
+                _uploadProgressPercent = ParseProgressPercentage(message);
+                
+                StateHasChanged();
+            });
+            
             // Create or update conversation with document
             ChatGptConversation? conversation = null;
             if (!_currentConversationId.HasValue)
             {
                 // Create new conversation with document
                 var title = $"Chat with {selectedDoc.Title ?? selectedDoc.FileName}";
+                _uploadProgress = "Uploading file to OpenAI...";
+                StateHasChanged();
                 conversation = await ChatGptService.CreateConversationAsync(
-                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, selectedSheets);
+                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, selectedSheets, progress);
                 
                 var newConversationId = conversation.Id;
                 _currentConversationId = newConversationId;
@@ -1345,8 +1322,10 @@
             else
             {
                 // Update existing conversation with document (adds to existing files, doesn't replace)
+                _uploadProgress = "Uploading file to OpenAI...";
+                StateHasChanged();
                 await ChatGptService.UpdateConversationDocumentAsync(
-                    _currentConversationId.Value, _selectedDocumentId.Value, selectedSheets);
+                    _currentConversationId.Value, _selectedDocumentId.Value, selectedSheets, progress);
                 _conversationDocumentId = _selectedDocumentId.Value;
                 
                 // Reload to get updated conversation with thread/file IDs
@@ -1408,6 +1387,8 @@
         finally
         {
             _isUploadingDocument = false;
+            _uploadProgress = string.Empty;
+            _uploadProgressPercent = 0;
             StateHasChanged();
         }
     }
@@ -1883,5 +1864,54 @@
             : percentage >= 0.9 
                 ? "badge bg-warning" 
                 : "badge bg-success";
+    }
+
+    private int ParseProgressPercentage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return 0;
+        
+        // Try to find percentage in format like "50%", "(50%)", "50/100", etc.
+        // Look for patterns like "X%" or "(X%)" or "X/Y completed"
+        
+        // Pattern 1: Look for "X%" in the message
+        var percentMatch = System.Text.RegularExpressions.Regex.Match(message, @"(\d+)%");
+        if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percent))
+        {
+            return Math.Clamp(percent, 0, 100);
+        }
+        
+        // Pattern 2: Look for "X/Y completed" or "X of Y"
+        var fractionMatch = System.Text.RegularExpressions.Regex.Match(message, @"(\d+)\s*/\s*(\d+)");
+        if (fractionMatch.Success && 
+            int.TryParse(fractionMatch.Groups[1].Value, out var completed) &&
+            int.TryParse(fractionMatch.Groups[2].Value, out var total) &&
+            total > 0)
+        {
+            return Math.Clamp((completed * 100) / total, 0, 100);
+        }
+        
+        // Pattern 3: Look for status-based progress
+        if (message.Contains("Starting", StringComparison.OrdinalIgnoreCase) || 
+            message.Contains("Uploading", StringComparison.OrdinalIgnoreCase))
+        {
+            return 10;
+        }
+        else if (message.Contains("Creating", StringComparison.OrdinalIgnoreCase))
+        {
+            return 30;
+        }
+        else if (message.Contains("Processing", StringComparison.OrdinalIgnoreCase))
+        {
+            return 50;
+        }
+        else if (message.Contains("successfully", StringComparison.OrdinalIgnoreCase) ||
+                 message.Contains("completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return 100;
+        }
+        
+        // Default: return 0 if we can't parse
+        return 0;
     }
 }

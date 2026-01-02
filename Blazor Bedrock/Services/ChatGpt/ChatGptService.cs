@@ -26,8 +26,8 @@ public interface IChatGptService
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
     Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
     Task<string> SendConversationMessageWithDocumentsAsync(string userId, int? tenantId, int conversationId, string message);
-    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null);
-    Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null);
+    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null);
+    Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null, IProgress<string>? progress = null);
     Task UpdateConversationSheetSelectionAsync(int conversationId, List<string>? selectedSheetNames);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
@@ -332,7 +332,7 @@ public class ChatGptService : IChatGptService
         }
     }
 
-    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null)
+    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null)
     {
         return await _dbSync.ExecuteAsync(async () =>
         {
@@ -360,14 +360,19 @@ public class ChatGptService : IChatGptService
                     if (document != null)
                     {
                         // Upload document to OpenAI first
+                        progress?.Report($"Uploading {document.FileName}... (10%)");
                         using var fileStream = new MemoryStream(document.FileContent);
                         var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                        progress?.Report($"File uploaded successfully. Creating vector store... (30%)");
                         
                         // Create assistant with file_search capability and vector store containing the file
-                        var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, model, new List<string> { openAiFileId });
+                        // Note: CreateAssistantAsync will handle vector store creation internally
+                        var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, model, new List<string> { openAiFileId }, progress);
                         
                         // Create thread
+                        progress?.Report($"Creating conversation thread... (90%)");
                         var threadId = await _fileThreadService.CreateThreadAsync(apiKey);
+                        progress?.Report($"Upload complete! (100%)");
                         
                         // Store OpenAI IDs and document ID
                         conversation.OpenAiThreadId = threadId;
@@ -398,7 +403,7 @@ public class ChatGptService : IChatGptService
         });
     }
 
-    public async Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null)
+    public async Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null, IProgress<string>? progress = null)
     {
         await _dbSync.ExecuteAsync(async () =>
         {
@@ -425,8 +430,10 @@ public class ChatGptService : IChatGptService
                             if (document != null)
                             {
                                 // Upload document to OpenAI first
+                                progress?.Report($"Uploading {document.FileName}... (10%)");
                                 using var fileStream = new MemoryStream(document.FileContent);
                                 var openAiFileId = await _fileThreadService.UploadFileAsync(fileStream, document.FileName, apiKey);
+                                progress?.Report($"File uploaded successfully. Creating vector store... (30%)");
                                 
                                 // Get existing file IDs
                                 var existingFileIds = !string.IsNullOrEmpty(existingConversation.OpenAiFileIds)
@@ -442,7 +449,7 @@ public class ChatGptService : IChatGptService
                                 if (string.IsNullOrEmpty(existingConversation.OpenAiAssistantId))
                                 {
                                     // Create new assistant with all files in vector store
-                                    var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, existingConversation.Model, existingFileIds);
+                                    var assistantId = await _fileThreadService.CreateAssistantAsync(apiKey, existingConversation.Model, existingFileIds, progress);
                                     existingConversation.OpenAiAssistantId = assistantId;
                                 }
                                 else
@@ -466,22 +473,31 @@ public class ChatGptService : IChatGptService
                                     if (!string.IsNullOrEmpty(existingVectorStoreId))
                                     {
                                         // Add file to existing vector store
-                                        await _fileThreadService.AddFilesToVectorStoreAsync(existingVectorStoreId, new List<string> { openAiFileId }, apiKey);
+                                        await _fileThreadService.AddFilesToVectorStoreAsync(existingVectorStoreId, new List<string> { openAiFileId }, apiKey, progress);
                                     }
                                     else
                                     {
                                         // No existing vector store - create one and update assistant
+                                        progress?.Report("Creating vector store... (40%)");
                                         var vectorStoreId = await _fileThreadService.CreateVectorStoreAsync(apiKey);
-                                        await _fileThreadService.AddFilesToVectorStoreAsync(vectorStoreId, existingFileIds, apiKey);
+                                        await _fileThreadService.AddFilesToVectorStoreAsync(vectorStoreId, existingFileIds, apiKey, progress);
+                                        progress?.Report("Updating assistant... (90%)");
                                         await _fileThreadService.UpdateAssistantWithVectorStoreAsync(existingConversation.OpenAiAssistantId, vectorStoreId, apiKey);
+                                        progress?.Report("Upload complete! (100%)");
                                     }
                                 }
                                 
                                 // Create new thread if one doesn't exist, or keep existing thread
                                 if (string.IsNullOrEmpty(existingConversation.OpenAiThreadId))
                                 {
+                                    progress?.Report("Creating conversation thread... (90%)");
                                     var threadId = await _fileThreadService.CreateThreadAsync(apiKey);
                                     existingConversation.OpenAiThreadId = threadId;
+                                    progress?.Report("Upload complete! (100%)");
+                                }
+                                else
+                                {
+                                    progress?.Report("Upload complete! (100%)");
                                 }
                                 
                                 existingConversation.OpenAiFileIds = System.Text.Json.JsonSerializer.Serialize(existingFileIds);

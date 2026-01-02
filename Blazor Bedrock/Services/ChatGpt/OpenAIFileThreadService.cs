@@ -10,11 +10,11 @@ public interface IOpenAIFileThreadService
 {
     Task<string> UploadFileAsync(Stream fileStream, string fileName, string apiKey);
     Task<string> CreateThreadAsync(string apiKey);
-    Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null);
+    Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null);
     Task<string> GetAssistantAsync(string assistantId, string apiKey);
     Task<string> UpdateAssistantWithVectorStoreAsync(string assistantId, string vectorStoreId, string apiKey);
     Task<string> CreateVectorStoreAsync(string apiKey, string? name = null);
-    Task<string> AddFilesToVectorStoreAsync(string vectorStoreId, List<string> fileIds, string apiKey);
+    Task<string> AddFilesToVectorStoreAsync(string vectorStoreId, List<string> fileIds, string apiKey, IProgress<string>? progress = null);
     Task<string> AskQuestionAsync(string question, string threadId, string assistantId, List<string> fileIds, string apiKey);
 }
 
@@ -147,10 +147,12 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
         }
     }
 
-    public async Task<string> AddFilesToVectorStoreAsync(string vectorStoreId, List<string> fileIds, string apiKey)
+    public async Task<string> AddFilesToVectorStoreAsync(string vectorStoreId, List<string> fileIds, string apiKey, IProgress<string>? progress = null)
     {
         try
         {
+            progress?.Report("Uploading files to vector store... (50%)");
+            
             var batchPayload = new
             {
                 file_ids = fileIds
@@ -181,15 +183,26 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
             using var doc = JsonDocument.Parse(json);
             var batchId = doc.RootElement.GetProperty("id").GetString() ?? throw new Exception("Failed to get batch ID from OpenAI response");
             
-            // Poll for batch completion
-            int maxAttempts = 60;
+            progress?.Report("Processing files (this may take a few minutes for large files)... (60%)");
+            
+            // Poll for batch completion - reduce frequency and logging
+            int maxAttempts = 120; // Increased to 2 minutes for large files
             int attempts = 0;
-            string status;
+            string status = "in_progress";
+            int lastLoggedAttempt = -5; // Log every 5 attempts
             
             do
             {
-                await Task.Delay(1000);
+                await Task.Delay(2000); // Increased from 1000ms to 2000ms to reduce API calls
                 attempts++;
+                
+                // Only log every 5 attempts (every 10 seconds) to reduce log spam
+                if (attempts - lastLoggedAttempt >= 5)
+                {
+                    var progressPercent = Math.Min(100, (attempts * 100) / maxAttempts);
+                    progress?.Report($"Processing files... {progressPercent}% (estimated)");
+                    lastLoggedAttempt = attempts;
+                }
                 
                 var statusRequest = new HttpRequestMessage(
                     HttpMethod.Get,
@@ -212,9 +225,31 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
                 using var statusDoc = JsonDocument.Parse(statusJson);
                 status = statusDoc.RootElement.GetProperty("status").GetString() ?? "unknown";
                 
+                // Try to get file counts for better progress reporting
+                if (statusDoc.RootElement.TryGetProperty("file_counts", out var fileCounts))
+                {
+                    if (fileCounts.TryGetProperty("in_progress", out var inProgress) && 
+                        fileCounts.TryGetProperty("completed", out var completed) &&
+                        fileCounts.TryGetProperty("failed", out var failed))
+                    {
+                        var total = inProgress.GetInt32() + completed.GetInt32() + failed.GetInt32();
+                        if (total > 0)
+                        {
+                            var completedCount = completed.GetInt32();
+                            var progressPercent = (completedCount * 100) / total;
+                            progress?.Report($"Processing files... {completedCount}/{total} completed ({progressPercent}%)");
+                        }
+                    }
+                }
+                
                 if (status == "failed" || status == "cancelled")
                 {
-                    throw new Exception($"Vector store batch {status}");
+                    var errorMessage = $"Vector store batch {status}";
+                    if (statusDoc.RootElement.TryGetProperty("errors", out var errors))
+                    {
+                        errorMessage += $": {errors}";
+                    }
+                    throw new Exception(errorMessage);
                 }
             } while (status != "completed" && attempts < maxAttempts);
             
@@ -223,16 +258,18 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
                 throw new Exception($"Vector store batch did not complete in time. Status: {status}");
             }
             
+            progress?.Report("Files processed successfully! (100%)");
             return batchId;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error adding files to OpenAI vector store");
+            progress?.Report($"Error: {ex.Message}");
             throw;
         }
     }
 
-    public async Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null)
+    public async Task<string> CreateAssistantAsync(string apiKey, string? model = null, List<string>? fileIds = null, IProgress<string>? progress = null)
     {
         try
         {
@@ -240,8 +277,9 @@ public class OpenAIFileThreadService : IOpenAIFileThreadService
             string? vectorStoreId = null;
             if (fileIds != null && fileIds.Any())
             {
+                progress?.Report("Creating vector store...");
                 vectorStoreId = await CreateVectorStoreAsync(apiKey);
-                await AddFilesToVectorStoreAsync(vectorStoreId, fileIds, apiKey);
+                await AddFilesToVectorStoreAsync(vectorStoreId, fileIds, apiKey, progress);
             }
             
             var assistantPayload = new
