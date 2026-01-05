@@ -13,6 +13,7 @@
 @inject IJSRuntime JSRuntime
 @inject ISubscriptionLimitationService LimitationService
 @inject IFeatureFlagService FeatureFlagService
+@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Documents - Blazor Bedrock</PageTitle>
@@ -151,6 +152,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if Documents feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("Documents_Enabled");
+        if (!isEnabled)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         tenantId = TenantService.GetCurrentTenantId();

@@ -2,12 +2,14 @@
 @using Blazor_Bedrock.Services.RoleManagement
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services.Auth
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IRoleService RoleService
 @inject ITenantService TenantService
 @inject IPermissionService PermissionService
+@inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
@@ -106,6 +108,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if Roles feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("Roles_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("Role management feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         // Check permission to view roles
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (authState.User?.Identity?.IsAuthenticated == true)

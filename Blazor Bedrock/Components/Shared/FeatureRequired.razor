@@ -1,0 +1,73 @@
+@using Blazor_Bedrock.Services.FeatureFlag
+@inject IFeatureFlagService FeatureFlagService
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+
+@if (_isEnabled)
+{
+    @ChildContent
+}
+else if (!_isChecked)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Checking feature...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container mt-4">
+        <div class="alert alert-warning">
+            <h5>Feature Disabled</h5>
+            <p>This feature has been disabled. Please contact your administrator if you believe this is an error.</p>
+            <a href="/" class="btn btn-primary">Go to Home</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string FeatureName { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? RedirectTo { get; set; }
+
+    private bool _isEnabled = false;
+    private bool _isChecked = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(FeatureName))
+        {
+            _isEnabled = await FeatureFlagService.IsEnabledAsync(FeatureName);
+            _isChecked = true;
+            
+            if (!_isEnabled)
+            {
+                await NotificationService.ShowErrorAsync("This feature has been disabled.");
+                var redirectPath = RedirectTo ?? "/";
+                Navigation.NavigateTo(redirectPath);
+            }
+        }
+        else
+        {
+            _isChecked = true;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Refresh when FeatureName parameter changes
+        if (!string.IsNullOrEmpty(FeatureName))
+        {
+            _isEnabled = await FeatureFlagService.IsEnabledAsync(FeatureName);
+            _isChecked = true;
+            
+            if (!_isEnabled)
+            {
+                await NotificationService.ShowErrorAsync("This feature has been disabled.");
+                var redirectPath = RedirectTo ?? "/";
+                Navigation.NavigateTo(redirectPath);
+            }
+        }
+    }
+}

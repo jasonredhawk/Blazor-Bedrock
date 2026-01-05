@@ -2,10 +2,12 @@
 @page "/chatgpt/prompts/edit/{Id:int}"
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Forms
 @inject IPromptService PromptService
 @inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
 @rendermode InteractiveServer
@@ -103,6 +105,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if ChatGpt feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("ChatGPT feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         _currentTenantId = TenantService.GetCurrentTenantId();
 
         if (_isEdit && Id.HasValue)

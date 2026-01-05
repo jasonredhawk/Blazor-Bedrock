@@ -2,6 +2,7 @@
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
@@ -9,9 +10,11 @@
 @using Microsoft.EntityFrameworkCore
 @inject IChatGptService ChatGptService
 @inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject INotificationService NotificationService
+@inject NavigationManager Navigation
 @inject ApplicationDbContext _context
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
@@ -200,6 +203,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if ChatGpt feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("ChatGPT feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         await LoadCurrentTenant();
         await LoadAvailableModels();
         await LoadCurrentSettings();

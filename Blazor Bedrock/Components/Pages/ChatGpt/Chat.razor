@@ -912,6 +912,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if ChatGpt feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("ChatGPT feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (authState.User?.Identity?.IsAuthenticated == true)
         {

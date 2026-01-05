@@ -6,6 +6,7 @@
 @using Blazor_Bedrock.Services.Auth
 @using Blazor_Bedrock.Services.Logger
 @using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Authorization
@@ -17,6 +18,7 @@
 @inject IRoleService RoleService
 @inject ITenantService TenantService
 @inject IPermissionService PermissionService
+@inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -245,6 +247,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if Users feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("Users_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("User management feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         // Check permission
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (authState.User?.Identity?.IsAuthenticated == true)

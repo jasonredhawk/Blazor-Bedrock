@@ -1,12 +1,14 @@
 @page "/documents/{DocumentId:int}"
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Infrastructure.ExternalApis
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject IDocumentService DocumentService
 @inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -202,6 +204,14 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Check if Documents feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("Documents_Enabled");
+        if (!isEnabled)
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         tenantId = TenantService.GetCurrentTenantId();

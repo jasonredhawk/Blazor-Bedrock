@@ -1,12 +1,14 @@
 @page "/chatgpt/questions"
 @using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject IQuestionService QuestionService
 @inject ITenantService TenantService
+@inject IFeatureFlagService FeatureFlagService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject INotificationService NotificationService
@@ -223,6 +225,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if ChatGpt feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled");
+        if (!isEnabled)
+        {
+            await NotificationService.ShowErrorAsync("ChatGPT feature has been disabled.");
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         await LoadData();
     }
 
