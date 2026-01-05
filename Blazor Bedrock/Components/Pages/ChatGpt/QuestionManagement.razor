@@ -1,0 +1,413 @@
+@page "/chatgpt/questions"
+@using Blazor_Bedrock.Services.ChatGpt
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Data.Models
+@using Blazor_Bedrock.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IQuestionService QuestionService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject INotificationService NotificationService
+@inject NavigationManager Navigation
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Chat Questions Management</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4>Saved Questions</h4>
+        <button class="btn btn-primary" @onclick="ShowCreateGroupModal">
+            <i class="bi bi-folder-plus me-2"></i>
+            New Group
+        </button>
+    </div>
+    
+    <div class="card shadow mb-4">
+        <div class="card-body p-4">
+            <h6 class="mb-2">
+                <i class="bi bi-info-circle me-2"></i>
+                About Saved Questions
+            </h6>
+            <p class="mb-2">
+                <strong>Saved Questions allow you to reuse common questions across multiple documents.</strong> Organize questions into groups, then use them in the Chat page to automatically ask questions about your uploaded documents.
+            </p>
+            <p class="mb-0"><strong>Features:</strong></p>
+            <ul>
+                <li>Create reusable questions for document analysis</li>
+                <li>Organize questions into groups</li>
+                <li>Auto-ask questions in batch across multiple documents</li>
+                <li>View responses grouped by document and question combinations</li>
+            </ul>
+        </div>
+    </div>
+
+    @if (_groups == null)
+    {
+        <div class="text-center py-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (!_groups.Any())
+    {
+        <div class="alert alert-info">
+            <strong>No question groups created yet.</strong> Click "New Group" to get started.
+        </div>
+    }
+    else
+    {
+        @foreach (var group in _groups)
+        {
+            <div class="card shadow mb-3">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">
+                            <i class="bi bi-folder me-2"></i>
+                            @group.Name
+                        </h6>
+                        @if (!string.IsNullOrEmpty(group.Description))
+                        {
+                            <small class="text-muted">@group.Description</small>
+                        }
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => ShowCreateQuestionModal(group.Id)" title="Add Question">
+                            <i class="bi bi-plus-circle"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="() => EditGroup(group)" title="Edit Group">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGroup(group.Id)" title="Delete Group">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @{
+                        var groupQuestions = _questions.Where(q => q.GroupId == group.Id).OrderBy(q => q.Order).ToList();
+                    }
+                    @if (!groupQuestions.Any())
+                    {
+                        <p class="text-muted mb-0">No questions in this group. Click the + button to add one.</p>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var question in groupQuestions)
+                            {
+                                <div class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <h6 class="mb-0 me-2">@question.QuestionText</h6>
+                                            @if (!question.IsActive)
+                                            {
+                                                <span class="badge bg-secondary">Inactive</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(question.Description))
+                                        {
+                                            <small class="text-muted">@question.Description</small>
+                                        }
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EditQuestion(question)" title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteQuestion(question.Id)" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* Create/Edit Group Modal *@
+@if (_showGroupModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editingGroup != null ? "Edit Group" : "Create Group")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGroupModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Group Name *</label>
+                        <input type="text" class="form-control" @bind="_groupName" placeholder="e.g., Data Analysis Questions" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" @bind="_groupDescription" rows="3" placeholder="Optional description"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseGroupModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveGroup">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Create/Edit Question Modal *@
+@if (_showQuestionModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editingQuestion != null ? "Edit Question" : "Create Question")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseQuestionModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Group</label>
+                        <select class="form-select" @bind="_selectedGroupId">
+                            <option value="">Select a group</option>
+                            @foreach (var group in _groups ?? new List<ChatGptQuestionGroup>())
+                            {
+                                <option value="@group.Id">@group.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Question Text *</label>
+                        <textarea class="form-control" @bind="_questionText" rows="3" placeholder="e.g., What are the key insights from this document?"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" @bind="_questionDescription" rows="2" placeholder="Optional description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_questionIsActive" id="questionActive">
+                            <label class="form-check-label" for="questionActive">
+                                Active (question will be available in chat)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseQuestionModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveQuestion">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ChatGptQuestionGroup>? _groups;
+    private List<ChatGptQuestion>? _questions;
+    private bool _showGroupModal = false;
+    private bool _showQuestionModal = false;
+    private ChatGptQuestionGroup? _editingGroup;
+    private ChatGptQuestion? _editingQuestion;
+    private string _groupName = string.Empty;
+    private string _groupDescription = string.Empty;
+    private int? _selectedGroupId;
+    private string _questionText = string.Empty;
+    private string _questionDescription = string.Empty;
+    private bool _questionIsActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+            _groups = await QuestionService.GetAllGroupsAsync(tenantId);
+            _questions = await QuestionService.GetAllQuestionsAsync(tenantId);
+        }
+    }
+
+    private void ShowCreateGroupModal()
+    {
+        _editingGroup = null;
+        _groupName = string.Empty;
+        _groupDescription = string.Empty;
+        _showGroupModal = true;
+    }
+
+    private void EditGroup(ChatGptQuestionGroup group)
+    {
+        _editingGroup = group;
+        _groupName = group.Name;
+        _groupDescription = group.Description ?? string.Empty;
+        _showGroupModal = true;
+    }
+
+    private void CloseGroupModal()
+    {
+        _showGroupModal = false;
+        _editingGroup = null;
+    }
+
+    private async Task SaveGroup()
+    {
+        if (string.IsNullOrWhiteSpace(_groupName))
+        {
+            await NotificationService.ShowErrorAsync("Group name is required.");
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var tenantId = TenantService.GetCurrentTenantId();
+
+        try
+        {
+            if (_editingGroup != null)
+            {
+                _editingGroup.Name = _groupName;
+                _editingGroup.Description = _groupDescription;
+                await QuestionService.UpdateGroupAsync(_editingGroup.Id, _editingGroup, tenantId);
+                await NotificationService.ShowSuccessAsync("Group updated successfully.");
+            }
+            else
+            {
+                var newGroup = new ChatGptQuestionGroup
+                {
+                    Name = _groupName,
+                    Description = _groupDescription
+                };
+                await QuestionService.CreateGroupAsync(newGroup, tenantId);
+                await NotificationService.ShowSuccessAsync("Group created successfully.");
+            }
+            
+            CloseGroupModal();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving group: {ex.Message}");
+        }
+    }
+
+    private void ShowCreateQuestionModal(int? groupId = null)
+    {
+        _editingQuestion = null;
+        _selectedGroupId = groupId;
+        _questionText = string.Empty;
+        _questionDescription = string.Empty;
+        _questionIsActive = true;
+        _showQuestionModal = true;
+    }
+
+    private void EditQuestion(ChatGptQuestion question)
+    {
+        _editingQuestion = question;
+        _selectedGroupId = question.GroupId;
+        _questionText = question.QuestionText;
+        _questionDescription = question.Description ?? string.Empty;
+        _questionIsActive = question.IsActive;
+        _showQuestionModal = true;
+    }
+
+    private void CloseQuestionModal()
+    {
+        _showQuestionModal = false;
+        _editingQuestion = null;
+    }
+
+    private async Task SaveQuestion()
+    {
+        if (string.IsNullOrWhiteSpace(_questionText))
+        {
+            await NotificationService.ShowErrorAsync("Question text is required.");
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var tenantId = TenantService.GetCurrentTenantId();
+
+        try
+        {
+            if (_editingQuestion != null)
+            {
+                _editingQuestion.QuestionText = _questionText;
+                _editingQuestion.Description = _questionDescription;
+                _editingQuestion.GroupId = _selectedGroupId;
+                _editingQuestion.IsActive = _questionIsActive;
+                await QuestionService.UpdateQuestionAsync(_editingQuestion.Id, _editingQuestion, tenantId);
+                await NotificationService.ShowSuccessAsync("Question updated successfully.");
+            }
+            else
+            {
+                var newQuestion = new ChatGptQuestion
+                {
+                    QuestionText = _questionText,
+                    Description = _questionDescription,
+                    GroupId = _selectedGroupId,
+                    IsActive = _questionIsActive
+                };
+                await QuestionService.CreateQuestionAsync(newQuestion, tenantId);
+                await NotificationService.ShowSuccessAsync("Question created successfully.");
+            }
+            
+            CloseQuestionModal();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving question: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteGroup(int groupId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            "Are you sure you want to delete this group? All questions in this group will also be deleted.");
+        
+        if (!confirmed)
+            return;
+
+        var tenantId = TenantService.GetCurrentTenantId();
+        try
+        {
+            await QuestionService.DeleteGroupAsync(groupId, tenantId);
+            await NotificationService.ShowSuccessAsync("Group deleted successfully.");
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error deleting group: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteQuestion(int questionId)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            new object[] { "Are you sure you want to delete this question?" });
+        
+        if (!confirmed)
+            return;
+
+        var tenantId = TenantService.GetCurrentTenantId();
+        try
+        {
+            await QuestionService.DeleteQuestionAsync(questionId, tenantId);
+            await NotificationService.ShowSuccessAsync("Question deleted successfully.");
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error deleting question: {ex.Message}");
+        }
+    }
+}

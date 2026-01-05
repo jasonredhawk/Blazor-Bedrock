@@ -31,6 +31,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<SavedChart> SavedCharts { get; set; }
     public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
     public DbSet<TenantSubscription> TenantSubscriptions { get; set; }
+    public DbSet<ChatGptQuestionGroup> ChatGptQuestionGroups { get; set; }
+    public DbSet<ChatGptQuestion> ChatGptQuestions { get; set; }
+    public DbSet<ChatGptQuestionResponse> ChatGptQuestionResponses { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -56,6 +59,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.ApplyConfiguration(new SavedChartConfiguration());
         builder.ApplyConfiguration(new SubscriptionPlanConfiguration());
         builder.ApplyConfiguration(new TenantSubscriptionConfiguration());
+        builder.ApplyConfiguration(new ChatGptQuestionGroupConfiguration());
+        builder.ApplyConfiguration(new ChatGptQuestionConfiguration());
+        builder.ApplyConfiguration(new ChatGptQuestionResponseConfiguration());
 
         // Rename Identity tables to match our naming convention
         builder.Entity<ApplicationUser>().ToTable("Users");

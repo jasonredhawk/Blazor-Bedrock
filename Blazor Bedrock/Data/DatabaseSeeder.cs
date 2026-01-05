@@ -28,6 +28,7 @@ public class DatabaseSeeder
         await SeedSubscriptionPlansAsync();
         await SeedDefaultTenantAsync();
         await SeedChatGptPromptsAsync();
+        await SeedChatGptQuestionsAsync();
     }
 
     private async Task SeedFeatureFlagsAsync()
@@ -683,6 +684,154 @@ Use scientific terminology and maintain objectivity and precision.",
             {
                 _context.ChatGptPrompts.Add(prompt);
             }
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task SeedChatGptQuestionsAsync()
+    {
+        // Only seed if no question groups exist
+        if (await _context.ChatGptQuestionGroups.AnyAsync())
+        {
+            return;
+        }
+
+        var groups = new List<ChatGptQuestionGroup>
+        {
+            new ChatGptQuestionGroup
+            {
+                Name = "Scientific Analysis",
+                Description = "Questions for analyzing scientific documents, research papers, and technical data",
+                Order = 1,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What are the key research findings and conclusions?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What methodology was used in this research?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the limitations or weaknesses identified in this study?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What statistical methods or data analysis techniques were employed?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the practical applications or implications of these findings?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Engineering & Technical",
+                Description = "Questions for technical documents, engineering specifications, and system designs",
+                Order = 2,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What are the technical specifications and requirements?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the system architecture and design patterns used?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the potential risks, vulnerabilities, or failure points?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the performance metrics, benchmarks, or KPIs mentioned?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the maintenance requirements and operational procedures?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Threat Analysis",
+                Description = "Questions for security assessments, threat modeling, and risk analysis documents",
+                Order = 3,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What security threats or vulnerabilities are identified?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the risk levels and potential impacts of identified threats?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What mitigation strategies or countermeasures are recommended?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What attack vectors or threat actors are mentioned?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What compliance requirements or security standards are referenced?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Financial & Money Management",
+                Description = "Questions for financial reports, budgets, investments, and economic analysis",
+                Order = 4,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What are the key financial metrics, ratios, or performance indicators?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the revenue sources and cost breakdowns?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the financial risks, trends, or projections mentioned?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What investment strategies or recommendations are provided?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the budget allocations and spending patterns?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Musical Analysis",
+                Description = "Questions for analyzing music theory, compositions, and musical documents",
+                Order = 5,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What musical elements, scales, or modes are used?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What is the time signature, tempo, and rhythmic structure?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What chord progressions or harmonic patterns are present?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What instruments, voices, or orchestration techniques are mentioned?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What is the musical form, structure, or compositional style?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Pattern & Symmetry Analysis",
+                Description = "Questions for identifying patterns, symmetries, and structural relationships",
+                Order = 6,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What patterns, sequences, or recurring structures are present?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What types of symmetry or geometric patterns are identified?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What relationships or correlations exist between different elements?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What anomalies, outliers, or deviations from patterns are noted?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What mathematical or algorithmic patterns can be identified?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "Keyword & Correlation Analysis",
+                Description = "Questions for analyzing keywords, correlations, and semantic relationships",
+                Order = 7,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What are the most frequently mentioned keywords or terms?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What correlations or relationships exist between different keywords or concepts?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What semantic clusters or topic groupings can be identified?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What context or associations are linked to key terms?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the key themes or subject matter categories?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            },
+            new ChatGptQuestionGroup
+            {
+                Name = "General Document Analysis",
+                Description = "General-purpose questions for any type of document",
+                Order = 8,
+                TenantId = null,
+                CreatedAt = DateTime.UtcNow,
+                Questions = new List<ChatGptQuestion>
+                {
+                    new ChatGptQuestion { QuestionText = "What is the main topic or subject of this document?", Order = 1, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the key points or main takeaways?", Order = 2, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What are the most important facts or data points mentioned?", Order = 3, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What conclusions or recommendations are provided?", Order = 4, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow },
+                    new ChatGptQuestion { QuestionText = "What questions or areas need further investigation?", Order = 5, IsActive = true, TenantId = null, CreatedAt = DateTime.UtcNow }
+                }
+            }
+        };
+
+        foreach (var group in groups)
+        {
+            _context.ChatGptQuestionGroups.Add(group);
         }
 
         await _context.SaveChangesAsync();

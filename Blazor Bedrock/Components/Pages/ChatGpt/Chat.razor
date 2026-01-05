@@ -14,6 +14,7 @@
 @using Markdig
 @inject IChatGptService ChatGptService
 @inject IPromptService PromptService
+@inject IQuestionService QuestionService
 @inject ITenantService TenantService
 @inject IDocumentService DocumentService
 @inject ISubscriptionLimitationService LimitationService
@@ -258,6 +259,35 @@
         height: 100%;
         color: #6c757d;
     }
+    
+    .batch-result-card {
+        transition: all 0.2s ease;
+        border-left: 4px solid #0d6efd;
+    }
+    
+    .batch-result-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .batch-result-card.processing {
+        border-left-color: #ffc107;
+    }
+    
+    .batch-result-card.error {
+        border-left-color: #dc3545;
+    }
+    
+    .batch-result-card.success {
+        border-left-color: #198754;
+    }
+    
+    .question-quick-btn {
+        font-size: 0.75rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
 </style>
 
 <div class="container-fluid p-0 chat-page-container" style="height: calc(100vh - 56px - var(--logger-height, 0px) - 32px); max-height: calc(100vh - 56px - var(--logger-height, 0px) - 32px); overflow: hidden; position: relative; width: 100%; box-sizing: border-box; margin: 0; margin-top: -1.5rem; display: flex; flex-direction: column;">
@@ -282,9 +312,10 @@
     else
     {
         <div class="row g-0" style="height: 100%; max-height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important; flex-grow: 1;">
-            @* Sidebar *@
-            <div class="col-md-3 p-0" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%; display: flex; flex-direction: column;">
+            @* Left Sidebar - Conversations and Questions *@
+            <div class="col-md-3 p-0" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%; display: flex; flex-direction: column; border-right: 1px solid #dee2e6;">
                 <div class="conversation-sidebar" style="height: 100%; max-height: 100%; width: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;">
+                    @* Conversations Section *@
                     <div style="padding: 16px; border-bottom: 1px solid #dee2e6;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0">Conversations</h6>
@@ -337,7 +368,7 @@
                         }
                     </div>
                     
-                    <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
+                    <div style="flex: 1 1 40%; min-height: 200px; max-height: 50%; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #dee2e6;">
                         @if (_conversations.Any())
                         {
                             @foreach (var conv in _conversations)
@@ -386,16 +417,114 @@
                             </div>
                         }
                     </div>
+                    
+                    @* Questions Section *@
+                    <div style="flex: 1 1 60%; min-height: 200px; overflow: hidden; display: flex; flex-direction: column;">
+                        <div style="padding: 16px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h6 class="mb-0">Saved Questions</h6>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="NavigateToQuestions" title="Manage Questions">
+                                    <i class="bi bi-gear"></i>
+                                </button>
+                            </div>
+                            <div class="mb-2">
+                                <input type="text" 
+                                       class="form-control form-control-sm" 
+                                       placeholder="Filter questions..." 
+                                       @bind="_questionFilter"
+                                       @bind:event="oninput"
+                                       style="font-size: 0.75rem;" />
+                            </div>
+                            <div class="mb-2">
+                                <select class="form-select form-select-sm" @bind="_selectedQuestionGroupFilter" @bind:event="onchange">
+                                    <option value="">All Groups</option>
+                                    @foreach (var group in _questionGroups)
+                                    {
+                                        <option value="@group.Id">@group.Name</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
+                            @if (_filteredQuestions.Any())
+                            {
+                                @foreach (var question in _filteredQuestions)
+                                {
+                                    <div class="conversation-item" style="cursor: default; padding: 8px 12px;">
+                                        <div class="d-flex align-items-start justify-content-between">
+                                            <div style="flex: 1; min-width: 0; margin-right: 8px;">
+                                                <div style="font-size: 0.875rem; font-weight: 500; margin-bottom: 4px;">
+                                                    @question.QuestionText
+                                                </div>
+                                                @if (question.Group != null)
+                                                {
+                                                    <small class="text-muted" style="font-size: 0.7rem;">
+                                                        <i class="bi bi-folder me-1"></i>@question.Group.Name
+                                                    </small>
+                                                }
+                                            </div>
+                                            <div class="d-flex gap-1" style="flex-shrink: 0; flex-direction: column;">
+                                                @* Execute buttons for individual or combined *@
+                                                @if (_currentConversationId.HasValue)
+                                                {
+                                                    var conversationDocs = GetConversationDocuments();
+                                                    var hasMultipleDocs = conversationDocs.Count > 1;
+                                                    <button class="btn btn-sm btn-primary mb-1" 
+                                                            @onclick="() => ExecuteQuestionToDocuments(question.Id, false)"
+                                                            disabled="@(_isLoading || _isProcessing)"
+                                                            title="Ask this question to each document separately">
+                                                        <i class="bi bi-file-earmark me-1"></i>Each Doc
+                                                    </button>
+                                                    @if (hasMultipleDocs)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-primary" 
+                                                                @onclick="() => ExecuteQuestionToDocuments(question.Id, true)"
+                                                                disabled="@(_isLoading || _isProcessing)"
+                                                                title="Ask this question to all documents together">
+                                                            <i class="bi bi-files me-1"></i>All Together
+                                                        </button>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <small class="text-muted" style="font-size: 0.7rem;">Load a conversation</small>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            else if (_questionGroups.Any() || _allQuestions.Any())
+                            {
+                                <div class="text-center p-4 text-muted">
+                                    <p class="mb-1">No questions match filter</p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center p-4 text-muted">
+                                    <p class="mb-1">No saved questions</p>
+                                    <small><a href="/chatgpt/questions" class="text-primary">Create questions</a> to use batch processing</small>
+                                </div>
+                            }
+                        </div>
+                    </div>
                 </div>
             </div>
             
             @* Main Chat Area *@
             <div class="col-md-9 p-0" style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
                 <div style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
-                    @* Chat Header - Fixed at top *@
+                    @* Header *@
                     <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex: 0 0 auto; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
                         <div class="d-flex align-items-center justify-content-between mb-2" style="width: 100%; box-sizing: border-box;">
                             <div style="flex: 1; min-width: 0; overflow: hidden;">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-file-earmark-text me-2"></i>Document Analysis
+                                </h5>
+                            </div>
+                            <div style="flex: 1; min-width: 0; overflow: hidden; text-align: right;">
                                 <h6 class="mb-0" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                     @(_currentConversationId.HasValue ? GetCurrentConversationTitle() : "New Conversation")
                                 </h6>
@@ -619,95 +748,379 @@
                         }
                     }
                     
-                    @* Messages Area - Only scrollable area *@
+                    @* Messages Area or Batch Results - Only scrollable area *@
                     <div class="messages-container" @ref="_messagesContainer" style="flex: 1 1 0; min-height: 0; max-height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;">
-                        @if (!_messages.Any())
-                        {
-                            <div class="empty-state">
-                                <i class="bi bi-chat-dots text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
-                                <h6 class="text-muted">Start a conversation</h6>
-                                <p class="text-muted mt-2">
-                                    Type a message below to begin chatting with ChatGPT
-                                </p>
-                            </div>
-                        }
-                        else
-                        {
-                            @foreach (var message in _messages)
+                        @* Document Analysis Results View *@
+                            @if (_batchResults.Any())
                             {
-                                <div class="message-container">
-                                    <div class="message-header">
-                                        @if (message.Role == "user")
-                                        {
-                                            <span><i class="bi bi-person me-1" style="font-size: 14px;"></i> You</span>
-                                        }
-                                        else
-                                        {
-                                            <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
-                                        }
-                                        <span style="margin-left: 8px;">@message.CreatedAt.ToString("HH:mm")</span>
-                                    </div>
-                                    <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")">
-                                        @if (message.Role == "assistant")
-                                        {
-                                            <div class="markdown-content">@((MarkupString)RenderMarkdown(message.Content))</div>
-                                        }
-                                        else
-                                        {
-                                            <div style="white-space: pre-wrap;">@message.Content</div>
-                                        }
-                                    </div>
+                                <div class="p-3">
+                                    <h5 class="mb-3">
+                                        <i class="bi bi-file-earmark-text me-2"></i>Analysis Results
+                                    </h5>
+                                    
+                                    @* Group results by question first, then by document *@
+                                    @{
+                                        // Get documents from current conversation
+                                        var conversationDocuments = GetConversationDocuments();
+                                        var filteredBatchResults = _batchResults
+                                            .Where(r => 
+                                                conversationDocuments.Contains(r.DocumentId) || r.DocumentId == 0)
+                                            .ToList();
+                                    }
+                                    @if (filteredBatchResults.Any())
+                                    {
+                                        <div class="mb-2">
+                                            <span class="badge bg-primary">@filteredBatchResults.Count result(s)</span>
+                                        </div>
+                                    }
+                                    @foreach (var questionGroup in filteredBatchResults.GroupBy(r => r.QuestionId == 0 ? (object)r.QuestionText : (object)r.QuestionId))
+                                    {
+                                        var questionResults = questionGroup.ToList();
+                                        var questionText = questionResults.First().QuestionText;
+                                        var questionId = questionResults.First().QuestionId;
+                                        var isCombinedResult = questionResults.Any(r => r.DocumentName.Contains("All") || r.DocumentId == 0);
+                                        
+                                        <div class="card mb-3 shadow-sm" style="border-left: 4px solid #0d6efd;">
+                                            <div class="card-header bg-light d-flex justify-content-between align-items-center" style="cursor: pointer;" @onclick="() => ToggleQuestionGroupExpansion(questionId, questionText)">
+                                                <div>
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-question-circle me-2"></i>
+                                                        @questionText
+                                                        <span class="badge bg-secondary ms-2">@questionResults.Count result(s)</span>
+                                                    </h6>
+                                                </div>
+                                                <div>
+                                                    <i class="bi @(IsQuestionGroupExpanded(questionId, questionText) ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                                                </div>
+                                            </div>
+                                            @if (IsQuestionGroupExpanded(questionId, questionText))
+                                            {
+                                                <div class="card-body p-2">
+                                                    @foreach (var result in questionResults.OrderBy(r => r.DocumentId).ThenBy(r => r.CreatedAt))
+                                                    {
+                                                        var isExpanded = IsQuestionExpanded(result);
+                                                        var cardClass = result.IsProcessing ? "processing" : 
+                                                                       !string.IsNullOrEmpty(result.ErrorMessage) ? "error" : 
+                                                                       "success";
+                                                        var doc = _availableDocuments.FirstOrDefault(d => d.Id == result.DocumentId);
+                                                        <div class="batch-result-card border rounded mb-2 @cardClass" style="background: #f8f9fa; transition: all 0.2s ease;">
+                                                            <div class="d-flex justify-content-between align-items-start p-2">
+                                                                <div style="flex: 1; cursor: pointer;" @onclick="() => ToggleQuestionExpansion(result)">
+                                                                    <div class="d-flex align-items-center">
+                                                                        <i class="bi bi-file-earmark text-info me-2"></i>
+                                                                        <strong style="font-size: 0.875rem;">@result.DocumentName</strong>
+                                                                    </div>
+                                                                    @if (!string.IsNullOrEmpty(result.PromptName))
+                                                                    {
+                                                                        <small class="text-muted d-block mt-1">
+                                                                            <i class="bi bi-file-text me-1"></i>Prompt: @result.PromptName
+                                                                        </small>
+                                                                    }
+                                                                    <small class="text-muted d-block mt-1" style="font-size: 0.7rem;">
+                                                                        <i class="bi bi-clock me-1"></i>@result.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                                                    </small>
+                                                                </div>
+                                                                <div class="d-flex align-items-center gap-2">
+                                                                    @if (result.IsProcessing)
+                                                                    {
+                                                                        <span class="badge bg-warning">
+                                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                                            Processing...
+                                                                        </span>
+                                                                    }
+                                                                    else if (!string.IsNullOrEmpty(result.ErrorMessage))
+                                                                    {
+                                                                        <span class="badge bg-danger">
+                                                                            <i class="bi bi-exclamation-triangle me-1"></i>Error
+                                                                        </span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="badge bg-success">
+                                                                            <i class="bi bi-check-circle me-1"></i>Complete
+                                                                        </span>
+                                                                    }
+                                                                    @if (!result.IsProcessing && result.ResponseId.HasValue)
+                                                                    {
+                                                                        <button class="btn btn-sm btn-outline-danger" 
+                                                                                @onclick="() => DeleteBatchResult(result)"
+                                                                                @onclick:stopPropagation="true"
+                                                                                title="Delete this result">
+                                                                            <i class="bi bi-trash"></i>
+                                                                        </button>
+                                                                    }
+                                                                    <i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down") text-muted" style="cursor: pointer;" @onclick="() => ToggleQuestionExpansion(result)"></i>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            @if (isExpanded)
+                                                            {
+                                                                <div class="px-2 pb-2">
+                                                                    @if (!string.IsNullOrEmpty(result.ErrorMessage))
+                                                                    {
+                                                                        <div class="alert alert-danger mb-2" style="font-size: 0.875rem;">
+                                                                            <i class="bi bi-exclamation-triangle me-2"></i>@result.ErrorMessage
+                                                                        </div>
+                                                                    }
+                                                                    else if (result.ConversationId.HasValue)
+                                                                    {
+                                                                        @* Full Conversation History *@
+                                                                        <div style="max-height: 500px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #dee2e6; border-radius: 4px; padding: 12px; background: white;">
+                                                                            @if (result.Messages.Any())
+                                                                            {
+                                                                                @foreach (var message in result.Messages.OrderBy(m => m.CreatedAt))
+                                                                                {
+                                                                                    <div class="mb-3">
+                                                                                        <div class="d-flex align-items-start @(message.Role == "user" ? "justify-content-end" : "justify-content-start")">
+                                                                                            <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")" style="max-width: 85%;">
+                                                                                                <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">
+                                                                                                    @if (message.Role == "user")
+                                                                                                    {
+                                                                                                        <span><i class="bi bi-person me-1"></i>You</span>
+                                                                                                    }
+                                                                                                    else
+                                                                                                    {
+                                                                                                        <span><i class="bi bi-robot me-1"></i>Assistant</span>
+                                                                                                    }
+                                                                                                    <span class="ms-2" style="font-size: 0.7rem;">@message.CreatedAt.ToString("HH:mm")</span>
+                                                                                                </div>
+                                                                                                @if (message.Role == "assistant")
+                                                                                                {
+                                                                                                    <div class="markdown-content" style="font-size: 0.875rem;">
+                                                                                                        @((MarkupString)RenderMarkdown(message.Content))
+                                                                                                    </div>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <div style="font-size: 0.875rem; white-space: pre-wrap;">@message.Content</div>
+                                                                                                }
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                }
+                                                                            }
+                                                                            else if (!string.IsNullOrEmpty(result.Response))
+                                                                            {
+                                                                                @* Fallback to single response if messages not loaded *@
+                                                                                <div class="message-bubble message-assistant">
+                                                                                    <div class="markdown-content">
+                                                                                        @((MarkupString)RenderMarkdown(result.Response))
+                                                                                    </div>
+                                                                                </div>
+                                                                            }
+                                                                        </div>
+                                                                        
+                                                                        @* Follow-up Message Input *@
+                                                                        <div class="border rounded p-2" style="background: #f8f9fa;">
+                                                                            <textarea class="form-control form-control-sm mb-2" 
+                                                                                      placeholder="Ask a follow-up question..."
+                                                                                      rows="2"
+                                                                                      @bind="result.FollowUpMessage"
+                                                                                      @bind:event="oninput"
+                                                                                      disabled="@result.IsSendingFollowUp"
+                                                                                      style="font-size: 0.875rem; resize: vertical;"></textarea>
+                                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                                <small class="text-muted" style="font-size: 0.7rem;">
+                                                                                    <i class="bi bi-info-circle me-1"></i>Continue this conversation
+                                                                                </small>
+                                                                                <button class="btn btn-sm btn-primary" 
+                                                                                        @onclick="() => SendFollowUpMessage(result)"
+                                                                                        disabled="@(result.IsSendingFollowUp || string.IsNullOrWhiteSpace(result.FollowUpMessage))">
+                                                                                    @if (result.IsSendingFollowUp)
+                                                                                    {
+                                                                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        <i class="bi bi-send me-1"></i>
+                                                                                    }
+                                                                                    Send
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    }
+                                                                    else if (!string.IsNullOrEmpty(result.Response))
+                                                                    {
+                                                                        @* Fallback for results without conversation ID *@
+                                                                        <div class="markdown-content" style="background: white; padding: 1rem; border-radius: 4px; border: 1px solid #dee2e6; margin-top: 8px;">
+                                                                            @((MarkupString)RenderMarkdown(result.Response))
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="empty-state">
+                                    <i class="bi bi-file-earmark-text text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
+                                    <h6 class="text-muted">Document Analysis</h6>
+                                    <p class="text-muted mt-2">
+                                        Click a saved question to analyze your documents. Choose "Each Doc" to ask individually or "All Together" to compare across documents.
+                                    </p>
                                 </div>
                             }
                         }
-                        
-                        @if (_isLoading)
+                        @* Regular Chat View (when not in batch mode) *@
+                        @if (_viewMode == "chat")
                         {
-                            <div class="message-container">
-                                <div class="message-header">
-                                    <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
+                            @if (!_messages.Any())
+                            {
+                                <div class="empty-state">
+                                    <i class="bi bi-chat-dots text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
+                                    <h6 class="text-muted">Start a conversation</h6>
+                                    <p class="text-muted mt-2">
+                                        Type a message below to begin chatting with ChatGPT
+                                    </p>
                                 </div>
-                                <div class="message-bubble message-assistant">
-                                    <div class="d-flex align-items-center">
-                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                        <span class="text-muted">Thinking...</span>
+                            }
+                            else
+                            {
+                                @foreach (var message in _messages)
+                                {
+                                    <div class="message-container">
+                                        <div class="message-header">
+                                            @if (message.Role == "user")
+                                            {
+                                                <span><i class="bi bi-person me-1" style="font-size: 14px;"></i> You</span>
+                                            }
+                                            else
+                                            {
+                                                <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
+                                            }
+                                            <span style="margin-left: 8px;">@message.CreatedAt.ToString("HH:mm")</span>
+                                        </div>
+                                        <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")">
+                                            @if (message.Role == "assistant")
+                                            {
+                                                <div class="markdown-content">@((MarkupString)RenderMarkdown(message.Content))</div>
+                                            }
+                                            else
+                                            {
+                                                <div style="white-space: pre-wrap;">@message.Content</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            
+                            @if (_isLoading)
+                            {
+                                <div class="message-container">
+                                    <div class="message-header">
+                                        <span><i class="bi bi-robot me-1" style="font-size: 14px;"></i> Assistant</span>
+                                    </div>
+                                    <div class="message-bubble message-assistant">
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            <span class="text-muted">Thinking...</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            }
+                            <div id="messages-end"></div>
                         }
-                        <div id="messages-end"></div>
                     </div>
                     
-                    @* Input Area - Fixed at bottom, never scrolls *@
-                    <div class="chat-input-area" id="chat-input-container" style="flex: 0 0 auto; box-sizing: border-box; background: white; border-top: 1px solid #dee2e6; z-index: 10;">
-                        <div style="position: relative; width: 100%; box-sizing: border-box;">
-                            <textarea @ref="_messageTextarea"
-                                     id="chat-message-textarea"
-                                     placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
-                                     rows="3"
-                                     disabled="@_isLoading"
-                                     @bind="_messageText"
-                                     @bind:event="oninput"
-                                     @onkeydown="@HandleKeyDown"
-                                     style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"
-                                     class="form-control"></textarea>
-                            <div style="position: absolute; right: 8px; bottom: 8px;">
-                                <button class="btn btn-primary btn-sm" 
-                                        disabled="@(_isLoading || string.IsNullOrWhiteSpace(_messageText))"
-                                        @onclick="SendMessage">
-                                    <i class="bi bi-send"></i>
-                                </button>
+                    @* Input Area - Fixed at bottom *@
+                    @if (_viewMode == "chat")
+                    {
+                        <div class="chat-input-area" id="chat-input-container" style="flex: 0 0 auto; box-sizing: border-box; background: white; border-top: 1px solid #dee2e6; z-index: 10;">
+                            <div style="position: relative; width: 100%; box-sizing: border-box;">
+                                <textarea @ref="_messageTextarea"
+                                         id="chat-message-textarea"
+                                         placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                                         rows="3"
+                                         disabled="@_isLoading"
+                                         @bind="_messageText"
+                                         @bind:event="oninput"
+                                         @onkeydown="@HandleKeyDown"
+                                         style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"
+                                         class="form-control"></textarea>
+                                <div style="position: absolute; right: 8px; bottom: 8px;">
+                                    <button class="btn btn-primary btn-sm" 
+                                            disabled="@(_isLoading || string.IsNullOrWhiteSpace(_messageText))"
+                                            @onclick="SendMessage">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between mt-2">
+                                <div style="flex: 1;">
+                                    @* Quick Question Buttons *@
+                                    @if (_filteredQuestions.Any() && _filteredQuestions.Count <= 5)
+                                    {
+                                        <div class="d-flex gap-1 flex-wrap">
+                                            @foreach (var question in _filteredQuestions.Take(5))
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary" 
+                                                        @onclick="() => AskQuickQuestion(question.Id)"
+                                                        disabled="@_isLoading"
+                                                        title="@question.QuestionText"
+                                                        style="font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">
+                                                    <i class="bi bi-lightning-charge me-1"></i>
+                                                    @(question.QuestionText.Length > 30 ? question.QuestionText.Substring(0, 30) + "..." : question.QuestionText)
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                                <div class="d-flex align-items-center gap-3">
+                                    <small class="text-muted">
+                                        @_messageText.Length characters
+                                    </small>
+                                    <small class="text-muted">
+                                        Enter to send • Shift+Enter for new line
+                                    </small>
+                                </div>
                             </div>
                         </div>
-                        <div class="d-flex align-items-center justify-content-between mt-2">
-                            <small class="text-muted">
-                                @_messageText.Length characters
-                            </small>
-                            <small class="text-muted">
-                                Enter to send • Shift+Enter for new line
-                            </small>
+                    }
+                    else if (_viewMode == "batch")
+                    {
+                        @* Manual Question Input for Batch Mode - Fixed at bottom *@
+                        <div class="chat-input-area" id="batch-input-container" style="flex: 0 0 auto; box-sizing: border-box; background: white; border-top: 1px solid #dee2e6; z-index: 10;">
+                            <div style="position: relative; width: 100%; box-sizing: border-box;">
+                                <textarea class="form-control" 
+                                          placeholder="Type a question to ask all documents (mimics saved questions functionality)..."
+                                          rows="3"
+                                          disabled="@_isAskingBatchQuestion"
+                                          @bind="_batchQuestionText"
+                                          @bind:event="oninput"
+                                          @onkeydown="HandleBatchQuestionKeyDown"
+                                          style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"></textarea>
+                                <div style="position: absolute; right: 8px; bottom: 8px;">
+                                    <button class="btn btn-primary btn-sm" 
+                                            disabled="@(_isAskingBatchQuestion || string.IsNullOrWhiteSpace(_batchQuestionText) || !_batchResults.Any(r => r.ConversationId.HasValue))"
+                                            @onclick="AskBatchQuestion">
+                                        @if (_isAskingBatchQuestion)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-send me-1"></i>
+                                        }
+                                        Ask All Documents
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between mt-2">
+                                <small class="text-muted">
+                                    This question will be sent to all @(_batchResults.Where(r => r.ConversationId.HasValue).Select(r => r.DocumentId).Distinct().Count()) document(s)
+                                </small>
+                                <small class="text-muted">
+                                    Enter to send • Shift+Enter for new line
+                                </small>
+                            </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>
@@ -741,6 +1154,22 @@
     private bool _subscriptionsEnabled = false;
     private int _currentConversationCount = 0;
     private int? _maxConversations;
+    
+    // Questions management
+    private List<ChatGptQuestionGroup> _questionGroups = new();
+    private List<ChatGptQuestion> _allQuestions = new();
+    private string _questionFilter = string.Empty;
+    private int? _selectedQuestionGroupFilter;
+    
+    // Document analysis
+    private bool _isProcessing = false;
+    private List<BatchResult> _batchResults = new();
+    private string _batchQuestionText = string.Empty;
+    private bool _isAskingBatchQuestion = false;
+    private HashSet<int> _expandedQuestionIds = new(); // Track which documents are expanded
+    
+    // View mode: "chat" or "batch" - defaulting to batch for unified experience
+    private string _viewMode = "batch";
 
     protected override async Task OnInitializedAsync()
     {
@@ -767,6 +1196,19 @@
                     
                     // Load documents
                     _availableDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+                    
+                    // Load questions and groups
+                    _questionGroups = await QuestionService.GetAllGroupsAsync(tenantId);
+                    _allQuestions = await QuestionService.GetAllQuestionsAsync(tenantId);
+                    
+                    // Load groups for questions (they should be included, but ensure they're loaded)
+                    foreach (var question in _allQuestions)
+                    {
+                        if (question.GroupId.HasValue && question.Group == null)
+                        {
+                            question.Group = _questionGroups.FirstOrDefault(g => g.Id == question.GroupId.Value);
+                        }
+                    }
                     
                     // Load subscription limitations
                     _subscriptionsEnabled = await FeatureFlagService.IsEnabledAsync("Subscriptions");
@@ -840,6 +1282,14 @@
         if (e.Key == "Enter" && !e.ShiftKey && !_isLoading && !string.IsNullOrWhiteSpace(_messageText))
         {
             await SendMessage();
+        }
+    }
+    
+    private async Task HandleBatchQuestionKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_isAskingBatchQuestion && !string.IsNullOrWhiteSpace(_batchQuestionText))
+        {
+            await AskBatchQuestion();
         }
     }
 
@@ -977,6 +1427,9 @@
     {
         _currentConversationId = conversationId;
         _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        
+        // Load existing batch results for this conversation
+        await LoadExistingBatchResults();
         
         // Load the prompt and document that were used for this conversation
         var conversation = _conversations.FirstOrDefault(c => c.Id == conversationId);
@@ -2000,5 +2453,989 @@
         
         // Default: return 0 if we can't parse
         return 0;
+    }
+    
+    private List<ChatGptQuestion> _filteredQuestions => _allQuestions
+        .Where(q => q.IsActive && 
+                    (string.IsNullOrWhiteSpace(_questionFilter) || 
+                     q.QuestionText.Contains(_questionFilter, StringComparison.OrdinalIgnoreCase) ||
+                     (q.Description != null && q.Description.Contains(_questionFilter, StringComparison.OrdinalIgnoreCase))) &&
+                    (!_selectedQuestionGroupFilter.HasValue || q.GroupId == _selectedQuestionGroupFilter))
+        .OrderBy(q => q.Group?.Order ?? 0)
+        .ThenBy(q => q.Order)
+        .ToList();
+    
+    private List<int> GetConversationDocuments()
+    {
+        if (!_currentConversationId.HasValue)
+            return new List<int>();
+        
+        var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+        if (conversation == null)
+            return new List<int>();
+        
+        // Get documents from UploadedDocumentIds
+        var documentIds = new List<int>();
+        if (!string.IsNullOrEmpty(conversation.UploadedDocumentIds))
+        {
+            try
+            {
+                documentIds = System.Text.Json.JsonSerializer.Deserialize<List<int>>(conversation.UploadedDocumentIds) ?? new List<int>();
+            }
+            catch
+            {
+                // If parsing fails, try to get from DocumentId
+                if (conversation.DocumentId.HasValue)
+                {
+                    documentIds.Add(conversation.DocumentId.Value);
+                }
+            }
+        }
+        else if (conversation.DocumentId.HasValue)
+        {
+            documentIds.Add(conversation.DocumentId.Value);
+        }
+        
+        return documentIds;
+    }
+    
+    private async Task ExecuteQuestionToDocuments(int questionId, bool askToAllTogether)
+    {
+        if (!_currentConversationId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("Please load a conversation with documents first.");
+            return;
+        }
+        
+        var question = _allQuestions.FirstOrDefault(q => q.Id == questionId);
+        if (question == null)
+        {
+            await NotificationService.ShowErrorAsync("Question not found.");
+            return;
+        }
+        
+        var conversationDocuments = GetConversationDocuments();
+        if (!conversationDocuments.Any())
+        {
+            await NotificationService.ShowErrorAsync("No documents found in the current conversation. Please upload documents first.");
+            return;
+        }
+        
+        var selectedPrompt = _selectedPromptId.HasValue 
+            ? _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value) 
+            : null;
+        
+        // Immediately create placeholder results for instant UI feedback
+        // Do this synchronously before any async operations
+        if (askToAllTogether)
+        {
+            // Create one placeholder for "all documents together"
+            var firstDocId = conversationDocuments.FirstOrDefault();
+            var placeholder = new BatchResult
+            {
+                DocumentId = firstDocId > 0 ? firstDocId : 0,
+                DocumentName = conversationDocuments.Count > 1 ? $"All {conversationDocuments.Count} Documents" : (_availableDocuments.FirstOrDefault(d => d.Id == firstDocId)?.Title ?? "Documents"),
+                QuestionId = question.Id,
+                QuestionText = question.QuestionText,
+                PromptId = selectedPrompt?.Id,
+                PromptName = selectedPrompt?.Name ?? "Default",
+                IsProcessing = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _batchResults.Add(placeholder);
+        }
+        else
+        {
+            // Create placeholders for each document
+            var documents = _availableDocuments.Where(d => conversationDocuments.Contains(d.Id)).ToList();
+            foreach (var document in documents)
+            {
+                // Check if this result already exists
+                var existingResult = _batchResults.FirstOrDefault(r => 
+                    r.DocumentId == document.Id && 
+                    r.QuestionId == question.Id &&
+                    !r.IsProcessing &&
+                    string.IsNullOrEmpty(r.ErrorMessage) &&
+                    !string.IsNullOrEmpty(r.Response) &&
+                    r.ResponseId.HasValue);
+                
+                if (existingResult != null)
+                {
+                    continue; // Skip if already processed
+                }
+                
+                var placeholder = new BatchResult
+                {
+                    DocumentId = document.Id,
+                    DocumentName = document.Title ?? document.FileName,
+                    QuestionId = question.Id,
+                    QuestionText = question.QuestionText,
+                    PromptId = selectedPrompt?.Id,
+                    PromptName = selectedPrompt?.Name ?? "Default",
+                    IsProcessing = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _batchResults.Add(placeholder);
+            }
+        }
+        
+        _isProcessing = true;
+        // Force immediate UI update before async operations - use synchronous call
+        StateHasChanged();
+        
+        // Give UI time to render placeholders before starting async work
+        await Task.Delay(10);
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                // Remove placeholders on error
+                _batchResults.RemoveAll(r => r.IsProcessing && r.QuestionId == question.Id && !r.ResponseId.HasValue);
+                return;
+            }
+            
+            if (askToAllTogether)
+            {
+                // Ask question to all documents together
+                await ExecuteQuestionToAllDocumentsTogether(question, conversationDocuments, selectedPrompt, userId, tenantId);
+            }
+            else
+            {
+                // Ask question to each document separately
+                await ExecuteQuestionToEachDocument(question, conversationDocuments, selectedPrompt, userId, tenantId);
+            }
+            
+            // Reload existing results
+            await LoadExistingBatchResults();
+            
+            await NotificationService.ShowSuccessAsync("Question processed successfully!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error processing question: {ex.Message}");
+            Logger.LogError(ex, "Error executing question {QuestionId} to documents", questionId);
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ExecuteQuestionToEachDocument(ChatGptQuestion question, List<int> documentIds, ChatGptPrompt? prompt, string userId, int? tenantId)
+    {
+        var documents = _availableDocuments.Where(d => documentIds.Contains(d.Id)).ToList();
+        
+        foreach (var document in documents)
+        {
+            // Find the placeholder result for this document
+            var placeholder = _batchResults.FirstOrDefault(r => 
+                r.DocumentId == document.Id && 
+                r.QuestionId == question.Id &&
+                r.IsProcessing &&
+                !r.ResponseId.HasValue);
+            
+            try
+            {
+                // Find or create conversation for this document
+                ChatGptConversation? conversation = null;
+                
+                var existingConv = _conversations.FirstOrDefault(c => 
+                    c.DocumentId == document.Id && 
+                    !string.IsNullOrEmpty(c.OpenAiThreadId) &&
+                    !string.IsNullOrEmpty(c.OpenAiAssistantId));
+                
+                if (existingConv != null)
+                {
+                    conversation = existingConv;
+                }
+                else
+                {
+                    // Create new conversation with document
+                    var title = $"{document.Title ?? document.FileName} - {question.QuestionText.Substring(0, Math.Min(50, question.QuestionText.Length))}...";
+                    var progress = new Progress<string>(msg => {
+                        StateHasChanged();
+                    });
+                    
+                    conversation = await ChatGptService.CreateConversationAsync(
+                        userId, tenantId, title, _preferredModel, prompt?.Id, document.Id, null, progress);
+                    
+                    // Reload conversations
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    conversation = _conversations.FirstOrDefault(c => c.Id == conversation.Id);
+                }
+                
+                if (conversation != null && 
+                    !string.IsNullOrEmpty(conversation.OpenAiThreadId) &&
+                    !string.IsNullOrEmpty(conversation.OpenAiAssistantId))
+                {
+                    // Send question
+                    var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                        userId, tenantId, conversation.Id, question.QuestionText);
+                    
+                    // Load conversation messages
+                    var messages = await ChatGptService.GetConversationMessagesAsync(conversation.Id);
+                    
+                    // Update placeholder with actual result
+                    if (placeholder != null)
+                    {
+                        placeholder.Response = response;
+                        placeholder.ConversationId = conversation.Id;
+                        placeholder.Messages = messages.OrderBy(m => m.CreatedAt).ToList();
+                        placeholder.IsProcessing = false;
+                    }
+                    else
+                    {
+                        // Create new result if placeholder not found
+                        var result = new BatchResult
+                        {
+                            DocumentId = document.Id,
+                            DocumentName = document.Title ?? document.FileName,
+                            QuestionId = question.Id,
+                            QuestionText = question.QuestionText,
+                            PromptId = prompt?.Id,
+                            PromptName = prompt?.Name ?? "Default",
+                            Response = response,
+                            ConversationId = conversation.Id,
+                            Messages = messages.OrderBy(m => m.CreatedAt).ToList(),
+                            CreatedAt = DateTime.UtcNow,
+                            IsProcessing = false
+                        };
+                        _batchResults.Add(result);
+                        placeholder = result;
+                    }
+                    
+                    // Save response to database
+                    var questionResponse = new ChatGptQuestionResponse
+                    {
+                        ConversationId = conversation.Id,
+                        QuestionId = question.Id,
+                        DocumentId = document.Id,
+                        PromptId = prompt?.Id,
+                        Response = response
+                    };
+                    var savedResponse = await QuestionService.SaveResponseAsync(questionResponse);
+                    placeholder.ResponseId = savedResponse.Id;
+                    
+                    StateHasChanged();
+                }
+                else
+                {
+                    // Update placeholder with error
+                    if (placeholder != null)
+                    {
+                        placeholder.ErrorMessage = "Failed to upload document to OpenAI. Please try uploading manually first.";
+                        placeholder.IsProcessing = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing question for document {DocumentId}", document.Id);
+                // Update placeholder with error
+                if (placeholder != null)
+                {
+                    placeholder.ErrorMessage = ex.Message;
+                    placeholder.IsProcessing = false;
+                }
+                else
+                {
+                    // Add error result if placeholder not found
+                    var errorResult = new BatchResult
+                    {
+                        DocumentId = document.Id,
+                        DocumentName = document.Title ?? document.FileName,
+                        QuestionId = question.Id,
+                        QuestionText = question.QuestionText,
+                        ErrorMessage = ex.Message,
+                        CreatedAt = DateTime.UtcNow,
+                        IsProcessing = false
+                    };
+                    _batchResults.Add(errorResult);
+                }
+            }
+        }
+    }
+    
+    private async Task ExecuteQuestionToAllDocumentsTogether(ChatGptQuestion question, List<int> documentIds, ChatGptPrompt? prompt, string userId, int? tenantId)
+    {
+        // Use the current conversation to ask the question to all documents together
+        if (!_currentConversationId.HasValue)
+            return;
+        
+        var firstDocId = documentIds.FirstOrDefault();
+        var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+        if (conversation == null || 
+            string.IsNullOrEmpty(conversation.OpenAiThreadId) ||
+            string.IsNullOrEmpty(conversation.OpenAiAssistantId))
+        {
+            await NotificationService.ShowErrorAsync("Current conversation is not ready. Please ensure documents are uploaded.");
+            // Remove placeholder on error
+            _batchResults.RemoveAll(r => r.IsProcessing && r.QuestionId == question.Id && r.DocumentId == (firstDocId > 0 ? firstDocId : 0) && !r.ResponseId.HasValue);
+            return;
+        }
+        
+        // Find the placeholder result
+        var placeholder = _batchResults.FirstOrDefault(r => 
+            r.DocumentId == (firstDocId > 0 ? firstDocId : 0) && 
+            r.QuestionId == question.Id &&
+            r.IsProcessing &&
+            !r.ResponseId.HasValue);
+        
+        try
+        {
+            // Send question to all documents together
+            var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                userId, tenantId, conversation.Id, question.QuestionText);
+            
+            // Load conversation messages
+            var messages = await ChatGptService.GetConversationMessagesAsync(conversation.Id);
+            
+            // Update placeholder with actual result
+            if (placeholder != null)
+            {
+                placeholder.Response = response;
+                placeholder.ConversationId = conversation.Id;
+                placeholder.Messages = messages.OrderBy(m => m.CreatedAt).ToList();
+                placeholder.IsProcessing = false;
+            }
+            else
+            {
+                // Create new result if placeholder not found
+                var result = new BatchResult
+                {
+                    DocumentId = firstDocId > 0 ? firstDocId : 0,
+                    DocumentName = documentIds.Count > 1 ? $"All {documentIds.Count} Documents" : (_availableDocuments.FirstOrDefault(d => d.Id == firstDocId)?.Title ?? "Documents"),
+                    QuestionId = question.Id,
+                    QuestionText = question.QuestionText,
+                    PromptId = prompt?.Id,
+                    PromptName = prompt?.Name ?? "Default",
+                    Response = response,
+                    ConversationId = conversation.Id,
+                    Messages = messages.OrderBy(m => m.CreatedAt).ToList(),
+                    CreatedAt = DateTime.UtcNow,
+                    IsProcessing = false
+                };
+                _batchResults.Add(result);
+                placeholder = result;
+            }
+            
+            // Save response to database (use first document ID or null)
+            var questionResponse = new ChatGptQuestionResponse
+            {
+                ConversationId = conversation.Id,
+                QuestionId = question.Id,
+                DocumentId = firstDocId > 0 ? firstDocId : null,
+                PromptId = prompt?.Id,
+                Response = response
+            };
+            var savedResponse = await QuestionService.SaveResponseAsync(questionResponse);
+            placeholder.ResponseId = savedResponse.Id;
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing question to all documents together");
+            // Update placeholder with error
+            if (placeholder != null)
+            {
+                placeholder.ErrorMessage = ex.Message;
+                placeholder.IsProcessing = false;
+            }
+        }
+    }
+    
+    private void NavigateToQuestions()
+    {
+        Navigation.NavigateTo("/chatgpt/questions");
+    }
+    
+    private async Task SetViewMode(string mode)
+    {
+        _viewMode = mode;
+        // Always load batch results when switching to batch mode
+        if (mode == "batch")
+        {
+            await LoadExistingBatchResults();
+        }
+        StateHasChanged();
+    }
+    
+    private async Task LoadExistingBatchResults()
+    {
+        if (!_currentConversationId.HasValue)
+        {
+            // If no conversation loaded, clear all results
+            _batchResults.Clear();
+            return;
+        }
+        
+        try
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+            if (tenantId == null) return;
+            
+            var conversationDocuments = GetConversationDocuments();
+            if (!conversationDocuments.Any())
+            {
+                _batchResults.Clear();
+                return;
+            }
+            
+            // Remove results for documents that are not in current conversation
+            _batchResults.RemoveAll(r => 
+                !conversationDocuments.Contains(r.DocumentId) && 
+                !r.ResponseId.HasValue);
+            
+            // Load existing responses for conversation documents
+            var existingResponses = await QuestionService.GetResponsesAsync(tenantId);
+            
+            var relevantResponses = existingResponses
+                .Where(r => r.DocumentId.HasValue && 
+                           conversationDocuments.Contains(r.DocumentId.Value))
+                .ToList();
+            
+            // Convert to BatchResult format
+            foreach (var response in relevantResponses)
+            {
+                // Check if we already have this result (by ResponseId or by combination)
+                var exists = _batchResults.Any(r => 
+                    (r.ResponseId.HasValue && r.ResponseId == response.Id) ||
+                    (r.DocumentId == (response.DocumentId ?? 0) && 
+                     r.QuestionId == response.QuestionId && 
+                     r.ResponseId.HasValue && // Must be saved
+                     Math.Abs((r.CreatedAt - response.CreatedAt).TotalSeconds) < 5));
+                
+                if (!exists && response.Document != null)
+                {
+                    // For manual questions, get the question text from conversation messages
+                    string questionText = response.Question?.QuestionText ?? "Manual Question";
+                    if (response.QuestionId == 0 && response.ConversationId > 0)
+                    {
+                        try
+                        {
+                            // Get messages from the conversation to find the user question
+                            var messages = await ChatGptService.GetConversationMessagesAsync(response.ConversationId);
+                            // Find the last user message before this response was created
+                            var userMessage = messages
+                                .Where(m => m.Role == "user" && m.CreatedAt <= response.CreatedAt)
+                                .OrderByDescending(m => m.CreatedAt)
+                                .FirstOrDefault();
+                            
+                            if (userMessage != null)
+                            {
+                                questionText = userMessage.Content;
+                            }
+                        }
+                        catch
+                        {
+                            // If we can't get messages, use default
+                            questionText = "Manual Question";
+                        }
+                    }
+                    
+                    var batchResult = new BatchResult
+                    {
+                        ResponseId = response.Id,
+                        DocumentId = response.DocumentId ?? 0,
+                        DocumentName = response.Document.Title ?? response.Document.FileName,
+                        QuestionId = response.QuestionId,
+                        QuestionText = questionText,
+                        PromptId = response.PromptId,
+                        PromptName = response.Prompt?.Name ?? "Default",
+                        Response = response.Response,
+                        ConversationId = response.ConversationId,
+                        CreatedAt = response.CreatedAt,
+                        IsProcessing = false
+                    };
+                    
+                    _batchResults.Add(batchResult);
+                    
+                    // Load conversation messages if conversation exists (will be loaded when expanded)
+                    // Messages will be loaded on-demand when the result is expanded
+                }
+            }
+            
+            // Filter results to only show conversation documents
+            _batchResults = _batchResults
+                .Where(r => conversationDocuments.Contains(r.DocumentId) || r.ResponseId.HasValue)
+                .ToList();
+            
+            // Sort by document, then by creation date
+            _batchResults = _batchResults
+                .OrderBy(r => r.DocumentId)
+                .ThenBy(r => r.CreatedAt)
+                .ToList();
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading existing batch results");
+        }
+    }
+    
+    private void ClearBatchResults()
+    {
+        _batchResults.Clear();
+        StateHasChanged();
+    }
+    
+    private async Task DeleteBatchResult(BatchResult result)
+    {
+        if (!result.ResponseId.HasValue)
+        {
+            // Just remove from UI if not saved to database
+            _batchResults.Remove(result);
+            StateHasChanged();
+            return;
+        }
+        
+        try
+        {
+            var tenantId = TenantService.GetCurrentTenantId();
+            var deleted = await QuestionService.DeleteResponseAsync(result.ResponseId.Value, tenantId);
+            
+            if (deleted)
+            {
+                _batchResults.Remove(result);
+                await NotificationService.ShowSuccessAsync("Result deleted successfully.");
+            }
+            else
+            {
+                await NotificationService.ShowErrorAsync("Failed to delete result. It may have already been deleted.");
+                // Remove from UI anyway
+                _batchResults.Remove(result);
+            }
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error deleting result: {ex.Message}");
+            Logger.LogError(ex, "Error deleting batch result {ResponseId}", result.ResponseId);
+        }
+    }
+    
+    private async Task AskQuickQuestion(int questionId)
+    {
+        var question = _allQuestions.FirstOrDefault(q => q.Id == questionId);
+        if (question != null)
+        {
+            _messageText = question.QuestionText;
+            await SendMessage();
+        }
+    }
+    
+    private async Task ExecuteQuestion(int questionId)
+    {
+        if (!_selectedDocumentId.HasValue)
+        {
+            await NotificationService.ShowErrorAsync("Please select a document first.");
+            return;
+        }
+        
+        var question = _allQuestions.FirstOrDefault(q => q.Id == questionId);
+        if (question == null)
+        {
+            await NotificationService.ShowErrorAsync("Question not found.");
+            return;
+        }
+        
+        _isLoading = true;
+        StateHasChanged();
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                return;
+            }
+            
+            var document = _availableDocuments.FirstOrDefault(d => d.Id == _selectedDocumentId.Value);
+            if (document == null)
+            {
+                await NotificationService.ShowErrorAsync("Document not found.");
+                return;
+            }
+            
+            // Check if there's already a conversation with this document and prompt
+            var existingConv = _conversations.FirstOrDefault(c => 
+                c.DocumentId == _selectedDocumentId.Value && 
+                c.PromptId == _selectedPromptId &&
+                !string.IsNullOrEmpty(c.OpenAiThreadId) &&
+                !string.IsNullOrEmpty(c.OpenAiAssistantId));
+            
+            ChatGptConversation conversation;
+            
+            if (existingConv != null)
+            {
+                // Use existing conversation
+                conversation = existingConv;
+                await LoadConversation(conversation.Id);
+            }
+            else
+            {
+                // Create new conversation with document, prompt, and upload to OpenAI
+                var title = $"{question.QuestionText.Substring(0, Math.Min(50, question.QuestionText.Length))}...";
+                var progress = new Progress<string>(msg => {
+                    _uploadProgress = msg;
+                    _uploadProgressPercent = ParseProgressPercentage(msg);
+                    StateHasChanged();
+                });
+                
+                _isUploadingDocument = true;
+                _uploadProgress = "Creating conversation and uploading document...";
+                _uploadProgressPercent = 0;
+                
+                conversation = await ChatGptService.CreateConversationAsync(
+                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, null, progress);
+                
+                _isUploadingDocument = false;
+                _uploadProgress = string.Empty;
+                _uploadProgressPercent = 0;
+                
+                // Reload conversations to get the updated one with OpenAI IDs
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                conversation = _conversations.FirstOrDefault(c => c.Id == conversation.Id);
+                
+                // Load the new conversation
+                await LoadConversation(conversation.Id);
+            }
+            
+            // Ensure conversation has documents uploaded and prompt is set
+            if (conversation != null)
+            {
+                // Update prompt if needed
+                if (conversation.PromptId != _selectedPromptId)
+                {
+                    await ChatGptService.UpdateConversationPromptAsync(conversation.Id, _selectedPromptId);
+                }
+                
+                // Check if document needs to be uploaded
+                if (string.IsNullOrEmpty(conversation.OpenAiThreadId) || 
+                    string.IsNullOrEmpty(conversation.OpenAiAssistantId))
+                {
+                    // Need to upload document
+                    _isUploadingDocument = true;
+                    _uploadProgress = "Uploading document to OpenAI...";
+                    _uploadProgressPercent = 0;
+                    StateHasChanged();
+                    
+                    var uploadProgress = new Progress<string>(msg => {
+                        _uploadProgress = msg;
+                        _uploadProgressPercent = ParseProgressPercentage(msg);
+                        StateHasChanged();
+                    });
+                    
+                    await ChatGptService.UpdateConversationDocumentAsync(
+                        conversation.Id, _selectedDocumentId.Value, null, uploadProgress);
+                    
+                    _isUploadingDocument = false;
+                    _uploadProgress = string.Empty;
+                    _uploadProgressPercent = 0;
+                    
+                    // Reload conversations again to get updated OpenAI IDs
+                    _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    conversation = _conversations.FirstOrDefault(c => c.Id == conversation.Id);
+                    
+                    // Wait a moment for OpenAI to process
+                    await Task.Delay(500);
+                }
+                
+                // Reload conversation to ensure we have latest data
+                await LoadConversation(conversation.Id);
+                
+                // Verify conversation is ready (has OpenAI thread and assistant)
+                var currentConv = _conversations.FirstOrDefault(c => c.Id == conversation.Id);
+                if (currentConv != null && 
+                    !string.IsNullOrEmpty(currentConv.OpenAiThreadId) &&
+                    !string.IsNullOrEmpty(currentConv.OpenAiAssistantId))
+                {
+                    // Now send the question using the same method as manual questions
+                    _messageText = question.QuestionText;
+                    await SendMessage();
+                }
+                else
+                {
+                    await NotificationService.ShowErrorAsync("Document upload is still processing. Please wait a moment and try again.");
+                }
+            }
+            
+            await NotificationService.ShowSuccessAsync("Question sent successfully!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error executing question: {ex.Message}");
+            Logger.LogError(ex, "Error executing question {QuestionId}", questionId);
+        }
+        finally
+        {
+            _isLoading = false;
+            _isUploadingDocument = false;
+            _uploadProgress = string.Empty;
+            _uploadProgressPercent = 0;
+            StateHasChanged();
+        }
+    }
+    
+    
+    private async Task AskBatchQuestion()
+    {
+        if (string.IsNullOrWhiteSpace(_batchQuestionText) || _batchResults.Count == 0)
+        {
+            await NotificationService.ShowErrorAsync("Please enter a question and ensure batch results exist.");
+            return;
+        }
+        
+        _isAskingBatchQuestion = true;
+        StateHasChanged();
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                return;
+            }
+            
+            var selectedPrompt = _selectedPromptId.HasValue 
+                ? _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value) 
+                : null;
+            
+            // Group by document only (not by document+question combination)
+            // Get one conversation per document (use the first successful result for each document)
+            var documents = _batchResults
+                .Where(r => string.IsNullOrEmpty(r.ErrorMessage) && r.ConversationId.HasValue)
+                .GroupBy(r => r.DocumentId)
+                .Select(g => new { DocumentId = g.Key, ConversationId = g.First().ConversationId!.Value })
+                .ToList();
+            
+            var totalDocuments = documents.Count;
+            var processedCount = 0;
+            
+            foreach (var docInfo in documents)
+            {
+                var document = _availableDocuments.FirstOrDefault(d => d.Id == docInfo.DocumentId);
+                
+                if (document == null)
+                    continue;
+                
+                // Create a new result for this manual question (no specific question ID for manual questions)
+                var manualResult = new BatchResult
+                {
+                    DocumentId = docInfo.DocumentId,
+                    DocumentName = document.Title ?? document.FileName,
+                    QuestionId = 0, // Manual question, not from saved questions
+                    QuestionText = _batchQuestionText,
+                    PromptId = selectedPrompt?.Id,
+                    PromptName = selectedPrompt?.Name ?? "Default",
+                    IsProcessing = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                
+                _batchResults.Add(manualResult);
+                processedCount++;
+                StateHasChanged();
+                
+                try
+                {
+                    // Send question using the existing conversation for this document
+                    var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                        userId, tenantId, docInfo.ConversationId, _batchQuestionText);
+                    
+                    manualResult.Response = response;
+                    manualResult.ConversationId = docInfo.ConversationId;
+                    manualResult.IsProcessing = false;
+                    
+                    // Load conversation messages for this result
+                    var messages = await ChatGptService.GetConversationMessagesAsync(docInfo.ConversationId);
+                    manualResult.Messages = messages.OrderBy(m => m.CreatedAt).ToList();
+                    
+                    // Save manual question response to database (with QuestionId = 0 to indicate it's a manual question)
+                    var questionResponse = new ChatGptQuestionResponse
+                    {
+                        ConversationId = docInfo.ConversationId,
+                        QuestionId = 0, // Manual question, not from saved questions
+                        DocumentId = document.Id,
+                        PromptId = selectedPrompt?.Id,
+                        Response = response
+                    };
+                    var savedResponse = await QuestionService.SaveResponseAsync(questionResponse);
+                    manualResult.ResponseId = savedResponse.Id; // Store the database ID for deletion
+                }
+                catch (Exception ex)
+                {
+                    manualResult.ErrorMessage = ex.Message;
+                    manualResult.IsProcessing = false;
+                    Logger.LogError(ex, "Error asking batch question for document {DocumentId}", document.Id);
+                }
+                
+                StateHasChanged();
+            }
+            
+            await NotificationService.ShowSuccessAsync($"Question sent to {processedCount} document(s) successfully.");
+            _batchQuestionText = string.Empty; // Clear the input
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error asking batch question: {ex.Message}");
+            Logger.LogError(ex, "Error in AskBatchQuestion");
+        }
+        finally
+        {
+            _isAskingBatchQuestion = false;
+            StateHasChanged();
+        }
+    }
+    
+    private HashSet<string> _expandedQuestionGroups = new(); // Track expanded question groups
+    
+    private void ToggleQuestionGroupExpansion(int questionId, string questionText)
+    {
+        var key = questionId == 0 ? questionText : questionId.ToString();
+        if (_expandedQuestionGroups.Contains(key))
+        {
+            _expandedQuestionGroups.Remove(key);
+        }
+        else
+        {
+            _expandedQuestionGroups.Add(key);
+        }
+        StateHasChanged();
+    }
+    
+    private bool IsQuestionGroupExpanded(int questionId, string questionText)
+    {
+        var key = questionId == 0 ? questionText : questionId.ToString();
+        return _expandedQuestionGroups.Contains(key);
+    }
+    
+    private void ToggleDocumentExpansion(int documentId)
+    {
+        if (_expandedQuestionIds.Contains(documentId))
+        {
+            _expandedQuestionIds.Remove(documentId);
+        }
+        else
+        {
+            _expandedQuestionIds.Add(documentId);
+        }
+        StateHasChanged();
+    }
+    
+    private void ToggleQuestionExpansion(BatchResult result)
+    {
+        result.IsExpanded = !result.IsExpanded;
+        
+        // Load conversation history when expanding
+        if (result.IsExpanded && result.ConversationId.HasValue && !result.Messages.Any())
+        {
+            _ = LoadBatchResultConversation(result);
+        }
+        
+        StateHasChanged();
+    }
+
+    private bool IsQuestionExpanded(BatchResult result)
+    {
+        return result.IsExpanded;
+    }
+    
+    private async Task LoadBatchResultConversation(BatchResult result)
+    {
+        if (!result.ConversationId.HasValue) return;
+        
+        try
+        {
+            var messages = await ChatGptService.GetConversationMessagesAsync(result.ConversationId.Value);
+            result.Messages = messages.OrderBy(m => m.CreatedAt).ToList();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading conversation history for batch result {ConversationId}", result.ConversationId);
+        }
+    }
+    
+    private async Task SendFollowUpMessage(BatchResult result)
+    {
+        if (!result.ConversationId.HasValue || string.IsNullOrWhiteSpace(result.FollowUpMessage))
+            return;
+        
+        result.IsSendingFollowUp = true;
+        StateHasChanged();
+        
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var tenantId = TenantService.GetCurrentTenantId();
+            
+            if (string.IsNullOrEmpty(userId) || tenantId == null)
+            {
+                await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                return;
+            }
+            
+            // Send the follow-up message
+            var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                userId, tenantId, result.ConversationId.Value, result.FollowUpMessage);
+            
+            // Reload conversation messages to get the full history
+            await LoadBatchResultConversation(result);
+            
+            // Clear the input
+            result.FollowUpMessage = string.Empty;
+            
+            await NotificationService.ShowSuccessAsync("Message sent successfully!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error sending message: {ex.Message}");
+            Logger.LogError(ex, "Error sending follow-up message to batch result {ConversationId}", result.ConversationId);
+        }
+        finally
+        {
+            result.IsSendingFollowUp = false;
+            StateHasChanged();
+        }
+    }
+    
+    // Batch result model
+    private class BatchResult
+    {
+        public int? ResponseId { get; set; } // Database ID for deletion
+        public int DocumentId { get; set; }
+        public string DocumentName { get; set; } = string.Empty;
+        public int QuestionId { get; set; }
+        public string QuestionText { get; set; } = string.Empty;
+        public int? PromptId { get; set; }
+        public string PromptName { get; set; } = string.Empty;
+        public string Response { get; set; } = string.Empty;
+        public int? ConversationId { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public bool IsProcessing { get; set; } = false;
+        public string? ErrorMessage { get; set; }
+        public List<ChatGptMessage> Messages { get; set; } = new(); // Full conversation history
+        public bool IsExpanded { get; set; } = false; // Whether conversation is expanded
+        public string FollowUpMessage { get; set; } = string.Empty; // For follow-up messages
+        public bool IsSendingFollowUp { get; set; } = false; // Whether sending follow-up
     }
 }

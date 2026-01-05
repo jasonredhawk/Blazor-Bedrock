@@ -187,6 +187,7 @@ builder.Services.AddDataProtection();
 builder.Services.AddHttpClient<IChatGptService, ChatGptService>();
 builder.Services.AddHttpClient<IOpenAIFileThreadService, OpenAIFileThreadService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
+builder.Services.AddScoped<IQuestionService, QuestionService>();
 
 var app = builder.Build();
 

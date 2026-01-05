@@ -225,6 +225,13 @@ public class MenuService : IMenuService
 
                     chatGptMenu.Children.Add(new MenuItem
                     {
+                        Title = "Questions",
+                        Href = "/chatgpt/questions",
+                        Icon = "bi bi-question-circle"
+                    });
+
+                    chatGptMenu.Children.Add(new MenuItem
+                    {
                         Title = "Chat",
                         Href = "/chatgpt/chat",
                         Icon = "bi bi-chat-dots"
@@ -255,6 +262,17 @@ public class MenuService : IMenuService
                                 Title = "Prompts",
                                 Href = "/chatgpt/prompts",
                                 Icon = "bi bi-file-text"
+                            });
+                        }
+
+                        var canAccessQuestions = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.Questions");
+                        if (canAccessQuestions)
+                        {
+                            chatGptMenu.Children.Add(new MenuItem
+                            {
+                                Title = "Questions",
+                                Href = "/chatgpt/questions",
+                                Icon = "bi bi-question-circle"
                             });
                         }
 
