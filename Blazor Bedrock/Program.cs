@@ -321,4 +321,34 @@ app.MapGet("/api/documents/{id}/file", async (int id, HttpContext context, IDocu
     }
 }).RequireAuthorization();
 
+// Export conversation to DOCX endpoint
+app.MapGet("/api/conversations/{id}/export", async (int id, HttpContext context, IChatGptService chatGptService, ITenantService tenantService) =>
+{
+    // Get user ID from HttpContext.User (available after authentication middleware)
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var docxBytes = await chatGptService.ExportConversationToDocxAsync(id, userId, tenantId);
+        var fileName = $"conversation_{id}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.docx";
+        return Results.File(docxBytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileName);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error exporting conversation {ConversationId}", id);
+        return Results.StatusCode(500);
+    }
+}).RequireAuthorization();
+
 app.Run();

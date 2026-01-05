@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.IO;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Blazor_Bedrock.Services.ChatGpt;
 
@@ -38,6 +41,7 @@ public interface IChatGptService
     Task UpdateConversationTitleAsync(int conversationId, string title);
     Task UpdateConversationPromptAsync(int conversationId, int? promptId);
     Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage);
+    Task<byte[]> ExportConversationToDocxAsync(int conversationId, string userId, int? tenantId);
 }
 
 public class ChatGptService : IChatGptService
@@ -911,5 +915,120 @@ public class ChatGptService : IChatGptService
                 : firstMessage;
             return fallbackTitle;
         }
+    }
+
+    public async Task<byte[]> ExportConversationToDocxAsync(int conversationId, string userId, int? tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            // Get conversation and verify access
+            var conversation = await _context.ChatGptConversations
+                .FirstOrDefaultAsync(c => c.Id == conversationId && 
+                                          c.UserId == userId && 
+                                          (tenantId == null || c.TenantId == tenantId));
+
+            if (conversation == null)
+            {
+                throw new InvalidOperationException("Conversation not found or access denied");
+            }
+
+            // Get messages ordered by creation time
+            var messages = await _context.ChatGptMessages
+                .Where(m => m.ConversationId == conversationId)
+                .OrderBy(m => m.CreatedAt)
+                .ToListAsync();
+
+            // Create DOCX document in memory
+            using var memoryStream = new MemoryStream();
+            using (var wordDocument = WordprocessingDocument.Create(memoryStream, WordprocessingDocumentType.Document))
+            {
+                // Add main document part
+                var mainPart = wordDocument.AddMainDocumentPart();
+                mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+                var body = mainPart.Document.AppendChild(new Body());
+
+                // Add title
+                var titleParagraph = body.AppendChild(new Paragraph());
+                var titleRun = titleParagraph.AppendChild(new Run());
+                titleRun.AppendChild(new RunProperties(new Bold(), new FontSize { Val = "32" }));
+                titleRun.AppendChild(new Text(conversation.Title));
+                
+                // Add metadata paragraph
+                var metaParagraph = body.AppendChild(new Paragraph());
+                var metaRun = metaParagraph.AppendChild(new Run());
+                metaRun.AppendChild(new RunProperties(new FontSize { Val = "22" }));
+                var metadataText = $"Created: {conversation.CreatedAt:yyyy-MM-dd HH:mm:ss UTC}";
+                if (conversation.UpdatedAt.HasValue)
+                {
+                    metadataText += $" | Updated: {conversation.UpdatedAt.Value:yyyy-MM-dd HH:mm:ss UTC}";
+                }
+                if (!string.IsNullOrEmpty(conversation.Model))
+                {
+                    metadataText += $" | Model: {conversation.Model}";
+                }
+                metaRun.AppendChild(new Text(metadataText));
+
+                // Add spacing between metadata and messages
+                body.AppendChild(new Paragraph());
+
+                // Add messages
+                foreach (var message in messages)
+                {
+                    // Message header with role and timestamp
+                    var headerParagraph = body.AppendChild(new Paragraph());
+                    var headerRun = headerParagraph.AppendChild(new Run());
+                    headerRun.AppendChild(new RunProperties(
+                        new Bold(),
+                        new FontSize { Val = "20" },
+                        new Color { Val = message.Role == "user" ? "0066CC" : "00AA00" }
+                    ));
+                    var roleDisplay = message.Role switch
+                    {
+                        "user" => "User",
+                        "assistant" => "Assistant",
+                        "system" => "System",
+                        _ => message.Role
+                    };
+                    headerRun.AppendChild(new Text($"{roleDisplay} - {message.CreatedAt:yyyy-MM-dd HH:mm:ss UTC}"));
+
+                    // Convert markdown to plain text (remove markdown syntax for simple display)
+                    var content = message.Content;
+                    // Basic markdown cleanup - remove code blocks, bold, italic markers
+                    content = System.Text.RegularExpressions.Regex.Replace(content, @"```[\s\S]*?```", "[Code Block]", System.Text.RegularExpressions.RegexOptions.Multiline);
+                    content = System.Text.RegularExpressions.Regex.Replace(content, @"`([^`]+)`", "$1");
+                    content = System.Text.RegularExpressions.Regex.Replace(content, @"\*\*([^\*]+)\*\*", "$1");
+                    content = System.Text.RegularExpressions.Regex.Replace(content, @"\*([^\*]+)\*", "$1");
+                    
+                    // Split content into paragraphs (preserve line breaks)
+                    var paragraphs = content.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var para in paragraphs)
+                    {
+                        var contentParagraph = body.AppendChild(new Paragraph());
+                        var contentRun = contentParagraph.AppendChild(new Run());
+                        contentRun.AppendChild(new RunProperties(new FontSize { Val = "22" }));
+                        // Replace single line breaks with spaces within paragraphs
+                        contentRun.AppendChild(new Text(para.Replace("\n", " ").Replace("\r", " ").Trim()));
+                    }
+                    
+                    // If no paragraphs were found (empty or single paragraph), add the content
+                    if (paragraphs.Length == 0)
+                    {
+                        var contentParagraph = body.AppendChild(new Paragraph());
+                        var contentRun = contentParagraph.AppendChild(new Run());
+                        contentRun.AppendChild(new RunProperties(new FontSize { Val = "22" }));
+                        contentRun.AppendChild(new Text(content.Trim()));
+                    }
+
+                    // Add spacing between messages
+                    body.AppendChild(new Paragraph());
+                    body.AppendChild(new Paragraph());
+                }
+
+                // Save the document
+                mainPart.Document.Save();
+            }
+
+            return memoryStream.ToArray();
+        });
     }
 }

@@ -537,6 +537,9 @@
                             </div>
                             @if (_currentConversationId.HasValue && _messages.Any())
                             {
+                                <button class="btn btn-sm btn-outline-primary" @onclick="ExportConversation" title="Export to DOCX" style="flex-shrink: 0;">
+                                    <i class="bi bi-file-earmark-word"></i>
+                                </button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="ClearCurrentConversation" title="Clear Conversation" style="flex-shrink: 0;">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -1104,6 +1107,25 @@
             // Keep prompt selection but reset conversation tracking
             _currentPromptIdForConversation = _selectedPromptId;
             StateHasChanged();
+        }
+    }
+
+    private async Task ExportConversation()
+    {
+        if (!_currentConversationId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            var exportUrl = $"/api/conversations/{_currentConversationId.Value}/export";
+            await JSRuntime.InvokeVoidAsync("window.open", exportUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exporting conversation {ConversationId}", _currentConversationId.Value);
+            await NotificationService.ShowErrorAsync("Failed to export conversation. Please try again.");
         }
     }
     
