@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Blazor_Bedrock")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e267aaeab37571a419751134fbfe1e69a5789331")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3dac085ffdc202b44da42a9a9e2fbca7bbf8a3a0")]
 [assembly: System.Reflection.AssemblyProductAttribute("Blazor_Bedrock")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Blazor_Bedrock")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

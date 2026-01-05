@@ -130,19 +130,31 @@
     private List<ChatGptPrompt>? prompts;
     private int? currentTenantId;
 
+    private bool _featureDisabled = false;
+
     protected override async Task OnInitializedAsync()
     {
         // Check if ChatGpt feature is enabled
         var isEnabled = await FeatureFlagService.IsEnabledAsync("ChatGpt_Enabled");
         if (!isEnabled)
         {
-            await NotificationService.ShowErrorAsync("ChatGPT feature has been disabled.");
-            Navigation.NavigateTo("/");
+            _featureDisabled = true;
             return;
         }
 
         currentTenantId = TenantService.GetCurrentTenantId();
         await LoadData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _featureDisabled)
+        {
+            await Task.Delay(100);
+            Navigation.NavigateTo("/?error=" + Uri.EscapeDataString("ChatGPT feature has been disabled"));
+            return;
+        }
+        await base.OnAfterRenderAsync(firstRender);
     }
 
     private async Task LoadData()

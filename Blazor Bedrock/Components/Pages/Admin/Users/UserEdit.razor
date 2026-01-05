@@ -1,4 +1,4 @@
-@page "/admin/users/create"
+@page "/admin/users/add"
 @page "/admin/users/edit/{UserId}"
 @using Blazor_Bedrock.Services.UserManagement
 @using Blazor_Bedrock.Services.Tenant
@@ -29,10 +29,10 @@
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
 
-<PageTitle>@(_isEdit ? "Edit User" : "Create User")</PageTitle>
+<PageTitle>@(_isEdit ? "Edit User" : "Add User")</PageTitle>
 
 <div class="container mt-4" style="max-width: 800px;">
-    <h4 class="mb-4">@(_isEdit ? "Edit User" : "Create User")</h4>
+    <h4 class="mb-4">@(_isEdit ? "Edit User" : "Add User")</h4>
     
     <div class="card shadow">
         <div class="card-body p-4">
@@ -54,15 +54,11 @@
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
                         <input type="email" class="form-control" id="email" @bind="_userModel.Email" required disabled="@_isEdit" />
+                        @if (!_isEdit)
+                        {
+                            <small class="form-text text-muted">Enter the email of an existing user to add them to this organization.</small>
+                        }
                     </div>
-                    
-                    @if (!_isEdit)
-                    {
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" @bind="_userModel.Password" required />
-                        </div>
-                    }
                     
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="isActive" @bind="_userModel.IsActive" disabled="@(_isEdit && _isSuperAdmin)" />
@@ -148,7 +144,6 @@
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
     }
 
@@ -245,14 +240,15 @@
         StateHasChanged();
     }
 
+    private bool _featureDisabled = false;
+
     protected override async Task OnInitializedAsync()
     {
         // Check if Users feature is enabled
         var isEnabled = await FeatureFlagService.IsEnabledAsync("Users_Enabled");
         if (!isEnabled)
         {
-            await NotificationService.ShowErrorAsync("User management feature has been disabled.");
-            Navigation.NavigateTo("/");
+            _featureDisabled = true;
             return;
         }
 
@@ -427,6 +423,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && _featureDisabled)
+        {
+            await Task.Delay(100);
+            Navigation.NavigateTo("/?error=" + Uri.EscapeDataString("User management feature has been disabled"));
+            return;
+        }
+        
         if (firstRender && _isInitialized)
         {
             Logger.LogInformation("[UserEdit.OnAfterRenderAsync] First render after initialization");
@@ -560,32 +563,43 @@
             }
             else
             {
-                var user = new ApplicationUser
+                // Find existing user by email
+                var user = await UserManager.FindByEmailAsync(_userModel.Email);
+                if (user == null)
                 {
-                    UserName = _userModel.Email,
-                    Email = _userModel.Email,
-                    FirstName = _userModel.FirstName,
-                    LastName = _userModel.LastName,
-                    EmailConfirmed = true,
-                    IsActive = _userModel.IsActive
-                };
-
-                var result = await UserService.CreateUserAsync(user, _userModel.Password, tenantId.Value);
-                if (result.Succeeded)
-                {
-                    // Assign roles from selected role IDs
-                    foreach (var roleId in _selectedRoleIds)
-                    {
-                        await UserService.AssignRoleToUserAsync(user.Id, roleId, tenantId.Value);
-                    }
-
-                    await NotificationService.ShowSuccessAsync("User created successfully");
-                    Navigation.NavigateTo("/admin/users");
+                    await NotificationService.ShowErrorAsync($"User with email '{_userModel.Email}' not found. Please ensure the user has created an account first.");
+                    return;
                 }
-                else
+
+                // Check if user is already in this tenant
+                var existingUserTenant = await DbSync.ExecuteAsync(async () =>
                 {
-                    await NotificationService.ShowErrorAsync($"Error: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+                    return await DbContext.UserTenants
+                        .AnyAsync(ut => ut.UserId == user.Id && ut.TenantId == tenantId.Value);
+                });
+
+                if (existingUserTenant)
+                {
+                    await NotificationService.ShowErrorAsync($"User with email '{_userModel.Email}' is already a member of this organization.");
+                    return;
                 }
+
+                // Add user to tenant
+                var added = await UserService.AssignUserToTenantAsync(user.Id, tenantId.Value);
+                if (!added)
+                {
+                    await NotificationService.ShowErrorAsync("Failed to add user to organization.");
+                    return;
+                }
+
+                // Assign roles from selected role IDs
+                foreach (var roleId in _selectedRoleIds)
+                {
+                    await UserService.AssignRoleToUserAsync(user.Id, roleId, tenantId.Value);
+                }
+
+                await NotificationService.ShowSuccessAsync("User added to organization successfully");
+                Navigation.NavigateTo("/admin/users");
             }
         }
         catch (Exception ex)
