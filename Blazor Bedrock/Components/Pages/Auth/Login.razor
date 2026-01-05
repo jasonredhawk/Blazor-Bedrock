@@ -70,19 +70,21 @@
             
             <hr class="my-4" />
             
-            <FeatureGate FeatureName="Auth_Google">
+            @if (_googleAuthEnabled)
+            {
                 <a href="/auth/external/google" class="btn btn-outline-primary w-100 mb-2">
                     <i class="bi bi-google me-2"></i>
                     Sign in with Google
                 </a>
-            </FeatureGate>
+            }
             
-            <FeatureGate FeatureName="Auth_Facebook">
+            @if (_facebookAuthEnabled)
+            {
                 <a href="/auth/external/facebook" class="btn btn-outline-primary w-100 mb-2">
                     <i class="bi bi-facebook me-2"></i>
                     Sign in with Facebook
                 </a>
-            </FeatureGate>
+            }
             
             <p class="mt-4 text-center text-muted">
                 Don't have an account? 
@@ -97,6 +99,8 @@
     private bool _isLoading = false;
     private string _errorMessage = string.Empty;
     private string _successMessage = string.Empty;
+    private bool _googleAuthEnabled = false;
+    private bool _facebookAuthEnabled = false;
 
     private class LoginModel
     {
@@ -105,8 +109,12 @@
         public bool RememberMe { get; set; } = false;
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        // Check feature flags for authentication methods (app-level, works without login)
+        _googleAuthEnabled = await FeatureFlagService.IsEnabledAsync("Auth_Google");
+        _facebookAuthEnabled = await FeatureFlagService.IsEnabledAsync("Auth_Facebook");
+        
         // Check for error query parameter
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var queryParams = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);

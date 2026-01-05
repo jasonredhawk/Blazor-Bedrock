@@ -236,6 +236,9 @@ app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// External Auth Feature Flag Middleware (must be after auth but before tenant middleware)
+app.UseMiddleware<Blazor_Bedrock.Services.Auth.ExternalAuthFeatureMiddleware>();
+
 // Tenant Middleware
 app.UseMiddleware<TenantMiddleware>();
 
