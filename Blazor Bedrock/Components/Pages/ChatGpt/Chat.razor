@@ -11,6 +11,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @using ChatMessage = Blazor_Bedrock.Services.ChatGpt.ChatMessage
+@using Markdig
 @inject IChatGptService ChatGptService
 @inject IPromptService PromptService
 @inject ITenantService TenantService
@@ -101,6 +102,113 @@
         border: 1px solid #dee2e6;
         margin-right: auto;
         border-bottom-left-radius: 4px;
+    }
+    
+    .markdown-content {
+        line-height: 1.6;
+    }
+    
+    .markdown-content h1,
+    .markdown-content h2,
+    .markdown-content h3,
+    .markdown-content h4,
+    .markdown-content h5,
+    .markdown-content h6 {
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+    
+    .markdown-content h1 { font-size: 1.5em; }
+    .markdown-content h2 { font-size: 1.3em; }
+    .markdown-content h3 { font-size: 1.1em; }
+    .markdown-content h4 { font-size: 1em; }
+    .markdown-content h5 { font-size: 0.9em; }
+    .markdown-content h6 { font-size: 0.85em; }
+    
+    .markdown-content p {
+        margin-bottom: 1em;
+    }
+    
+    .markdown-content ul,
+    .markdown-content ol {
+        margin-bottom: 1em;
+        padding-left: 2em;
+    }
+    
+    .markdown-content li {
+        margin-bottom: 0.25em;
+    }
+    
+    .markdown-content code {
+        background-color: rgba(0, 0, 0, 0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-size: 0.9em;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .markdown-content pre {
+        background-color: rgba(0, 0, 0, 0.05);
+        padding: 1em;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin-bottom: 1em;
+    }
+    
+    .markdown-content pre code {
+        background-color: transparent;
+        padding: 0;
+    }
+    
+    .markdown-content blockquote {
+        border-left: 4px solid #dee2e6;
+        padding-left: 1em;
+        margin-left: 0;
+        margin-bottom: 1em;
+        color: #6c757d;
+    }
+    
+    .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 1em;
+    }
+    
+    .markdown-content table th,
+    .markdown-content table td {
+        border: 1px solid #dee2e6;
+        padding: 0.5em;
+        text-align: left;
+    }
+    
+    .markdown-content table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    
+    .markdown-content a {
+        color: #0d6efd;
+        text-decoration: none;
+    }
+    
+    .markdown-content a:hover {
+        text-decoration: underline;
+    }
+    
+    .markdown-content strong {
+        font-weight: 600;
+    }
+    
+    .markdown-content em {
+        font-style: italic;
+    }
+    
+    .markdown-content hr {
+        border: none;
+        border-top: 1px solid #dee2e6;
+        margin: 1.5em 0;
     }
     
     .message-container {
@@ -540,7 +648,14 @@
                                         <span style="margin-left: 8px;">@message.CreatedAt.ToString("HH:mm")</span>
                                     </div>
                                     <div class="message-bubble @(message.Role == "user" ? "message-user" : "message-assistant")">
-                                        <div style="white-space: pre-wrap;">@message.Content</div>
+                                        @if (message.Role == "assistant")
+                                        {
+                                            <div class="markdown-content">@((MarkupString)RenderMarkdown(message.Content))</div>
+                                        }
+                                        else
+                                        {
+                                            <div style="white-space: pre-wrap;">@message.Content</div>
+                                        }
                                     </div>
                                 </div>
                             }
@@ -1820,6 +1935,22 @@
             : percentage >= 0.9 
                 ? "badge bg-warning" 
                 : "badge bg-success";
+    }
+
+    private string RenderMarkdown(string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            return string.Empty;
+        
+        // Configure Markdig pipeline with common extensions
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .Build();
+        
+        // Convert markdown to HTML
+        var html = Markdown.ToHtml(markdown, pipeline);
+        
+        return html;
     }
 
     private int ParseProgressPercentage(string message)

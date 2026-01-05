@@ -63,6 +63,10 @@
               "target": "Package",
               "version": "[7.5.2, )"
             },
+            "Markdig": {
+              "target": "Package",
+              "version": "[0.44.0, )"
+            },
             "Microsoft.AspNetCore.Authentication.Facebook": {
               "target": "Package",
               "version": "[9.0.0, )"

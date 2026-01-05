@@ -220,6 +220,19 @@
           "itext": "9.0.0"
         }
       },
+      "Markdig/0.44.0": {
+        "type": "package",
+        "compile": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Microsoft.AspNetCore.Authentication.Facebook/9.0.0": {
         "type": "package",
         "compile": {
@@ -2879,6 +2892,29 @@
         "gnu-agpl-v3.0.md",
         "itext7.9.0.0.nupkg.sha512",
         "itext7.nuspec"
+      ]
+    },
+    "Markdig/0.44.0": {
+      "sha512": "X+CYMjcUnh/yO24wOSQxVFLiGqWrrtXJ5M7toHiM1Zk4Fg9UMLN5fkaq6FSOWH+mIprsHHgDMlq3MJhmrXalhg==",
+      "type": "package",
+      "path": "markdig/0.44.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/net462/Markdig.dll",
+        "lib/net462/Markdig.xml",
+        "lib/net8.0/Markdig.dll",
+        "lib/net8.0/Markdig.xml",
+        "lib/net9.0/Markdig.dll",
+        "lib/net9.0/Markdig.xml",
+        "lib/netstandard2.0/Markdig.dll",
+        "lib/netstandard2.0/Markdig.xml",
+        "lib/netstandard2.1/Markdig.dll",
+        "lib/netstandard2.1/Markdig.xml",
+        "markdig.0.44.0.nupkg.sha512",
+        "markdig.nuspec",
+        "markdig.png",
+        "readme.md"
       ]
     },
     "Microsoft.AspNetCore.Authentication.Facebook/9.0.0": {
@@ -8255,6 +8291,7 @@
       "Betalgo.Ranul.OpenAI >= 8.8.0",
       "DocumentFormat.OpenXml >= 3.1.0",
       "EPPlus >= 7.5.2",
+      "Markdig >= 0.44.0",
       "Microsoft.AspNetCore.Authentication.Facebook >= 9.0.0",
       "Microsoft.AspNetCore.Authentication.Google >= 9.0.0",
       "Microsoft.AspNetCore.Identity.EntityFrameworkCore >= 9.0.0",
@@ -8327,6 +8364,10 @@
           "EPPlus": {
             "target": "Package",
             "version": "[7.5.2, )"
+          },
+          "Markdig": {
+            "target": "Package",
+            "version": "[0.44.0, )"
           },
           "Microsoft.AspNetCore.Authentication.Facebook": {
             "target": "Package",

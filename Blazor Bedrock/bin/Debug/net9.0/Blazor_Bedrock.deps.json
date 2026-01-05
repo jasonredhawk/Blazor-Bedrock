@@ -11,6 +11,7 @@
           "Betalgo.Ranul.OpenAI": "8.8.0",
           "DocumentFormat.OpenXml": "3.1.0",
           "EPPlus": "7.5.2",
+          "Markdig": "0.44.0",
           "Microsoft.AspNetCore.Authentication.Facebook": "9.0.0",
           "Microsoft.AspNetCore.Authentication.Google": "9.0.0",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "9.0.0",
@@ -160,6 +161,14 @@
       "itext7/9.0.0": {
         "dependencies": {
           "itext": "9.0.0"
+        }
+      },
+      "Markdig/0.44.0": {
+        "runtime": {
+          "lib/net9.0/Markdig.dll": {
+            "assemblyVersion": "0.44.0.0",
+            "fileVersion": "0.44.0.0"
+          }
         }
       },
       "Microsoft.AspNetCore.Authentication.Facebook/9.0.0": {
@@ -795,6 +804,13 @@
       "sha512": "sha512-WcRaL2xYhRWJrNXHlfWi9Cr/YApvFtDSEMvJlnbbSEUyYzYcwk52QJL/IAiP4T/O5U+rkzn6dIIwbeITUzsBLA==",
       "path": "itext7/9.0.0",
       "hashPath": "itext7.9.0.0.nupkg.sha512"
+    },
+    "Markdig/0.44.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-X+CYMjcUnh/yO24wOSQxVFLiGqWrrtXJ5M7toHiM1Zk4Fg9UMLN5fkaq6FSOWH+mIprsHHgDMlq3MJhmrXalhg==",
+      "path": "markdig/0.44.0",
+      "hashPath": "markdig.0.44.0.nupkg.sha512"
     },
     "Microsoft.AspNetCore.Authentication.Facebook/9.0.0": {
       "type": "package",
