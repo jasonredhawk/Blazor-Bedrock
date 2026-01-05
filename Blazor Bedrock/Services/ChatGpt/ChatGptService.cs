@@ -42,6 +42,7 @@ public interface IChatGptService
     Task UpdateConversationPromptAsync(int conversationId, int? promptId);
     Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage);
     Task<byte[]> ExportConversationToDocxAsync(int conversationId, string userId, int? tenantId);
+    Task<bool> DeleteConversationMessagesAsync(int conversationId, string userId, int? tenantId);
 }
 
 public class ChatGptService : IChatGptService
@@ -1029,6 +1030,36 @@ public class ChatGptService : IChatGptService
             }
 
             return memoryStream.ToArray();
+        });
+    }
+
+    public async Task<bool> DeleteConversationMessagesAsync(int conversationId, string userId, int? tenantId)
+    {
+        return await _dbSync.ExecuteAsync(async () =>
+        {
+            // Verify the conversation exists and user has access
+            var conversation = await _context.ChatGptConversations
+                .FirstOrDefaultAsync(c => c.Id == conversationId && 
+                                          c.UserId == userId && 
+                                          (tenantId == null || c.TenantId == tenantId));
+
+            if (conversation == null)
+            {
+                return false;
+            }
+
+            // Delete all messages for this conversation
+            var messages = await _context.ChatGptMessages
+                .Where(m => m.ConversationId == conversationId)
+                .ToListAsync();
+
+            _context.ChatGptMessages.RemoveRange(messages);
+
+            // Update conversation timestamp
+            conversation.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return true;
         });
     }
 }
