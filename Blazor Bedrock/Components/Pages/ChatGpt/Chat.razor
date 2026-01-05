@@ -449,49 +449,65 @@
                         <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
                             @if (_filteredQuestions.Any())
                             {
-                                @foreach (var question in _filteredQuestions)
+                                @* Group questions by their group *@
+                                @foreach (var questionGroup in _filteredQuestions.GroupBy(q => q.Group?.Name ?? "Ungrouped").OrderBy(g => g.Key == "Ungrouped" ? 1 : 0).ThenBy(g => g.Key))
                                 {
-                                    <div class="conversation-item" style="cursor: default; padding: 8px 12px;">
-                                        <div class="d-flex align-items-start justify-content-between">
-                                            <div style="flex: 1; min-width: 0; margin-right: 8px;">
-                                                <div style="font-size: 0.875rem; font-weight: 500; margin-bottom: 4px;">
-                                                    @question.QuestionText
-                                                </div>
-                                                @if (question.Group != null)
-                                                {
-                                                    <small class="text-muted" style="font-size: 0.7rem;">
-                                                        <i class="bi bi-folder me-1"></i>@question.Group.Name
-                                                    </small>
-                                                }
-                                            </div>
-                                            <div class="d-flex gap-1" style="flex-shrink: 0; flex-direction: column;">
-                                                @* Execute buttons for individual or combined *@
-                                                @if (_currentConversationId.HasValue)
-                                                {
-                                                    var conversationDocs = GetConversationDocuments();
-                                                    var hasMultipleDocs = conversationDocs.Count > 1;
-                                                    <button class="btn btn-sm btn-primary mb-1" 
-                                                            @onclick="() => ExecuteQuestionToDocuments(question.Id, false)"
-                                                            disabled="@(_isLoading || _isProcessing)"
-                                                            title="Ask this question to each document separately">
-                                                        <i class="bi bi-file-earmark me-1"></i>Each Doc
-                                                    </button>
-                                                    @if (hasMultipleDocs)
-                                                    {
-                                                        <button class="btn btn-sm btn-outline-primary" 
-                                                                @onclick="() => ExecuteQuestionToDocuments(question.Id, true)"
-                                                                disabled="@(_isLoading || _isProcessing)"
-                                                                title="Ask this question to all documents together">
-                                                            <i class="bi bi-files me-1"></i>All Together
-                                                        </button>
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    <small class="text-muted" style="font-size: 0.7rem;">Load a conversation</small>
-                                                }
+                                    <div style="border-bottom: 1px solid #e9ecef; margin-bottom: 8px;">
+                                        @* Group Header *@
+                                        <div style="padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+                                            <div class="d-flex align-items-center">
+                                                <i class="bi bi-folder-fill me-2" style="color: #6c757d;"></i>
+                                                <strong style="font-size: 0.8rem; color: #495057;">@questionGroup.Key</strong>
+                                                <span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">@questionGroup.Count()</span>
                                             </div>
                                         </div>
+                                        
+                                        @* Questions in this group *@
+                                        @foreach (var question in questionGroup.OrderBy(q => q.Order))
+                                        {
+                                            <div class="conversation-item" style="cursor: default; padding: 8px 12px; padding-left: 32px;">
+                                                <div class="d-flex align-items-start justify-content-between">
+                                                    <div style="flex: 1; min-width: 0; margin-right: 8px;">
+                                                        <div style="font-size: 0.875rem; font-weight: 500; margin-bottom: 4px;">
+                                                            @question.QuestionText
+                                                        </div>
+                                                        @if (!string.IsNullOrWhiteSpace(question.Description))
+                                                        {
+                                                            <small class="text-muted" style="font-size: 0.7rem;">
+                                                                @question.Description
+                                                            </small>
+                                                        }
+                                                    </div>
+                                                    <div class="d-flex gap-1" style="flex-shrink: 0; flex-direction: column;">
+                                                        @* Execute buttons for individual or combined *@
+                                                        @if (_currentConversationId.HasValue)
+                                                        {
+                                                            var conversationDocs = GetConversationDocuments();
+                                                            var hasMultipleDocs = conversationDocs.Count > 1;
+                                                            <button class="btn btn-sm btn-primary mb-1" 
+                                                                    @onclick="() => ExecuteQuestionToDocuments(question.Id, false)"
+                                                                    disabled="@(_isLoading || _isProcessing)"
+                                                                    title="Ask this question to each document separately">
+                                                                <i class="bi bi-file-earmark me-1"></i>Each Doc
+                                                            </button>
+                                                            @if (hasMultipleDocs)
+                                                            {
+                                                                <button class="btn btn-sm btn-outline-primary" 
+                                                                        @onclick="() => ExecuteQuestionToDocuments(question.Id, true)"
+                                                                        disabled="@(_isLoading || _isProcessing)"
+                                                                        title="Ask this question to all documents together">
+                                                                    <i class="bi bi-files me-1"></i>All Together
+                                                                </button>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <small class="text-muted" style="font-size: 0.7rem;">Load a conversation</small>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
                                 }
                             }
@@ -3453,6 +3469,11 @@
         }
     }
     
+    /// <summary>
+    /// Sends a follow-up message to a specific BatchResult's conversation thread.
+    /// Each BatchResult has its own isolated conversation (ConversationId), so follow-ups
+    /// only affect that specific result's conversation and do not interfere with other results.
+    /// </summary>
     private async Task SendFollowUpMessage(BatchResult result)
     {
         if (!result.ConversationId.HasValue || string.IsNullOrWhiteSpace(result.FollowUpMessage))
@@ -3475,40 +3496,60 @@
             
             var userMessageText = result.FollowUpMessage.Trim();
             
-            // Save the user message to the database
+            // IMPORTANT: This follow-up is scoped to this specific result's conversation thread only
+            // Each BatchResult has its own ConversationId, ensuring complete isolation between results
+            var conversationId = result.ConversationId.Value;
+            
+            // Save the user message to the database - scoped to this result's conversation
             var userMessage = new ChatGptMessage
             {
-                ConversationId = result.ConversationId.Value,
+                ConversationId = conversationId, // This specific result's conversation thread
                 Role = "user",
                 Content = userMessageText,
                 CreatedAt = DateTime.UtcNow
             };
-            await ChatGptService.SaveMessageAsync(userMessage);
+            var savedUserMessage = await ChatGptService.SaveMessageAsync(userMessage);
             
-            // Send the follow-up message and get the response
+            // Add user message to THIS result's messages list immediately for instant UI feedback
+            // This preserves all previous messages in this result's conversation history
+            if (result.Messages == null)
+            {
+                result.Messages = new List<ChatGptMessage>();
+            }
+            result.Messages.Add(savedUserMessage);
+            StateHasChanged();
+            
+            // Send the follow-up message to THIS specific conversation thread only
             var assistantResponse = await ChatGptService.SendConversationMessageWithDocumentsAsync(
-                userId, tenantId, result.ConversationId.Value, userMessageText);
+                userId, tenantId, conversationId, userMessageText);
             
-            // Save the assistant response to the database
+            // Save the assistant response to the database - scoped to this result's conversation
             var assistantMessage = new ChatGptMessage
             {
-                ConversationId = result.ConversationId.Value,
+                ConversationId = conversationId, // This specific result's conversation thread
                 Role = "assistant",
                 Content = assistantResponse,
                 CreatedAt = DateTime.UtcNow
             };
-            await ChatGptService.SaveMessageAsync(assistantMessage);
+            var savedAssistantMessage = await ChatGptService.SaveMessageAsync(assistantMessage);
             
-            // Update the result's response with the latest response
-            result.Response = assistantResponse;
+            // Add assistant message to THIS result's messages list immediately for instant UI feedback
+            // This preserves all previous messages in this result's conversation history
+            result.Messages.Add(savedAssistantMessage);
+            StateHasChanged();
             
-            // Update conversation timestamp
-            await ChatGptService.UpdateConversationTimestampAsync(result.ConversationId.Value);
+            // Update conversation timestamp for this specific conversation
+            await ChatGptService.UpdateConversationTimestampAsync(conversationId);
             
-            // Reload conversation messages to get the full history
+            // Reload conversation messages from database to ensure we have the complete, accurate history
+            // This ensures all messages are properly ordered and we haven't missed any
+            // Only messages from THIS specific conversation (conversationId) are loaded
             await LoadBatchResultConversation(result);
             
-            // Clear the input
+            // Preserve the original response - don't overwrite it since we now have full message history
+            // result.Response is only used as a fallback if messages aren't loaded
+            
+            // Clear the input for this specific result
             result.FollowUpMessage = string.Empty;
             
             await NotificationService.ShowSuccessAsync("Message sent successfully!");
