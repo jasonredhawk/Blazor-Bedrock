@@ -1678,7 +1678,7 @@
 
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(_messageText) || _isLoading) return;
+        if (string.IsNullOrWhiteSpace(_messageText) || _isLoading || _isUploadingDocument) return;
 
         _isLoading = true;
         StateHasChanged();
@@ -2249,6 +2249,12 @@
         
         if (string.IsNullOrWhiteSpace(questionText))
             return;
+        
+        // Prevent duplicate sends
+        if (_isLoading || _isUploadingDocument)
+        {
+            return;
+        }
         
         try
         {
