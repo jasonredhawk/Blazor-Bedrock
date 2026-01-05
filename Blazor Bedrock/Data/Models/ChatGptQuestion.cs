@@ -37,7 +37,7 @@ public class ChatGptQuestionResponse
 {
     public int Id { get; set; }
     public int ConversationId { get; set; }
-    public int QuestionId { get; set; }
+    public int? QuestionId { get; set; } // Nullable to allow manual questions
     public int? DocumentId { get; set; }
     public int? PromptId { get; set; }
     public string Response { get; set; } = string.Empty;
@@ -45,7 +45,7 @@ public class ChatGptQuestionResponse
 
     // Navigation properties
     public virtual ChatGptConversation Conversation { get; set; } = null!;
-    public virtual ChatGptQuestion Question { get; set; } = null!;
+    public virtual ChatGptQuestion? Question { get; set; } // Nullable to allow manual questions
     public virtual Document? Document { get; set; }
     public virtual ChatGptPrompt? Prompt { get; set; }
 }

@@ -751,9 +751,9 @@
                     @* Messages Area or Batch Results - Only scrollable area *@
                     <div class="messages-container" @ref="_messagesContainer" style="flex: 1 1 0; min-height: 0; max-height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;">
                         @* Document Analysis Results View *@
-                            @if (_batchResults.Any())
-                            {
-                                <div class="p-3">
+                        @if (_batchResults.Any())
+                        {
+                            <div class="p-3">
                                     <h5 class="mb-3">
                                         <i class="bi bi-file-earmark-text me-2"></i>Analysis Results
                                     </h5>
@@ -773,11 +773,11 @@
                                             <span class="badge bg-primary">@filteredBatchResults.Count result(s)</span>
                                         </div>
                                     }
-                                    @foreach (var questionGroup in filteredBatchResults.GroupBy(r => r.QuestionId == 0 ? (object)r.QuestionText : (object)r.QuestionId))
+                                    @foreach (var questionGroup in filteredBatchResults.GroupBy(r => r.QuestionId == null ? (object)r.QuestionText : (object)r.QuestionId))
                                     {
                                         var questionResults = questionGroup.ToList();
                                         var questionText = questionResults.First().QuestionText;
-                                        var questionId = questionResults.First().QuestionId;
+                                        var questionId = questionResults.First().QuestionId; // Can be null for manual questions
                                         var isCombinedResult = questionResults.Any(r => r.DocumentName.Contains("All") || r.DocumentId == 0);
                                         
                                         <div class="card mb-3 shadow-sm" style="border-left: 4px solid #0d6efd;">
@@ -954,18 +954,17 @@
                                             }
                                         </div>
                                     }
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="empty-state">
-                                    <i class="bi bi-file-earmark-text text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
-                                    <h6 class="text-muted">Document Analysis</h6>
-                                    <p class="text-muted mt-2">
-                                        Click a saved question to analyze your documents. Choose "Each Doc" to ask individually or "All Together" to compare across documents.
-                                    </p>
-                                </div>
-                            }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="empty-state">
+                                <i class="bi bi-file-earmark-text text-muted" style="font-size: 64px; opacity: 0.5; margin-bottom: 16px;"></i>
+                                <h6 class="text-muted">Document Analysis</h6>
+                                <p class="text-muted mt-2">
+                                    Click a saved question to analyze your documents. Choose "Each Doc" to ask individually or "All Together" to compare across documents.
+                                </p>
+                            </div>
                         }
                         @* Regular Chat View (when not in batch mode) *@
                         @if (_viewMode == "chat")
@@ -1088,35 +1087,60 @@
                         <div class="chat-input-area" id="batch-input-container" style="flex: 0 0 auto; box-sizing: border-box; background: white; border-top: 1px solid #dee2e6; z-index: 10;">
                             <div style="position: relative; width: 100%; box-sizing: border-box;">
                                 <textarea class="form-control" 
-                                          placeholder="Type a question to ask all documents (mimics saved questions functionality)..."
+                                          placeholder="Type a manual question to ask your documents..."
                                           rows="3"
-                                          disabled="@_isAskingBatchQuestion"
+                                          disabled="@(_isAskingBatchQuestion || _isProcessing)"
                                           @bind="_batchQuestionText"
                                           @bind:event="oninput"
-                                          @onkeydown="HandleBatchQuestionKeyDown"
-                                          style="width: 100%; max-width: 100%; padding: 12px 45px 12px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"></textarea>
-                                <div style="position: absolute; right: 8px; bottom: 8px;">
+                                          style="width: 100%; max-width: 100%; padding: 12px 12px 50px 12px; border: 1px solid #dee2e6; border-radius: 4px; outline: none; resize: vertical; min-height: 70px; max-height: 200px; font-family: inherit; font-size: 0.875rem; box-sizing: border-box;"></textarea>
+                                <div style="position: absolute; right: 8px; bottom: 8px; display: flex; gap: 8px;">
+                                    @{
+                                        var conversationDocs = GetConversationDocuments();
+                                        var hasMultipleDocs = conversationDocs.Count > 1;
+                                    }
                                     <button class="btn btn-primary btn-sm" 
-                                            disabled="@(_isAskingBatchQuestion || string.IsNullOrWhiteSpace(_batchQuestionText) || !_batchResults.Any(r => r.ConversationId.HasValue))"
-                                            @onclick="AskBatchQuestion">
-                                        @if (_isAskingBatchQuestion)
+                                            disabled="@(_isAskingBatchQuestion || _isProcessing || string.IsNullOrWhiteSpace(_batchQuestionText) || !_currentConversationId.HasValue)"
+                                            @onclick="() => AskManualQuestion(false)"
+                                            title="Ask this question to each document separately">
+                                        @if (_isAskingBatchQuestion && !_askManualToAllTogether)
                                         {
                                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                                         }
                                         else
                                         {
-                                            <i class="bi bi-send me-1"></i>
+                                            <i class="bi bi-file-earmark me-1"></i>
                                         }
-                                        Ask All Documents
+                                        Each Doc
                                     </button>
+                                    @if (hasMultipleDocs)
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm" 
+                                                disabled="@(_isAskingBatchQuestion || _isProcessing || string.IsNullOrWhiteSpace(_batchQuestionText) || !_currentConversationId.HasValue)"
+                                                @onclick="() => AskManualQuestion(true)"
+                                                title="Ask this question to all documents together">
+                                            @if (_isAskingBatchQuestion && _askManualToAllTogether)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-files me-1"></i>
+                                            }
+                                            All Together
+                                        </button>
+                                    }
                                 </div>
                             </div>
                             <div class="d-flex align-items-center justify-content-between mt-2">
                                 <small class="text-muted">
-                                    This question will be sent to all @(_batchResults.Where(r => r.ConversationId.HasValue).Select(r => r.DocumentId).Distinct().Count()) document(s)
-                                </small>
-                                <small class="text-muted">
-                                    Enter to send • Shift+Enter for new line
+                                    @if (hasMultipleDocs)
+                                    {
+                                        <span>Ask to @conversationDocs.Count document(s) individually or all together</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Ask to 1 document</span>
+                                    }
                                 </small>
                             </div>
                         </div>
@@ -1166,6 +1190,7 @@
     private List<BatchResult> _batchResults = new();
     private string _batchQuestionText = string.Empty;
     private bool _isAskingBatchQuestion = false;
+    private bool _askManualToAllTogether = false; // Track which mode for manual questions
     private HashSet<int> _expandedQuestionIds = new(); // Track which documents are expanded
     
     // View mode: "chat" or "batch" - defaulting to batch for unified experience
@@ -1287,10 +1312,7 @@
     
     private async Task HandleBatchQuestionKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey && !_isAskingBatchQuestion && !string.IsNullOrWhiteSpace(_batchQuestionText))
-        {
-            await AskBatchQuestion();
-        }
+        // Don't auto-send on Enter for manual questions - user should choose Each Doc or All Together
     }
 
     [Microsoft.JSInterop.JSInvokable]
@@ -2630,6 +2652,8 @@
     
     private async Task ExecuteQuestionToEachDocument(ChatGptQuestion question, List<int> documentIds, ChatGptPrompt? prompt, string userId, int? tenantId)
     {
+        // Handle both saved questions and manual questions (QuestionId = null)
+        var questionId = question.Id == 0 ? (int?)null : question.Id;
         var documents = _availableDocuments.Where(d => documentIds.Contains(d.Id)).ToList();
         
         foreach (var document in documents)
@@ -2637,28 +2661,53 @@
             // Find the placeholder result for this document
             var placeholder = _batchResults.FirstOrDefault(r => 
                 r.DocumentId == document.Id && 
-                r.QuestionId == question.Id &&
+                r.QuestionId == questionId &&
+                (questionId == null ? r.QuestionText == question.QuestionText : true) &&
                 r.IsProcessing &&
                 !r.ResponseId.HasValue);
             
             try
             {
-                // Find or create conversation for this document
+                // Use the current conversation if it contains this document, otherwise find existing or create new
                 ChatGptConversation? conversation = null;
+                var conversationDocuments = GetConversationDocuments();
                 
-                var existingConv = _conversations.FirstOrDefault(c => 
-                    c.DocumentId == document.Id && 
-                    !string.IsNullOrEmpty(c.OpenAiThreadId) &&
-                    !string.IsNullOrEmpty(c.OpenAiAssistantId));
-                
-                if (existingConv != null)
+                // First check if current conversation has this document
+                if (_currentConversationId.HasValue && conversationDocuments.Contains(document.Id))
                 {
-                    conversation = existingConv;
+                    conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
+                    if (conversation != null && 
+                        !string.IsNullOrEmpty(conversation.OpenAiThreadId) &&
+                        !string.IsNullOrEmpty(conversation.OpenAiAssistantId))
+                    {
+                        // Use current conversation - it already has the document
+                    }
+                    else
+                    {
+                        conversation = null; // Current conversation not ready, look for another
+                    }
                 }
-                else
+                
+                // If current conversation doesn't work, look for existing conversation with this document
+                if (conversation == null)
+                {
+                    var existingConv = _conversations.FirstOrDefault(c => 
+                        c.DocumentId == document.Id && 
+                        !string.IsNullOrEmpty(c.OpenAiThreadId) &&
+                        !string.IsNullOrEmpty(c.OpenAiAssistantId));
+                    
+                    if (existingConv != null)
+                    {
+                        conversation = existingConv;
+                    }
+                }
+                
+                // Only create new conversation if we don't have one
+                if (conversation == null)
                 {
                     // Create new conversation with document
-                    var title = $"{document.Title ?? document.FileName} - {question.QuestionText.Substring(0, Math.Min(50, question.QuestionText.Length))}...";
+                    var title = $"{question.QuestionText.Substring(0, Math.Min(60, question.QuestionText.Length))}";
+                    if (title.Length < question.QuestionText.Length) title += "...";
                     var progress = new Progress<string>(msg => {
                         StateHasChanged();
                     });
@@ -2711,11 +2760,24 @@
                         placeholder = result;
                     }
                     
+                    // Update conversation title if it's generic
+                    if (conversation != null && (string.IsNullOrEmpty(conversation.Title) || 
+                        conversation.Title == "New Conversation" || 
+                        !conversation.Title.Contains(question.QuestionText.Substring(0, Math.Min(30, question.QuestionText.Length)))))
+                    {
+                        var newTitle = question.QuestionText.Length > 60 
+                            ? question.QuestionText.Substring(0, 60) + "..." 
+                            : question.QuestionText;
+                        await ChatGptService.UpdateConversationTitleAsync(conversation.Id, newTitle);
+                        // Reload conversations to get updated title
+                        _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                    }
+                    
                     // Save response to database
                     var questionResponse = new ChatGptQuestionResponse
                     {
                         ConversationId = conversation.Id,
-                        QuestionId = question.Id,
+                        QuestionId = questionId,
                         DocumentId = document.Id,
                         PromptId = prompt?.Id,
                         Response = response
@@ -2751,7 +2813,7 @@
                     {
                         DocumentId = document.Id,
                         DocumentName = document.Title ?? document.FileName,
-                        QuestionId = question.Id,
+                        QuestionId = questionId,
                         QuestionText = question.QuestionText,
                         ErrorMessage = ex.Message,
                         CreatedAt = DateTime.UtcNow,
@@ -2769,6 +2831,7 @@
         if (!_currentConversationId.HasValue)
             return;
         
+        var questionId = question.Id == 0 ? (int?)null : question.Id;
         var firstDocId = documentIds.FirstOrDefault();
         var conversation = _conversations.FirstOrDefault(c => c.Id == _currentConversationId.Value);
         if (conversation == null || 
@@ -2777,19 +2840,36 @@
         {
             await NotificationService.ShowErrorAsync("Current conversation is not ready. Please ensure documents are uploaded.");
             // Remove placeholder on error
-            _batchResults.RemoveAll(r => r.IsProcessing && r.QuestionId == question.Id && r.DocumentId == (firstDocId > 0 ? firstDocId : 0) && !r.ResponseId.HasValue);
+            _batchResults.RemoveAll(r => r.IsProcessing && r.QuestionId == questionId && 
+                (questionId == null ? r.QuestionText == question.QuestionText : true) &&
+                r.DocumentId == (firstDocId > 0 ? firstDocId : 0) && !r.ResponseId.HasValue);
             return;
         }
         
         // Find the placeholder result
         var placeholder = _batchResults.FirstOrDefault(r => 
             r.DocumentId == (firstDocId > 0 ? firstDocId : 0) && 
-            r.QuestionId == question.Id &&
+            r.QuestionId == questionId &&
+            (questionId == 0 ? r.QuestionText == question.QuestionText : true) &&
             r.IsProcessing &&
             !r.ResponseId.HasValue);
         
         try
         {
+            // Update conversation title based on question
+            if (conversation != null && (string.IsNullOrEmpty(conversation.Title) || 
+                conversation.Title == "New Conversation" || 
+                !conversation.Title.Contains(question.QuestionText.Substring(0, Math.Min(30, question.QuestionText.Length)))))
+            {
+                var newTitle = question.QuestionText.Length > 60 
+                    ? question.QuestionText.Substring(0, 60) + "..." 
+                    : question.QuestionText;
+                await ChatGptService.UpdateConversationTitleAsync(conversation.Id, newTitle);
+                // Reload conversations to get updated title
+                _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
+                conversation = _conversations.FirstOrDefault(c => c.Id == conversation.Id);
+            }
+            
             // Send question to all documents together
             var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
                 userId, tenantId, conversation.Id, question.QuestionText);
@@ -2812,7 +2892,7 @@
                 {
                     DocumentId = firstDocId > 0 ? firstDocId : 0,
                     DocumentName = documentIds.Count > 1 ? $"All {documentIds.Count} Documents" : (_availableDocuments.FirstOrDefault(d => d.Id == firstDocId)?.Title ?? "Documents"),
-                    QuestionId = question.Id,
+                    QuestionId = questionId,
                     QuestionText = question.QuestionText,
                     PromptId = prompt?.Id,
                     PromptName = prompt?.Name ?? "Default",
@@ -2830,7 +2910,7 @@
             var questionResponse = new ChatGptQuestionResponse
             {
                 ConversationId = conversation.Id,
-                QuestionId = question.Id,
+                QuestionId = questionId,
                 DocumentId = firstDocId > 0 ? firstDocId : null,
                 PromptId = prompt?.Id,
                 Response = response
@@ -2917,7 +2997,7 @@
                 {
                     // For manual questions, get the question text from conversation messages
                     string questionText = response.Question?.QuestionText ?? "Manual Question";
-                    if (response.QuestionId == 0 && response.ConversationId > 0)
+                    if (response.QuestionId == null && response.ConversationId > 0)
                     {
                         try
                         {
@@ -3192,16 +3272,75 @@
     }
     
     
-    private async Task AskBatchQuestion()
+    private async Task AskManualQuestion(bool askToAllTogether)
     {
-        if (string.IsNullOrWhiteSpace(_batchQuestionText) || _batchResults.Count == 0)
+        if (string.IsNullOrWhiteSpace(_batchQuestionText) || !_currentConversationId.HasValue)
         {
-            await NotificationService.ShowErrorAsync("Please enter a question and ensure batch results exist.");
+            await NotificationService.ShowErrorAsync("Please enter a question and ensure a conversation is loaded.");
             return;
         }
         
+        var conversationDocuments = GetConversationDocuments();
+        if (!conversationDocuments.Any())
+        {
+            await NotificationService.ShowErrorAsync("No documents found in the current conversation. Please upload documents first.");
+            return;
+        }
+        
+        _askManualToAllTogether = askToAllTogether;
         _isAskingBatchQuestion = true;
+        
+        var selectedPrompt = _selectedPromptId.HasValue 
+            ? _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value) 
+            : null;
+        
+        // Create a manual question object for processing (Id = 0 indicates manual question)
+        var manualQuestion = new ChatGptQuestion
+        {
+            Id = 0, // Manual question - will be treated as null QuestionId
+            QuestionText = _batchQuestionText,
+            TenantId = TenantService.GetCurrentTenantId()
+        };
+        
+        // Immediately create placeholder results
+        if (askToAllTogether)
+        {
+            var firstDocId = conversationDocuments.FirstOrDefault();
+            var placeholder = new BatchResult
+            {
+                DocumentId = firstDocId > 0 ? firstDocId : 0,
+                DocumentName = conversationDocuments.Count > 1 ? $"All {conversationDocuments.Count} Documents" : (_availableDocuments.FirstOrDefault(d => d.Id == firstDocId)?.Title ?? "Documents"),
+                QuestionId = null,
+                QuestionText = _batchQuestionText,
+                PromptId = selectedPrompt?.Id,
+                PromptName = selectedPrompt?.Name ?? "Default",
+                IsProcessing = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _batchResults.Add(placeholder);
+        }
+        else
+        {
+            var documents = _availableDocuments.Where(d => conversationDocuments.Contains(d.Id)).ToList();
+            foreach (var document in documents)
+            {
+                var placeholder = new BatchResult
+                {
+                    DocumentId = document.Id,
+                    DocumentName = document.Title ?? document.FileName,
+                    QuestionId = null,
+                    QuestionText = _batchQuestionText,
+                    PromptId = selectedPrompt?.Id,
+                    PromptName = selectedPrompt?.Name ?? "Default",
+                    IsProcessing = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _batchResults.Add(placeholder);
+            }
+        }
+        
         StateHasChanged();
+        await Task.Delay(10); // Allow UI to render
         
         try
         {
@@ -3212,104 +3351,44 @@
             if (string.IsNullOrEmpty(userId) || tenantId == null)
             {
                 await NotificationService.ShowErrorAsync("Unable to identify user or organization.");
+                // Remove placeholders
+                _batchResults.RemoveAll(r => r.IsProcessing && r.QuestionId == null && r.QuestionText == _batchQuestionText && !r.ResponseId.HasValue);
                 return;
             }
             
-            var selectedPrompt = _selectedPromptId.HasValue 
-                ? _availablePrompts.FirstOrDefault(p => p.Id == _selectedPromptId.Value) 
-                : null;
-            
-            // Group by document only (not by document+question combination)
-            // Get one conversation per document (use the first successful result for each document)
-            var documents = _batchResults
-                .Where(r => string.IsNullOrEmpty(r.ErrorMessage) && r.ConversationId.HasValue)
-                .GroupBy(r => r.DocumentId)
-                .Select(g => new { DocumentId = g.Key, ConversationId = g.First().ConversationId!.Value })
-                .ToList();
-            
-            var totalDocuments = documents.Count;
-            var processedCount = 0;
-            
-            foreach (var docInfo in documents)
+            if (askToAllTogether)
             {
-                var document = _availableDocuments.FirstOrDefault(d => d.Id == docInfo.DocumentId);
-                
-                if (document == null)
-                    continue;
-                
-                // Create a new result for this manual question (no specific question ID for manual questions)
-                var manualResult = new BatchResult
-                {
-                    DocumentId = docInfo.DocumentId,
-                    DocumentName = document.Title ?? document.FileName,
-                    QuestionId = 0, // Manual question, not from saved questions
-                    QuestionText = _batchQuestionText,
-                    PromptId = selectedPrompt?.Id,
-                    PromptName = selectedPrompt?.Name ?? "Default",
-                    IsProcessing = true,
-                    CreatedAt = DateTime.UtcNow
-                };
-                
-                _batchResults.Add(manualResult);
-                processedCount++;
-                StateHasChanged();
-                
-                try
-                {
-                    // Send question using the existing conversation for this document
-                    var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
-                        userId, tenantId, docInfo.ConversationId, _batchQuestionText);
-                    
-                    manualResult.Response = response;
-                    manualResult.ConversationId = docInfo.ConversationId;
-                    manualResult.IsProcessing = false;
-                    
-                    // Load conversation messages for this result
-                    var messages = await ChatGptService.GetConversationMessagesAsync(docInfo.ConversationId);
-                    manualResult.Messages = messages.OrderBy(m => m.CreatedAt).ToList();
-                    
-                    // Save manual question response to database (with QuestionId = 0 to indicate it's a manual question)
-                    var questionResponse = new ChatGptQuestionResponse
-                    {
-                        ConversationId = docInfo.ConversationId,
-                        QuestionId = 0, // Manual question, not from saved questions
-                        DocumentId = document.Id,
-                        PromptId = selectedPrompt?.Id,
-                        Response = response
-                    };
-                    var savedResponse = await QuestionService.SaveResponseAsync(questionResponse);
-                    manualResult.ResponseId = savedResponse.Id; // Store the database ID for deletion
-                }
-                catch (Exception ex)
-                {
-                    manualResult.ErrorMessage = ex.Message;
-                    manualResult.IsProcessing = false;
-                    Logger.LogError(ex, "Error asking batch question for document {DocumentId}", document.Id);
-                }
-                
-                StateHasChanged();
+                await ExecuteQuestionToAllDocumentsTogether(manualQuestion, conversationDocuments, selectedPrompt, userId, tenantId);
+            }
+            else
+            {
+                await ExecuteQuestionToEachDocument(manualQuestion, conversationDocuments, selectedPrompt, userId, tenantId);
             }
             
-            await NotificationService.ShowSuccessAsync($"Question sent to {processedCount} document(s) successfully.");
+            // Reload existing results
+            await LoadExistingBatchResults();
+            
+            await NotificationService.ShowSuccessAsync("Question processed successfully!");
             _batchQuestionText = string.Empty; // Clear the input
         }
         catch (Exception ex)
         {
-            await NotificationService.ShowErrorAsync($"Error asking batch question: {ex.Message}");
-            Logger.LogError(ex, "Error in AskBatchQuestion");
+            await NotificationService.ShowErrorAsync($"Error processing question: {ex.Message}");
+            Logger.LogError(ex, "Error asking manual question");
         }
         finally
         {
             _isAskingBatchQuestion = false;
+            _askManualToAllTogether = false;
             StateHasChanged();
         }
     }
     
     private HashSet<string> _expandedQuestionGroups = new(); // Track expanded question groups
     
-    private void ToggleQuestionGroupExpansion(int questionId, string questionText)
+    private void ToggleQuestionGroupExpansion(int? questionId, string questionText)
     {
-        var key = questionId == 0 ? questionText : questionId.ToString();
+        var key = questionId == null ? questionText : questionId.ToString();
         if (_expandedQuestionGroups.Contains(key))
         {
             _expandedQuestionGroups.Remove(key);
@@ -3321,9 +3400,9 @@
         StateHasChanged();
     }
     
-    private bool IsQuestionGroupExpanded(int questionId, string questionText)
+    private bool IsQuestionGroupExpanded(int? questionId, string questionText)
     {
-        var key = questionId == 0 ? questionText : questionId.ToString();
+        var key = questionId == null ? questionText : questionId.ToString();
         return _expandedQuestionGroups.Contains(key);
     }
     
@@ -3394,9 +3473,37 @@
                 return;
             }
             
-            // Send the follow-up message
-            var response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
-                userId, tenantId, result.ConversationId.Value, result.FollowUpMessage);
+            var userMessageText = result.FollowUpMessage.Trim();
+            
+            // Save the user message to the database
+            var userMessage = new ChatGptMessage
+            {
+                ConversationId = result.ConversationId.Value,
+                Role = "user",
+                Content = userMessageText,
+                CreatedAt = DateTime.UtcNow
+            };
+            await ChatGptService.SaveMessageAsync(userMessage);
+            
+            // Send the follow-up message and get the response
+            var assistantResponse = await ChatGptService.SendConversationMessageWithDocumentsAsync(
+                userId, tenantId, result.ConversationId.Value, userMessageText);
+            
+            // Save the assistant response to the database
+            var assistantMessage = new ChatGptMessage
+            {
+                ConversationId = result.ConversationId.Value,
+                Role = "assistant",
+                Content = assistantResponse,
+                CreatedAt = DateTime.UtcNow
+            };
+            await ChatGptService.SaveMessageAsync(assistantMessage);
+            
+            // Update the result's response with the latest response
+            result.Response = assistantResponse;
+            
+            // Update conversation timestamp
+            await ChatGptService.UpdateConversationTimestampAsync(result.ConversationId.Value);
             
             // Reload conversation messages to get the full history
             await LoadBatchResultConversation(result);
@@ -3424,7 +3531,7 @@
         public int? ResponseId { get; set; } // Database ID for deletion
         public int DocumentId { get; set; }
         public string DocumentName { get; set; } = string.Empty;
-        public int QuestionId { get; set; }
+        public int? QuestionId { get; set; } // Nullable to allow manual questions
         public string QuestionText { get; set; } = string.Empty;
         public int? PromptId { get; set; }
         public string PromptName { get; set; } = string.Empty;

@@ -745,7 +745,7 @@ namespace Blazor_Bedrock.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     ConversationId = table.Column<int>(type: "int", nullable: false),
-                    QuestionId = table.Column<int>(type: "int", nullable: false),
+                    QuestionId = table.Column<int>(type: "int", nullable: true), // Nullable to allow manual questions
                     DocumentId = table.Column<int>(type: "int", nullable: true),
                     PromptId = table.Column<int>(type: "int", nullable: true),
                     Response = table.Column<string>(type: "LONGTEXT", nullable: false)
@@ -766,7 +766,7 @@ namespace Blazor_Bedrock.Migrations
                         column: x => x.QuestionId,
                         principalTable: "ChatGptQuestions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.SetNull); // Set null instead of cascade to allow manual questions
                     table.ForeignKey(
                         name: "FK_ChatGptQuestionResponses_Documents_DocumentId",
                         column: x => x.DocumentId,

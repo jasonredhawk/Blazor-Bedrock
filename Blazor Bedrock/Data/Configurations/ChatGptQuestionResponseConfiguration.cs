@@ -19,7 +19,7 @@ public class ChatGptQuestionResponseConfiguration : IEntityTypeConfiguration<Cha
         builder.HasOne(r => r.Question)
             .WithMany(q => q.Responses)
             .HasForeignKey(r => r.QuestionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.SetNull); // Set null instead of cascade to allow manual questions
             
         builder.HasOne(r => r.Document)
             .WithMany()

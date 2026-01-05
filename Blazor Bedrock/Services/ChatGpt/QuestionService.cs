@@ -273,9 +273,9 @@ public class QuestionService : IQuestionService
             
             if (tenantId.HasValue)
             {
-                // Handle manual questions (QuestionId = 0) and regular questions
+                // Handle manual questions (QuestionId = null) and regular questions
                 query = query.Where(r => 
-                    r.QuestionId == 0 || // Manual questions
+                    r.QuestionId == null || // Manual questions
                     r.Question == null || // Safety check
                     r.Question.TenantId == tenantId || 
                     r.Question.TenantId == null);
