@@ -19,185 +19,185 @@ build_property.TargetFrameworkIdentifier = .NETCoreApp
 build_property.TargetFrameworkVersion = v9.0
 build_property.RootNamespace = Blazor_Bedrock
 build_property.RootNamespace = Blazor_Bedrock
-build_property.ProjectDir = C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\
+build_property.ProjectDir = c:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.RazorLangVersion = 9.0
 build_property.SupportLocalizedComponentNames = 
 build_property.GenerateRazorMetadataSourceChecksumAttributes = 
-build_property.MSBuildProjectDirectory = C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock
+build_property.MSBuildProjectDirectory = c:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock
 build_property._RazorSourceGeneratorDebug = 
 build_property.EffectiveAnalysisLevelStyle = 9.0
 build_property.EnableCodeStyleSeverity = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/App.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/App.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xBcHAucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/CreateOrganizationDialog.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/CreateOrganizationDialog.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcQ3JlYXRlT3JnYW5pemF0aW9uRGlhbG9nLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/TenantSelector.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/TenantSelector.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcVGVuYW50U2VsZWN0b3IucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/TopMenuBar.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/TopMenuBar.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcVG9wTWVudUJhci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/UserMenu.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/UserMenu.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcVXNlck1lbnUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/FeatureSettings.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/FeatureSettings.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxGZWF0dXJlU2V0dGluZ3MucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Roles/RoleEdit.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Roles/RoleEdit.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxSb2xlc1xSb2xlRWRpdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Roles/RoleList.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Roles/RoleList.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxSb2xlc1xSb2xlTGlzdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Users/UserEdit.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Users/UserEdit.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxVc2Vyc1xVc2VyRWRpdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Users/UserList.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Admin/Users/UserList.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBZG1pblxVc2Vyc1xVc2VyTGlzdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/CreateUserTenant.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/CreateUserTenant.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBdXRoXENyZWF0ZVVzZXJUZW5hbnQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/Login.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/Login.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBdXRoXExvZ2luLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/Logout.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Auth/Logout.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xBdXRoXExvZ291dC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/ChartsList.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/ChartsList.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGFydHNcQ2hhcnRzTGlzdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/CreateChart.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Charts/CreateChart.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGFydHNcQ3JlYXRlQ2hhcnQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/Chat.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/Chat.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XENoYXQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/PromptEdit.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/PromptEdit.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XFByb21wdEVkaXQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/PromptManagement.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/PromptManagement.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XFByb21wdE1hbmFnZW1lbnQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/QuestionManagement.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/ChatGpt/QuestionManagement.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xDaGF0R3B0XFF1ZXN0aW9uTWFuYWdlbWVudC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentBrowser.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentBrowser.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnRCcm93c2VyLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentDetails.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentDetails.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnREZXRhaWxzLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentUpload.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Documents/DocumentUpload.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEb2N1bWVudHNcRG9jdW1lbnRVcGxvYWQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Error.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Error.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xFcnJvci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Home.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Home.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xIb21lLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/Features.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/Features.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xNYXN0ZXJBZG1pblxGZWF0dXJlcy5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/OrganizationSubscriptions.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/OrganizationSubscriptions.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xNYXN0ZXJBZG1pblxPcmdhbml6YXRpb25TdWJzY3JpcHRpb25zLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/SubscriptionModels.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/SubscriptionModels.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xNYXN0ZXJBZG1pblxTdWJzY3JpcHRpb25Nb2RlbHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/SubscriptionPlanEdit.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/MasterAdmin/SubscriptionPlanEdit.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xNYXN0ZXJBZG1pblxTdWJzY3JpcHRpb25QbGFuRWRpdC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Profile/EditProfile.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Profile/EditProfile.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xQcm9maWxlXEVkaXRQcm9maWxlLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Profile/ViewProfile.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Profile/ViewProfile.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xQcm9maWxlXFZpZXdQcm9maWxlLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Subscription.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Subscription.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xTdWJzY3JpcHRpb24ucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/SuperAdmin/Migrations.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/SuperAdmin/Migrations.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xTdXBlckFkbWluXE1pZ3JhdGlvbnMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Tenant/CreateOrganization.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Pages/Tenant/CreateOrganization.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xUZW5hbnRcQ3JlYXRlT3JnYW5pemF0aW9uLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Routes.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Routes.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xSb3V0ZXMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/ApplicationLogger.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/ApplicationLogger.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcQXBwbGljYXRpb25Mb2dnZXIucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/FeatureGate.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/FeatureGate.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcRmVhdHVyZUdhdGUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/FeatureRequired.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/FeatureRequired.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcRmVhdHVyZVJlcXVpcmVkLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/LimitationCounter.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/LimitationCounter.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcTGltaXRhdGlvbkNvdW50ZXIucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/OrganizationRequired.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/OrganizationRequired.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcT3JnYW5pemF0aW9uUmVxdWlyZWQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/PermissionGate.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/PermissionGate.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcUGVybWlzc2lvbkdhdGUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/RedirectToLogin.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Shared/RedirectToLogin.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xTaGFyZWRcUmVkaXJlY3RUb0xvZ2luLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/_Imports.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/_Imports.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xfSW1wb3J0cy5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/MainLayout.razor]
+[c:/Users/ouelletf/Documents/Jason/repo/Blazor-Bedrock/Blazor Bedrock/Components/Layout/MainLayout.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xMYXlvdXRcTWFpbkxheW91dC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = b-icap5qf28x
