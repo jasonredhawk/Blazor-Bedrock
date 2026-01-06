@@ -3,6 +3,7 @@ using Blazor_Bedrock.Data.Models;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Blazor_Bedrock.Services;
 using Blazor_Bedrock.Services.Document;
+using Blazor_Bedrock.Services.ApiConfiguration;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
@@ -56,6 +57,7 @@ public class ChatGptService : IChatGptService
     private readonly IOpenAIFileThreadService _fileThreadService;
     private readonly IDocumentService _documentService;
     private readonly IPromptService _promptService;
+    private readonly IApiConfigurationService _apiConfigurationService;
 
     public ChatGptService(
         ApplicationDbContext context,
@@ -66,7 +68,8 @@ public class ChatGptService : IChatGptService
         IDatabaseSyncService dbSync,
         IOpenAIFileThreadService fileThreadService,
         IDocumentService documentService,
-        IPromptService promptService)
+        IPromptService promptService,
+        IApiConfigurationService apiConfigurationService)
     {
         _context = context;
         _dataProtectionProvider = dataProtectionProvider;
@@ -77,91 +80,34 @@ public class ChatGptService : IChatGptService
         _fileThreadService = fileThreadService;
         _documentService = documentService;
         _promptService = promptService;
+        _apiConfigurationService = apiConfigurationService;
         
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Blazor-Bedrock/1.0");
     }
 
     public async Task<string> GetDecryptedApiKeyAsync(string userId, int? tenantId)
     {
-        if (tenantId == null)
+        // Get API key from MasterAdmin-level configuration
+        var apiKey = await _apiConfigurationService.GetConfigurationValueAsync("ChatGPT", "ApiKey");
+        
+        if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
+            throw new InvalidOperationException("ChatGPT API key is not configured. Please configure it in MasterAdmin > Features.");
         }
 
-        return await _dbSync.ExecuteAsync(async () =>
-        {
-            // Prioritize tenant-specific API keys (organization-level)
-            var apiKey = await _context.ChatGptApiKeys
-                .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
-
-            if (apiKey == null)
-            {
-                throw new InvalidOperationException($"No API key found for the current organization. Please configure an API key in Settings.");
-            }
-
-            var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
-            return protector.Unprotect(apiKey.EncryptedApiKey);
-        });
+        return apiKey;
     }
 
     public async Task<string?> GetPreferredModelAsync(int? tenantId)
     {
-        if (tenantId == null)
-        {
-            return null;
-        }
-
-        return await _dbSync.ExecuteAsync(async () =>
-        {
-            var apiKey = await _context.ChatGptApiKeys
-                .FirstOrDefaultAsync(k => k.TenantId == tenantId && k.IsActive);
-
-            return apiKey?.PreferredModel;
-        });
+        // Get preferred model from MasterAdmin-level configuration
+        return await _apiConfigurationService.GetConfigurationValueAsync("ChatGPT", "PreferredModel");
     }
 
     public async Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null)
     {
-        if (tenantId == null)
-        {
-            throw new InvalidOperationException("Tenant ID is required. Please select an organization.");
-        }
-
-        await _dbSync.ExecuteAsync(async () =>
-        {
-            var protector = _dataProtectionProvider.CreateProtector("ChatGptApiKey");
-            var encryptedKey = protector.Protect(apiKey);
-
-            // Look for existing tenant-specific API key (organization-level)
-            var existing = await _context.ChatGptApiKeys
-                .FirstOrDefaultAsync(k => k.TenantId == tenantId);
-
-            if (existing != null)
-            {
-                existing.EncryptedApiKey = encryptedKey;
-                existing.PreferredModel = preferredModel;
-                existing.LastUsedAt = DateTime.UtcNow;
-                existing.IsActive = true;
-                // Ensure UserId is set (in case it wasn't before)
-                if (string.IsNullOrEmpty(existing.UserId))
-                {
-                    existing.UserId = userId;
-                }
-            }
-            else
-            {
-                _context.ChatGptApiKeys.Add(new ChatGptApiKey
-                {
-                    UserId = userId,
-                    TenantId = tenantId,
-                    EncryptedApiKey = encryptedKey,
-                    PreferredModel = preferredModel,
-                    IsActive = true
-                });
-            }
-
-            await _context.SaveChangesAsync();
-        });
+        // This method is deprecated - API keys should be configured in MasterAdmin > Features
+        throw new InvalidOperationException("API key configuration has been moved to MasterAdmin > Features page. Please configure the ChatGPT API key there.");
     }
 
     public async Task<List<string>> GetAvailableModelsAsync(string apiKey)

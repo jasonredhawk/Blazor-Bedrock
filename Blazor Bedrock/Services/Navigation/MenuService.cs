@@ -39,6 +39,9 @@ public class MenuService : IMenuService
         // Synchronize all database operations to prevent concurrent access
         return await _dbSync.ExecuteAsync(async () =>
         {
+            // Clear feature flag cache inside the lock to ensure we get fresh data
+            // This ensures menu reflects current feature flag state
+            _featureFlagService.ClearCache();
             var menuItems = new List<MenuItem>();
             
             // Check if user is MasterAdmin
@@ -78,8 +81,9 @@ public class MenuService : IMenuService
                 return menuItems;
             }
 
-            // Documents Menu (Permission-based, requires tenant)
-            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Documents_Enabled"))
+            // Documents Menu (Feature flag-based, requires tenant)
+            var documentsEnabled = await _featureFlagService.IsEnabledAsync("Documents_Enabled");
+            if (tenantId.HasValue && documentsEnabled)
             {
                 var documentsMenu = new MenuItem
                 {
@@ -88,7 +92,7 @@ public class MenuService : IMenuService
                     Children = new List<MenuItem>()
                 };
 
-                // If Admin, show all Documents menu items
+                // Show menu items if Admin
                 if (isAdmin)
                 {
                     documentsMenu.Children.Add(new MenuItem
@@ -106,39 +110,27 @@ public class MenuService : IMenuService
                 }
                 else
                 {
-                    // Non-admin users: check permissions
-                    var canViewDocuments = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Documents.View");
-                    if (canViewDocuments)
+                    // For non-admin: show menu items if feature is enabled (pages will handle access control)
+                    documentsMenu.Children.Add(new MenuItem
                     {
-                        documentsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Browse",
-                            Href = "/documents",
-                            Icon = "bi bi-folder"
-                        });
-                    }
-
-                    var canUploadDocuments = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Documents.Upload");
-                    if (canUploadDocuments)
+                        Title = "Browse",
+                        Href = "/documents",
+                        Icon = "bi bi-folder"
+                    });
+                    documentsMenu.Children.Add(new MenuItem
                     {
-                        documentsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Upload",
-                            Href = "/documents/upload",
-                            Icon = "bi bi-upload"
-                        });
-                    }
+                        Title = "Upload",
+                        Href = "/documents/upload",
+                        Icon = "bi bi-upload"
+                    });
                 }
 
-                // Only add Documents menu if it has children
-                if (documentsMenu.Children.Any())
-                {
-                    menuItems.Add(documentsMenu);
-                }
+                menuItems.Add(documentsMenu);
             }
 
-            // Charts Menu (Permission-based, requires tenant)
-            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("Charts_Enabled"))
+            // Charts Menu (Feature flag-based, requires tenant)
+            var chartsEnabled = await _featureFlagService.IsEnabledAsync("Charts_Enabled");
+            if (tenantId.HasValue && chartsEnabled)
             {
                 var chartsMenu = new MenuItem
                 {
@@ -147,7 +139,7 @@ public class MenuService : IMenuService
                     Children = new List<MenuItem>()
                 };
 
-                // If Admin, show all Charts menu items
+                // Show menu items if Admin
                 if (isAdmin)
                 {
                     chartsMenu.Children.Add(new MenuItem
@@ -165,39 +157,27 @@ public class MenuService : IMenuService
                 }
                 else
                 {
-                    // Non-admin users: check permissions
-                    var canViewCharts = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Charts.View");
-                    if (canViewCharts)
+                    // For non-admin: show menu items if feature is enabled (pages will handle access control)
+                    chartsMenu.Children.Add(new MenuItem
                     {
-                        chartsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Browse",
-                            Href = "/charts",
-                            Icon = "bi bi-folder"
-                        });
-                    }
-
-                    var canCreateCharts = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Charts.Create");
-                    if (canCreateCharts)
+                        Title = "Browse",
+                        Href = "/charts",
+                        Icon = "bi bi-folder"
+                    });
+                    chartsMenu.Children.Add(new MenuItem
                     {
-                        chartsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Create",
-                            Href = "/charts/create",
-                            Icon = "bi bi-plus-circle"
-                        });
-                    }
+                        Title = "Create",
+                        Href = "/charts/create",
+                        Icon = "bi bi-plus-circle"
+                    });
                 }
 
-                // Only add Charts menu if it has children
-                if (chartsMenu.Children.Any())
-                {
-                    menuItems.Add(chartsMenu);
-                }
+                menuItems.Add(chartsMenu);
             }
 
-            // ChatGPT Menu (Permission-based, requires tenant)
-            if (tenantId.HasValue && await _featureFlagService.IsEnabledAsync("ChatGpt_Enabled"))
+            // ChatGPT Menu (Feature flag-based, requires tenant)
+            var chatGptEnabled = await _featureFlagService.IsEnabledAsync("ChatGpt_Enabled");
+            if (tenantId.HasValue && chatGptEnabled)
             {
                 var chatGptMenu = new MenuItem
                 {
@@ -206,16 +186,9 @@ public class MenuService : IMenuService
                     Children = new List<MenuItem>()
                 };
 
-                // If Admin, show all ChatGPT menu items
+                // Show menu items if Admin
                 if (isAdmin)
                 {
-                    chatGptMenu.Children.Add(new MenuItem
-                    {
-                        Title = "Settings",
-                        Href = "/chatgpt/settings",
-                        Icon = "bi bi-gear"
-                    });
-
                     chatGptMenu.Children.Add(new MenuItem
                     {
                         Title = "Prompts",
@@ -239,61 +212,30 @@ public class MenuService : IMenuService
                 }
                 else
                 {
-                    // Non-admin users: check permissions
-                    var canViewChatGpt = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.View");
-                    if (canViewChatGpt)
+                    // For non-admin: show menu items if feature is enabled (pages will handle access control)
+                    chatGptMenu.Children.Add(new MenuItem
                     {
-                        var canAccessSettings = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.Settings");
-                        if (canAccessSettings)
-                        {
-                            chatGptMenu.Children.Add(new MenuItem
-                            {
-                                Title = "Settings",
-                                Href = "/chatgpt/settings",
-                                Icon = "bi bi-gear"
-                            });
-                        }
+                        Title = "Prompts",
+                        Href = "/chatgpt/prompts",
+                        Icon = "bi bi-file-text"
+                    });
 
-                        var canAccessPrompts = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.Prompts");
-                        if (canAccessPrompts)
-                        {
-                            chatGptMenu.Children.Add(new MenuItem
-                            {
-                                Title = "Prompts",
-                                Href = "/chatgpt/prompts",
-                                Icon = "bi bi-file-text"
-                            });
-                        }
+                    chatGptMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Questions",
+                        Href = "/chatgpt/questions",
+                        Icon = "bi bi-question-circle"
+                    });
 
-                        var canAccessQuestions = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.Questions");
-                        if (canAccessQuestions)
-                        {
-                            chatGptMenu.Children.Add(new MenuItem
-                            {
-                                Title = "Questions",
-                                Href = "/chatgpt/questions",
-                                Icon = "bi bi-question-circle"
-                            });
-                        }
-
-                        var canAccessChat = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "ChatGpt.Chat");
-                        if (canAccessChat)
-                        {
-                            chatGptMenu.Children.Add(new MenuItem
-                            {
-                                Title = "Chat",
-                                Href = "/chatgpt/chat",
-                                Icon = "bi bi-chat-dots"
-                            });
-                        }
-                    }
+                    chatGptMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Chat",
+                        Href = "/chatgpt/chat",
+                        Icon = "bi bi-chat-dots"
+                    });
                 }
 
-                // Only add ChatGPT menu if it has children
-                if (chatGptMenu.Children.Any())
-                {
-                    menuItems.Add(chatGptMenu);
-                }
+                menuItems.Add(chatGptMenu);
             }
 
             // Settings Menu (Permission-based, with Admin fallback)
@@ -306,60 +248,32 @@ public class MenuService : IMenuService
                     Children = new List<MenuItem>()
                 };
 
-                // If Admin, show menu items based on feature flags
-                if (isAdmin)
+                // Show menu items based on feature flags (pages will handle access control)
+                var usersEnabled = await _featureFlagService.IsEnabledAsync("Users_Enabled");
+                var rolesEnabled = await _featureFlagService.IsEnabledAsync("Roles_Enabled");
+                
+                // Show menu items if feature flags are enabled
+                if (usersEnabled)
                 {
-                    // Users (if feature flag enabled)
-                    if (await _featureFlagService.IsEnabledAsync("Users_Enabled"))
+                    settingsMenu.Children.Add(new MenuItem
                     {
-                        settingsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Users",
-                            Href = "/admin/users",
-                            Icon = "bi bi-people"
-                        });
-                    }
-
-                    // Roles (if feature flag enabled)
-                    if (await _featureFlagService.IsEnabledAsync("Roles_Enabled"))
-                    {
-                        settingsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Roles",
-                            Href = "/admin/roles",
-                            Icon = "bi bi-shield-check"
-                        });
-                    }
-
-                    // Feature Settings removed - now in MasterAdmin menu
-                }
-                else
-                {
-                    // Non-admin users: check permissions and feature flags
-                    var canViewUsers = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Users.View");
-                    if (canViewUsers && await _featureFlagService.IsEnabledAsync("Users_Enabled"))
-                    {
-                        settingsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Users",
-                            Href = "/admin/users",
-                            Icon = "bi bi-people"
-                        });
-                    }
-
-                    var canViewRoles = await _permissionService.UserHasPermissionAsync(userId, tenantId.Value, "Roles.View");
-                    if (canViewRoles && await _featureFlagService.IsEnabledAsync("Roles_Enabled"))
-                    {
-                        settingsMenu.Children.Add(new MenuItem
-                        {
-                            Title = "Roles",
-                            Href = "/admin/roles",
-                            Icon = "bi bi-shield-check"
-                        });
-                    }
+                        Title = "Users",
+                        Href = "/admin/users",
+                        Icon = "bi bi-people"
+                    });
                 }
 
-                // Only add Settings menu if it has children
+                if (rolesEnabled)
+                {
+                    settingsMenu.Children.Add(new MenuItem
+                    {
+                        Title = "Roles",
+                        Href = "/admin/roles",
+                        Icon = "bi bi-shield-check"
+                    });
+                }
+
+                // Add Settings menu if it has children
                 if (settingsMenu.Children.Any())
                 {
                     menuItems.Add(settingsMenu);
@@ -408,16 +322,13 @@ public class MenuService : IMenuService
                     });
                 }
 
-                // Feature Settings (moved from Settings)
-                if (await _featureFlagService.IsEnabledAsync("FeatureFlags_Enabled"))
+                // Features Configuration (API keys and settings)
+                masterAdminMenu.Children.Add(new MenuItem
                 {
-                    masterAdminMenu.Children.Add(new MenuItem
-                    {
-                        Title = "Feature Settings",
-                        Href = "/admin/feature-settings",
-                        Icon = "bi bi-toggle-on"
-                    });
-                }
+                    Title = "Features",
+                    Href = "/masteradmin/features",
+                    Icon = "bi bi-sliders"
+                });
 
                 // Migrations (moved from root)
                 if (await _featureFlagService.IsEnabledAsync("Migrations_Enabled"))

@@ -1,0 +1,779 @@
+@page "/masteradmin/features"
+@using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.ApiConfiguration
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IFeatureFlagService FeatureFlagService
+@inject IApiConfigurationService ApiConfigurationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject INotificationService NotificationService
+@rendermode InteractiveServer
+
+<PageTitle>Features Configuration</PageTitle>
+
+<style>
+    .feature-panel {
+        transition: all 0.3s ease;
+        border: 1px solid #dee2e6;
+    }
+    
+    .feature-panel:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    
+    .feature-panel.collapsed .card-body {
+        display: none;
+    }
+    
+    .feature-status-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .config-field-group {
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .config-field-label {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+    
+    .help-text {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+    
+    .feature-icon-large {
+        font-size: 2.5rem;
+        opacity: 0.8;
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">Features Configuration</h4>
+            <p class="text-muted mb-0">Manage API keys and authentication settings for integrated services</p>
+        </div>
+    </div>
+
+    @if (_isInitialized)
+    {
+        <div class="row g-3">
+            @* Simple Feature Toggle Panels *@
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-people me-2"></i>Users Management</h6>
+                                <small class="text-muted">Enable user management features</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_usersEnabled" @onchange="async (ChangeEventArgs e) => { _usersEnabled = (bool)(e.Value ?? false); await ToggleUsersFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-shield-check me-2"></i>Roles Management</h6>
+                                <small class="text-muted">Enable role management features</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_rolesEnabled" @onchange="async (ChangeEventArgs e) => { _rolesEnabled = (bool)(e.Value ?? false); await ToggleRolesFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-folder me-2"></i>Documents</h6>
+                                <small class="text-muted">Enable document management</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_documentsEnabled" @onchange="async (ChangeEventArgs e) => { _documentsEnabled = (bool)(e.Value ?? false); await ToggleDocumentsFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-bar-chart me-2"></i>Charts</h6>
+                                <small class="text-muted">Enable chart creation features</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_chartsEnabled" @onchange="async (ChangeEventArgs e) => { _chartsEnabled = (bool)(e.Value ?? false); await ToggleChartsFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-credit-card me-2"></i>Subscriptions</h6>
+                                <small class="text-muted">Enable subscription management</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_subscriptionsEnabled" @onchange="async (ChangeEventArgs e) => { _subscriptionsEnabled = (bool)(e.Value ?? false); await ToggleSubscriptionsFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-database me-2"></i>Migrations</h6>
+                                <small class="text-muted">Enable migration management</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_migrationsEnabled" @onchange="async (ChangeEventArgs e) => { _migrationsEnabled = (bool)(e.Value ?? false); await ToggleMigrationsFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-flag me-2"></i>Feature Flags</h6>
+                                <small class="text-muted">Enable feature flag management</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_featureFlagsEnabled" @onchange="async (ChangeEventArgs e) => { _featureFlagsEnabled = (bool)(e.Value ?? false); await ToggleFeatureFlagsFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1"><i class="bi bi-terminal me-2"></i>Logger</h6>
+                                <small class="text-muted">Enable application logger</small>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" checked="@_loggerEnabled" @onchange="async (ChangeEventArgs e) => { _loggerEnabled = (bool)(e.Value ?? false); await ToggleLoggerFeatureAsync(); }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+            <div class="col-12">
+                <h5 class="mb-3 mt-4">API Configuration</h5>
+            </div>
+
+            @* ChatGPT Feature Panel - Compact *@
+            <div class="col-12">
+                <div class="card shadow-sm feature-panel @(_chatGptCollapsed ? "collapsed" : "")">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2" style="cursor: pointer;" @onclick="() => _chatGptCollapsed = !_chatGptCollapsed">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-robot me-2"></i>
+                            <div>
+                                <h6 class="mb-0">ChatGPT Integration</h6>
+                                <small class="d-flex align-items-center">
+                                    <span class="badge feature-status-badge @(_chatGptEnabled ? "bg-light text-dark" : "bg-secondary") me-2">
+                                        @(_chatGptEnabled ? "Enabled" : "Disabled")
+                                    </span>
+                                    OpenAI API key and default model
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="form-check form-switch" @onclick:stopPropagation="true">
+                                <input class="form-check-input" type="checkbox" checked="@_chatGptEnabled" @onchange="async (ChangeEventArgs e) => { _chatGptEnabled = (bool)(e.Value ?? false); await ToggleChatGptFeatureAsync(); }" />
+                                <label class="form-check-label text-white">Enabled</label>
+                            </div>
+                            <button class="btn btn-sm btn-link text-white p-0" @onclick:stopPropagation="true" @onclick="() => _chatGptCollapsed = !_chatGptCollapsed">
+                                <i class="bi @(_chatGptCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-key me-1"></i>API Key</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showChatGptApiKey ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_chatGptApiKey" 
+                                           placeholder="sk-..." />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showChatGptApiKey = !_showChatGptApiKey">
+                                        <i class="bi @(_showChatGptApiKey ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">Get one at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-cpu me-1"></i>Default Model</label>
+                                <select class="form-select form-select-sm" @bind="_chatGptPreferredModel">
+                                    <option value="">Select a model...</option>
+                                    @foreach (var model in _availableModels)
+                                    {
+                                        <option value="@model">@model</option>
+                                    }
+                                </select>
+                                <small class="text-muted" style="font-size: 0.75rem;">Default model for all organizations</small>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-2">
+                            <button class="btn btn-primary btn-sm" @onclick="async () => await SaveChatGptConfigurationAsync()" disabled="@_isSaving">
+                                <i class="bi bi-save me-1"></i>
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Google Authentication Feature Panel - Compact *@
+            <div class="col-12">
+                <div class="card shadow-sm feature-panel @(_googleAuthCollapsed ? "collapsed" : "")">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center py-2" style="cursor: pointer;" @onclick="() => _googleAuthCollapsed = !_googleAuthCollapsed">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-google me-2"></i>
+                            <div>
+                                <h6 class="mb-0">Google Authentication</h6>
+                                <small class="d-flex align-items-center">
+                                    <span class="badge feature-status-badge @(_googleAuthEnabled ? "bg-light text-dark" : "bg-secondary") me-2">
+                                        @(_googleAuthEnabled ? "Enabled" : "Disabled")
+                                    </span>
+                                    Google OAuth 2.0 credentials
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="form-check form-switch" @onclick:stopPropagation="true">
+                                <input class="form-check-input" type="checkbox" checked="@_googleAuthEnabled" @onchange="async (ChangeEventArgs e) => { _googleAuthEnabled = (bool)(e.Value ?? false); await ToggleGoogleAuthFeatureAsync(); }" />
+                                <label class="form-check-label text-white">Enabled</label>
+                            </div>
+                            <button class="btn btn-sm btn-link text-white p-0" @onclick:stopPropagation="true" @onclick="() => _googleAuthCollapsed = !_googleAuthCollapsed">
+                                <i class="bi @(_googleAuthCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-key me-1"></i>Client ID</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showGoogleClientId ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_googleClientId" 
+                                           placeholder="xxxxx.apps.googleusercontent.com" />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showGoogleClientId = !_showGoogleClientId">
+                                        <i class="bi @(_showGoogleClientId ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">From Google Cloud Console</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-shield-lock me-1"></i>Client Secret</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showGoogleClientSecret ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_googleClientSecret" 
+                                           placeholder="GOCSPX-..." />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showGoogleClientSecret = !_showGoogleClientSecret">
+                                        <i class="bi @(_showGoogleClientSecret ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">From Google Cloud Console</small>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-2">
+                            <button class="btn btn-success btn-sm" @onclick="async () => await SaveGoogleAuthConfigurationAsync()" disabled="@_isSaving">
+                                <i class="bi bi-save me-1"></i>
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Facebook Authentication Feature Panel - Compact *@
+            <div class="col-12">
+                <div class="card shadow-sm feature-panel @(_facebookAuthCollapsed ? "collapsed" : "")">
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center py-2" style="cursor: pointer;" @onclick="() => _facebookAuthCollapsed = !_facebookAuthCollapsed">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-facebook me-2"></i>
+                            <div>
+                                <h6 class="mb-0">Facebook Authentication</h6>
+                                <small class="d-flex align-items-center">
+                                    <span class="badge feature-status-badge @(_facebookAuthEnabled ? "bg-light text-dark" : "bg-secondary") me-2">
+                                        @(_facebookAuthEnabled ? "Enabled" : "Disabled")
+                                    </span>
+                                    Facebook OAuth credentials
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="form-check form-switch" @onclick:stopPropagation="true">
+                                <input class="form-check-input" type="checkbox" checked="@_facebookAuthEnabled" @onchange="async (ChangeEventArgs e) => { _facebookAuthEnabled = (bool)(e.Value ?? false); await ToggleFacebookAuthFeatureAsync(); }" />
+                                <label class="form-check-label text-white">Enabled</label>
+                            </div>
+                            <button class="btn btn-sm btn-link text-white p-0" @onclick:stopPropagation="true" @onclick="() => _facebookAuthCollapsed = !_facebookAuthCollapsed">
+                                <i class="bi @(_facebookAuthCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-key me-1"></i>App ID</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showFacebookAppId ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_facebookAppId" 
+                                           placeholder="1234567890" />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showFacebookAppId = !_showFacebookAppId">
+                                        <i class="bi @(_showFacebookAppId ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">From Facebook Developers Console</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-shield-lock me-1"></i>App Secret</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showFacebookAppSecret ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_facebookAppSecret" 
+                                           placeholder="xxxxxxxxxxxxx" />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showFacebookAppSecret = !_showFacebookAppSecret">
+                                        <i class="bi @(_showFacebookAppSecret ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">From Facebook Developers Console</small>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-2">
+                            <button class="btn btn-info btn-sm text-white" @onclick="async () => await SaveFacebookAuthConfigurationAsync()" disabled="@_isSaving">
+                                <i class="bi bi-save me-1"></i>
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isInitialized = false;
+    private bool _isMasterAdmin = false;
+    private bool _isSaving = false;
+
+    // Panel collapsed states
+    private bool _chatGptCollapsed = false;
+    private bool _googleAuthCollapsed = false;
+    private bool _facebookAuthCollapsed = false;
+
+    // Feature flags
+    private bool _chatGptEnabled = false;
+    private bool _googleAuthEnabled = false;
+    private bool _facebookAuthEnabled = false;
+    private bool _usersEnabled = false;
+    private bool _rolesEnabled = false;
+    private bool _documentsEnabled = false;
+    private bool _chartsEnabled = false;
+    private bool _subscriptionsEnabled = false;
+    private bool _migrationsEnabled = false;
+    private bool _featureFlagsEnabled = false;
+    private bool _loggerEnabled = false;
+
+    // ChatGPT configuration
+    private string _chatGptApiKey = string.Empty;
+    private string _chatGptPreferredModel = string.Empty;
+    private bool _showChatGptApiKey = false;
+    private List<string> _availableModels = new()
+    {
+        "gpt-4o-2024-11-20",
+        "gpt-4o-mini-2024-11-20",
+        "gpt-4-turbo-2024-04-09",
+        "gpt-4-0125-preview",
+        "gpt-4",
+        "gpt-3.5-turbo-0125",
+        "gpt-3.5-turbo-16k",
+        "gpt-3.5-turbo"
+    };
+
+    // Google Auth configuration
+    private string _googleClientId = string.Empty;
+    private string _googleClientSecret = string.Empty;
+    private bool _showGoogleClientId = false;
+    private bool _showGoogleClientSecret = false;
+
+    // Facebook Auth configuration
+    private string _facebookAppId = string.Empty;
+    private string _facebookAppSecret = string.Empty;
+    private bool _showFacebookAppId = false;
+    private bool _showFacebookAppSecret = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.FindByIdAsync(userId);
+                _isMasterAdmin = user?.IsMasterAdmin ?? false;
+                
+                if (!_isMasterAdmin)
+                {
+                    await NotificationService.ShowErrorAsync("You do not have permission to access this page.");
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("/auth/login");
+            return;
+        }
+
+        await LoadConfigurationAsync();
+        _isInitialized = true;
+    }
+
+    private async Task LoadConfigurationAsync()
+    {
+        // Clear cache to ensure we get fresh data from database
+        FeatureFlagService.ClearCache();
+        
+        // Load feature flags
+        var chatGptFlag = await FeatureFlagService.GetFlagAsync("ChatGpt_Enabled");
+        _chatGptEnabled = chatGptFlag?.IsEnabled ?? false;
+
+        var googleAuthFlag = await FeatureFlagService.GetFlagAsync("Auth_Google");
+        _googleAuthEnabled = googleAuthFlag?.IsEnabled ?? false;
+
+        var facebookAuthFlag = await FeatureFlagService.GetFlagAsync("Auth_Facebook");
+        _facebookAuthEnabled = facebookAuthFlag?.IsEnabled ?? false;
+
+        var usersFlag = await FeatureFlagService.GetFlagAsync("Users_Enabled");
+        _usersEnabled = usersFlag?.IsEnabled ?? false;
+
+        var rolesFlag = await FeatureFlagService.GetFlagAsync("Roles_Enabled");
+        _rolesEnabled = rolesFlag?.IsEnabled ?? false;
+
+        var documentsFlag = await FeatureFlagService.GetFlagAsync("Documents_Enabled");
+        _documentsEnabled = documentsFlag?.IsEnabled ?? false;
+
+        var chartsFlag = await FeatureFlagService.GetFlagAsync("Charts_Enabled");
+        _chartsEnabled = chartsFlag?.IsEnabled ?? false;
+
+        var subscriptionsFlag = await FeatureFlagService.GetFlagAsync("Subscriptions");
+        _subscriptionsEnabled = subscriptionsFlag?.IsEnabled ?? false;
+
+        var migrationsFlag = await FeatureFlagService.GetFlagAsync("Migrations_Enabled");
+        _migrationsEnabled = migrationsFlag?.IsEnabled ?? false;
+
+        var featureFlagsFlag = await FeatureFlagService.GetFlagAsync("FeatureFlags_Enabled");
+        _featureFlagsEnabled = featureFlagsFlag?.IsEnabled ?? false;
+
+        var loggerFlag = await FeatureFlagService.GetFlagAsync("Logger_Enabled");
+        _loggerEnabled = loggerFlag?.IsEnabled ?? false;
+
+        // Load ChatGPT configuration
+        var chatGptConfig = await ApiConfigurationService.GetConfigurationAsync("ChatGPT");
+        if (chatGptConfig.TryGetValue("ApiKey", out var apiKey))
+        {
+            _chatGptApiKey = apiKey;
+        }
+        if (chatGptConfig.TryGetValue("PreferredModel", out var model))
+        {
+            _chatGptPreferredModel = model;
+        }
+
+        // Load Google Auth configuration
+        var googleAuthConfig = await ApiConfigurationService.GetConfigurationAsync("GoogleAuth");
+        if (googleAuthConfig.TryGetValue("ClientId", out var clientId))
+        {
+            _googleClientId = clientId;
+        }
+        if (googleAuthConfig.TryGetValue("ClientSecret", out var clientSecret))
+        {
+            _googleClientSecret = clientSecret;
+        }
+
+        // Load Facebook Auth configuration
+        var facebookAuthConfig = await ApiConfigurationService.GetConfigurationAsync("FacebookAuth");
+        if (facebookAuthConfig.TryGetValue("AppId", out var appId))
+        {
+            _facebookAppId = appId;
+        }
+        if (facebookAuthConfig.TryGetValue("AppSecret", out var appSecret))
+        {
+            _facebookAppSecret = appSecret;
+        }
+    }
+
+    private async Task ToggleFeatureAsync(string featureName, bool isEnabled)
+    {
+        try
+        {
+            await FeatureFlagService.SetFlagAsync(featureName, isEnabled);
+            
+            // Clear cache to ensure fresh data
+            FeatureFlagService.ClearCache();
+            
+            // Small delay to ensure cache is cleared
+            await Task.Delay(100);
+            
+            // Reload configuration to reflect changes
+            await LoadConfigurationAsync();
+            
+            // Trigger menu refresh by navigating with a timestamp query parameter
+            // This ensures LocationChanged event fires and menu refreshes with new feature flags
+            await Task.Delay(100);
+            var timestamp = DateTime.UtcNow.Ticks;
+            Navigation.NavigateTo($"/masteradmin/features?refresh={timestamp}", forceLoad: false);
+            
+            await NotificationService.ShowSuccessAsync($"Feature '{featureName}' has been {(isEnabled ? "enabled" : "disabled")}.");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error toggling feature: {ex.Message}");
+            // Reload configuration on error to revert UI state
+            await LoadConfigurationAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleChatGptFeatureAsync()
+    {
+        await ToggleFeatureAsync("ChatGpt_Enabled", _chatGptEnabled);
+    }
+
+    private async Task ToggleGoogleAuthFeatureAsync()
+    {
+        await ToggleFeatureAsync("Auth_Google", _googleAuthEnabled);
+    }
+
+    private async Task ToggleFacebookAuthFeatureAsync()
+    {
+        await ToggleFeatureAsync("Auth_Facebook", _facebookAuthEnabled);
+    }
+
+    private async Task ToggleUsersFeatureAsync()
+    {
+        await ToggleFeatureAsync("Users_Enabled", _usersEnabled);
+    }
+
+    private async Task ToggleRolesFeatureAsync()
+    {
+        await ToggleFeatureAsync("Roles_Enabled", _rolesEnabled);
+    }
+
+    private async Task ToggleDocumentsFeatureAsync()
+    {
+        await ToggleFeatureAsync("Documents_Enabled", _documentsEnabled);
+    }
+
+    private async Task ToggleChartsFeatureAsync()
+    {
+        await ToggleFeatureAsync("Charts_Enabled", _chartsEnabled);
+    }
+
+    private async Task ToggleSubscriptionsFeatureAsync()
+    {
+        await ToggleFeatureAsync("Subscriptions", _subscriptionsEnabled);
+    }
+
+    private async Task ToggleMigrationsFeatureAsync()
+    {
+        await ToggleFeatureAsync("Migrations_Enabled", _migrationsEnabled);
+    }
+
+    private async Task ToggleFeatureFlagsFeatureAsync()
+    {
+        await ToggleFeatureAsync("FeatureFlags_Enabled", _featureFlagsEnabled);
+    }
+
+    private async Task ToggleLoggerFeatureAsync()
+    {
+        await ToggleFeatureAsync("Logger_Enabled", _loggerEnabled);
+    }
+
+    private async Task SaveChatGptConfigurationAsync()
+    {
+        try
+        {
+            _isSaving = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                await NotificationService.ShowErrorAsync("User not authenticated.");
+                return;
+            }
+
+            var config = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(_chatGptApiKey))
+            {
+                config["ApiKey"] = _chatGptApiKey;
+            }
+            if (!string.IsNullOrEmpty(_chatGptPreferredModel))
+            {
+                config["PreferredModel"] = _chatGptPreferredModel;
+            }
+
+            await ApiConfigurationService.SaveConfigurationAsync("ChatGPT", config, userId);
+            await NotificationService.ShowSuccessAsync("ChatGPT configuration saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving ChatGPT configuration: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveGoogleAuthConfigurationAsync()
+    {
+        try
+        {
+            _isSaving = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                await NotificationService.ShowErrorAsync("User not authenticated.");
+                return;
+            }
+
+            var config = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(_googleClientId))
+            {
+                config["ClientId"] = _googleClientId;
+            }
+            if (!string.IsNullOrEmpty(_googleClientSecret))
+            {
+                config["ClientSecret"] = _googleClientSecret;
+            }
+
+            await ApiConfigurationService.SaveConfigurationAsync("GoogleAuth", config, userId);
+            await NotificationService.ShowSuccessAsync("Google Authentication configuration saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving Google Authentication configuration: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveFacebookAuthConfigurationAsync()
+    {
+        try
+        {
+            _isSaving = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                await NotificationService.ShowErrorAsync("User not authenticated.");
+                return;
+            }
+
+            var config = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(_facebookAppId))
+            {
+                config["AppId"] = _facebookAppId;
+            }
+            if (!string.IsNullOrEmpty(_facebookAppSecret))
+            {
+                config["AppSecret"] = _facebookAppSecret;
+            }
+
+            await ApiConfigurationService.SaveConfigurationAsync("FacebookAuth", config, userId);
+            await NotificationService.ShowSuccessAsync("Facebook Authentication configuration saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving Facebook Authentication configuration: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

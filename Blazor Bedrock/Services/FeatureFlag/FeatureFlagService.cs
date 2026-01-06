@@ -13,6 +13,7 @@ public interface IFeatureFlagService
     Task<List<FeatureFlagModel>> GetAllFlagsAsync();
     Task<FeatureFlagModel?> GetFlagAsync(string featureName);
     Task SetFlagAsync(string featureName, bool isEnabled);
+    void ClearCache();
 }
 
 public class FeatureFlagService : IFeatureFlagService
@@ -60,21 +61,45 @@ public class FeatureFlagService : IFeatureFlagService
             {
                 flag.IsEnabled = isEnabled;
                 flag.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
-                _cache.Remove(CacheKey);
             }
+            else
+            {
+                // Create the flag if it doesn't exist
+                flag = new FeatureFlagModel
+                {
+                    Name = featureName,
+                    Description = $"Feature flag for {featureName}",
+                    IsEnabled = isEnabled,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.FeatureFlags.Add(flag);
+            }
+            
+            await _context.SaveChangesAsync();
+            _cache.Remove(CacheKey);
         });
+    }
+
+    public void ClearCache()
+    {
+        _cache.Remove(CacheKey);
     }
 
     private async Task<List<FeatureFlagModel>> GetCachedFlagsAsync()
     {
+        // Always get fresh data if cache is empty, otherwise use cache
+        // This method is called after cache is cleared when needed
         if (!_cache.TryGetValue(CacheKey, out List<FeatureFlagModel>? flags))
         {
             flags = await _dbSync.ExecuteAsync(async () =>
             {
                 return await _context.FeatureFlags.ToListAsync();
             });
-            _cache.Set(CacheKey, flags, TimeSpan.FromMinutes(5));
+            if (flags != null && flags.Any())
+            {
+                _cache.Set(CacheKey, flags, TimeSpan.FromMinutes(5));
+            }
         }
         return flags ?? new List<FeatureFlagModel>();
     }

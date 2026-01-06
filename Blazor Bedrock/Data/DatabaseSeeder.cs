@@ -35,10 +35,10 @@ public class DatabaseSeeder
     {
         var flags = new[]
         {
-            new FeatureFlag { Name = "Auth_Google", Description = "Enable Google Authentication", IsEnabled = false },
-            new FeatureFlag { Name = "Auth_Facebook", Description = "Enable Facebook Authentication", IsEnabled = false },
+            new FeatureFlag { Name = "Auth_Google", Description = "Enable Google Authentication", IsEnabled = true },
+            new FeatureFlag { Name = "Auth_Facebook", Description = "Enable Facebook Authentication", IsEnabled = true },
             new FeatureFlag { Name = "ChatGpt_Enabled", Description = "Enable ChatGPT Integration", IsEnabled = true },
-            new FeatureFlag { Name = "Subscriptions", Description = "Enable Subscriptions (enables subscription-based limits)", IsEnabled = false },
+            new FeatureFlag { Name = "Subscriptions", Description = "Enable Subscriptions (enables subscription-based limits)", IsEnabled = true },
             new FeatureFlag { Name = "Users_Enabled", Description = "Enable Users Management", IsEnabled = true },
             new FeatureFlag { Name = "Roles_Enabled", Description = "Enable Roles Management", IsEnabled = true },
             new FeatureFlag { Name = "Migrations_Enabled", Description = "Enable Migration Management", IsEnabled = true },
@@ -50,13 +50,27 @@ public class DatabaseSeeder
 
         foreach (var flag in flags)
         {
-            if (!await _context.FeatureFlags.AnyAsync(f => f.Name == flag.Name))
+            // Use case-insensitive comparison to match the service behavior
+            var existing = await _context.FeatureFlags
+                .FirstOrDefaultAsync(f => f.Name.ToLower() == flag.Name.ToLower());
+            
+            if (existing == null)
             {
                 _context.FeatureFlags.Add(flag);
+            }
+            else
+            {
+                // Update existing flag to ensure it's enabled
+                existing.IsEnabled = true;
+                existing.Description = flag.Description;
+                existing.UpdatedAt = DateTime.UtcNow;
             }
         }
 
         await _context.SaveChangesAsync();
+        
+        // Note: Cache will be cleared when FeatureFlagService is next used
+        // The cache uses a 5-minute TTL, so it will refresh automatically
     }
 
     private async Task SeedPermissionsAsync()

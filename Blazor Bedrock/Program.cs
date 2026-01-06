@@ -16,6 +16,7 @@ using Blazor_Bedrock.Services.Migrations;
 using Blazor_Bedrock.Services.Stripe;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Blazor_Bedrock.Services.Notification;
@@ -69,7 +70,34 @@ var serverVersion = ServerVersion.Parse("8.0.36-mysql"); // Change this to match
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, serverVersion));
 
-// Identity Configuration
+// Configure Authentication first (before Identity) to allow external providers
+var authBuilder = builder.Services.AddAuthentication();
+
+// External Authentication - Google
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret))
+{
+    authBuilder.AddGoogle(options =>
+    {
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleClientSecret;
+    });
+}
+
+// External Authentication - Facebook
+var facebookAppId = builder.Configuration["Authentication:Facebook:AppId"];
+var facebookAppSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
+if (!string.IsNullOrEmpty(facebookAppId) && !string.IsNullOrEmpty(facebookAppSecret))
+{
+    authBuilder.AddFacebook(options =>
+    {
+        options.AppId = facebookAppId;
+        options.AppSecret = facebookAppSecret;
+    });
+}
+
+// Identity Configuration (this will merge with existing authentication configuration)
 builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
 {
     // Password settings
@@ -108,32 +136,6 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.Name = ".AspNetCore.Identity.Application";
 });
 
-// External Authentication - Google
-var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
-var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
-if (!string.IsNullOrEmpty(googleClientId) && !string.IsNullOrEmpty(googleClientSecret))
-{
-    builder.Services.AddAuthentication()
-        .AddGoogle(options =>
-        {
-            options.ClientId = googleClientId;
-            options.ClientSecret = googleClientSecret;
-        });
-}
-
-// External Authentication - Facebook
-var facebookAppId = builder.Configuration["Authentication:Facebook:AppId"];
-var facebookAppSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
-if (!string.IsNullOrEmpty(facebookAppId) && !string.IsNullOrEmpty(facebookAppSecret))
-{
-    builder.Services.AddAuthentication()
-        .AddFacebook(options =>
-        {
-            options.AppId = facebookAppId;
-            options.AppSecret = facebookAppSecret;
-        });
-}
-
 // Notification Service
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
@@ -162,6 +164,7 @@ builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<ISafeNavigationService, SafeNavigationService>();
+builder.Services.AddScoped<Blazor_Bedrock.Services.ApiConfiguration.IApiConfigurationService, Blazor_Bedrock.Services.ApiConfiguration.ApiConfigurationService>();
 builder.Services.AddSingleton<IApplicationLoggerService, ApplicationLoggerService>();
 
 // Add custom logger provider to capture all logs
@@ -205,8 +208,17 @@ using (var scope = app.Services.CreateScope())
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
         
-        // Apply migrations
-        context.Database.Migrate();
+        // Apply migrations with error handling for existing tables
+        try
+        {
+            context.Database.Migrate();
+        }
+        catch (Exception ex) when (ex.Message.Contains("already exists") || ex.Message.Contains("Table") && ex.Message.Contains("already exists"))
+        {
+            // Table already exists - this is okay, migration may have been partially applied
+            var logger = services.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning(ex, "Some tables already exist. Migration may have been partially applied. Continuing...");
+        }
         
         // Seed database
         var seeder = new DatabaseSeeder(context, userManager, roleManager);
@@ -293,6 +305,104 @@ app.MapGet("/auth/logout-post", async (HttpContext context, IIdentityService ide
     }
     
     context.Response.Redirect("/auth/login");
+}).AllowAnonymous();
+
+// External authentication endpoints - initiate OAuth flow
+app.MapGet("/auth/external/google", async (HttpContext context) =>
+{
+    await context.ChallengeAsync("Google", new AuthenticationProperties
+    {
+        RedirectUri = "/signin-google"
+    });
+}).AllowAnonymous();
+
+app.MapGet("/auth/external/facebook", async (HttpContext context) =>
+{
+    await context.ChallengeAsync("Facebook", new AuthenticationProperties
+    {
+        RedirectUri = "/signin-facebook"
+    });
+}).AllowAnonymous();
+
+// External authentication callbacks
+app.MapGet("/signin-google", async (HttpContext context, IIdentityService identityService, ILogger<Program> logger) =>
+{
+    var loginInfo = await identityService.GetExternalLoginInfoAsync();
+    if (loginInfo == null)
+    {
+        logger.LogWarning("Failed to retrieve external login information for Google");
+        context.Response.Redirect("/auth/login?error=Failed to retrieve Google authentication information");
+        return;
+    }
+
+    // Try to sign in with external login
+    var signInResult = await identityService.ExternalLoginSignInAsync(loginInfo.LoginProvider, loginInfo.ProviderKey, isPersistent: true);
+    
+    if (signInResult.Succeeded)
+    {
+        context.Response.Redirect("/");
+        return;
+    }
+
+    // If sign-in failed, user doesn't exist yet - create them
+    if (signInResult.IsNotAllowed)
+    {
+        context.Response.Redirect("/auth/login?error=Account is not allowed");
+        return;
+    }
+
+    // Create new user from external login
+    var createResult = await identityService.CreateExternalUserAsync(loginInfo);
+    if (createResult.Succeeded)
+    {
+        context.Response.Redirect("/");
+    }
+    else
+    {
+        var errors = string.Join(", ", createResult.Errors.Select(e => e.Description));
+        logger.LogError("Failed to create user from Google authentication: {Errors}", errors);
+        context.Response.Redirect($"/auth/login?error={Uri.EscapeDataString(errors)}");
+    }
+}).AllowAnonymous();
+
+app.MapGet("/signin-facebook", async (HttpContext context, IIdentityService identityService, ILogger<Program> logger) =>
+{
+    var loginInfo = await identityService.GetExternalLoginInfoAsync();
+    if (loginInfo == null)
+    {
+        logger.LogWarning("Failed to retrieve external login information for Facebook");
+        context.Response.Redirect("/auth/login?error=Failed to retrieve Facebook authentication information");
+        return;
+    }
+
+    // Try to sign in with external login
+    var signInResult = await identityService.ExternalLoginSignInAsync(loginInfo.LoginProvider, loginInfo.ProviderKey, isPersistent: true);
+    
+    if (signInResult.Succeeded)
+    {
+        context.Response.Redirect("/");
+        return;
+    }
+
+    // If sign-in failed, user doesn't exist yet - create them
+    if (signInResult.IsNotAllowed)
+    {
+        context.Response.Redirect("/auth/login?error=Account is not allowed");
+        return;
+    }
+
+    // Create new user from external login
+    var createResult = await identityService.CreateExternalUserAsync(loginInfo);
+    if (createResult.Succeeded)
+    {
+        context.Response.Redirect("/");
+    }
+    else
+    {
+        var errors = string.Join(", ", createResult.Errors.Select(e => e.Description));
+        logger.LogError("Failed to create user from Facebook authentication: {Errors}", errors);
+        context.Response.Redirect($"/auth/login?error={Uri.EscapeDataString(errors)}");
+    }
 }).AllowAnonymous();
 
 // Health check endpoint for Cloud Run

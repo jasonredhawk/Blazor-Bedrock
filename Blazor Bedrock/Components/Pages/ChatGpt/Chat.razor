@@ -290,12 +290,22 @@ else
                     <i class="bi bi-chat-dots text-warning" style="font-size: 64px;"></i>
                     <h5 class="mt-3 mb-3">ChatGPT Not Configured</h5>
                     <p class="text-muted mb-4">
-                        Please configure your OpenAI API key in settings to start chatting.
+                        ChatGPT API key needs to be configured by a MasterAdmin in the Features Configuration page.
                     </p>
-                    <button class="btn btn-primary btn-lg" @onclick="NavigateToSettings">
-                        <i class="bi bi-gear me-2"></i>
-                        Configure API Key
-                    </button>
+                    @if (_isMasterAdmin)
+                    {
+                        <a href="/masteradmin/features" class="btn btn-primary btn-lg">
+                            <i class="bi bi-gear me-2"></i>
+                            Configure API Key
+                        </a>
+                    }
+                    else
+                    {
+                        <p class="text-muted">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Please contact your MasterAdmin to configure the ChatGPT API key.
+                        </p>
+                    }
                 </div>
             </div>
         </div>
@@ -887,6 +897,7 @@ else
 
 @code {
     private bool _hasApiKey = false;
+    private bool _isMasterAdmin = false;
     private string? _preferredModel;
     private List<ChatGptConversation> _conversations = new();
     private int? _currentConversationId;
@@ -942,6 +953,13 @@ else
         {
             var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var tenantId = TenantService.GetCurrentTenantId();
+            
+            // Check if user is MasterAdmin
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var user = await UserManager.FindByIdAsync(userId);
+                _isMasterAdmin = user?.IsMasterAdmin ?? false;
+            }
             
             if (!string.IsNullOrEmpty(userId) && tenantId != null)
             {
@@ -2189,10 +2207,6 @@ else
         }
     }
 
-    private void NavigateToSettings()
-    {
-        Navigation.NavigateTo("/chatgpt/settings");
-    }
 
     private string GetQueriesLimitClass(int currentCount, int maxCount)
     {
