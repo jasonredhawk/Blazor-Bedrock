@@ -5,6 +5,7 @@
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.JSInterop
 @inject IFeatureFlagService FeatureFlagService
 @inject IApiConfigurationService ApiConfigurationService
 @inject IChatGptService ChatGptService
@@ -12,6 +13,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
 @inject INotificationService NotificationService
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
 <PageTitle>Features Configuration</PageTitle>
@@ -352,6 +354,60 @@
                                 <small class="text-muted" style="font-size: 0.75rem;">From Google Cloud Console</small>
                             </div>
                         </div>
+                        <div class="mt-3 p-2 bg-light rounded">
+                            <label class="form-label small mb-1 fw-bold"><i class="bi bi-link-45deg me-1"></i>Redirect URI Configuration</label>
+                            <p class="small text-muted mb-2">Add these redirect URIs to your Google Cloud Console OAuth 2.0 Client ID under "Authorized redirect URIs":</p>
+                            
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">HTTPS (Recommended):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" 
+                                           class="form-control form-control-sm font-monospace" 
+                                           value="@_googleRedirectUriHttps" 
+                                           readonly />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => CopyRedirectUri(_googleRedirectUriHttps)" title="Copy to clipboard">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">HTTP (if testing with HTTP):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" 
+                                           class="form-control form-control-sm font-monospace" 
+                                           value="@_googleRedirectUriHttp" 
+                                           readonly />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => CopyRedirectUri(_googleRedirectUriHttp)" title="Copy to clipboard">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-warning py-2 mb-0 mt-2" style="font-size: 0.75rem;">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                <strong>Important:</strong> The redirect URI must match EXACTLY (including http/https, host, and port number). 
+                                <br />
+                                <strong>Current URL:</strong> <code>@Navigation.Uri</code>
+                                <br />
+                                If you're accessing via HTTPS, add the HTTPS redirect URI. If via HTTP, add the HTTP one.
+                                <br />
+                                <strong>Troubleshooting:</strong> If you still get "redirect_uri_mismatch" error, check:
+                                <ul class="mb-0 mt-1" style="font-size: 0.7rem;">
+                                    <li>The redirect URI in Google Cloud Console matches exactly (including port)</li>
+                                    <li>You're accessing the app using the same protocol (HTTP/HTTPS) as the redirect URI</li>
+                                    <li>Wait a few minutes after saving in Google Cloud Console for changes to propagate</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="mt-2">
+                                <small class="text-muted" style="font-size: 0.7rem;">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    <strong>Instructions:</strong> Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a> → 
+                                    Select your OAuth 2.0 Client ID → Add both redirect URIs above → Save
+                                </small>
+                            </div>
+                        </div>
                         <div class="d-flex justify-content-end mt-2">
                             <button class="btn btn-success btn-sm" @onclick="async () => await SaveGoogleAuthConfigurationAsync()" disabled="@_isSaving">
                                 <i class="bi bi-save me-1"></i>
@@ -498,6 +554,8 @@
     private string _googleClientSecret = string.Empty;
     private bool _showGoogleClientId = false;
     private bool _showGoogleClientSecret = false;
+    private string _googleRedirectUriHttps = string.Empty;
+    private string _googleRedirectUriHttp = string.Empty;
 
     // Facebook Auth configuration
     private string _facebookAppId = string.Empty;
@@ -536,6 +594,40 @@
         }
 
         await LoadConfigurationAsync();
+        
+        // Set up redirect URIs based on current base URL
+        var baseUri = Navigation.BaseUri;
+        var uri = new Uri(baseUri);
+        
+        // Generate redirect URIs - use the actual current URL scheme and port
+        if (uri.Scheme == "https")
+        {
+            // Current URL is HTTPS
+            _googleRedirectUriHttps = $"https://{uri.Host}:{uri.Port}/signin-google";
+            // Also provide HTTP version for testing
+            _googleRedirectUriHttp = $"http://{uri.Host}:5124/signin-google";
+        }
+        else
+        {
+            // Current URL is HTTP
+            _googleRedirectUriHttp = $"http://{uri.Host}:{uri.Port}/signin-google";
+            // Also provide HTTPS version (common development port)
+            _googleRedirectUriHttps = $"https://{uri.Host}:7035/signin-google";
+        }
+        
+        // If port is -1 (default port), use standard ports
+        if (uri.Port == -1 || uri.Port == 80 || uri.Port == 443)
+        {
+            if (uri.Scheme == "https")
+            {
+                _googleRedirectUriHttps = $"https://{uri.Host}/signin-google";
+            }
+            else
+            {
+                _googleRedirectUriHttp = $"http://{uri.Host}/signin-google";
+            }
+        }
+        
         _isInitialized = true;
     }
 
@@ -847,7 +939,7 @@
             }
 
             await ApiConfigurationService.SaveConfigurationAsync("GoogleAuth", config, userId);
-            await NotificationService.ShowSuccessAsync("Google Authentication configuration saved successfully.");
+            await NotificationService.ShowSuccessAsync("Google Authentication configuration saved successfully. Please restart the application for the changes to take effect.");
         }
         catch (Exception ex)
         {
@@ -884,7 +976,7 @@
             }
 
             await ApiConfigurationService.SaveConfigurationAsync("FacebookAuth", config, userId);
-            await NotificationService.ShowSuccessAsync("Facebook Authentication configuration saved successfully.");
+            await NotificationService.ShowSuccessAsync("Facebook Authentication configuration saved successfully. Please restart the application for the changes to take effect.");
         }
         catch (Exception ex)
         {
@@ -893,6 +985,19 @@
         finally
         {
             _isSaving = false;
+        }
+    }
+
+    private async Task CopyRedirectUri(string uri)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", uri);
+            await NotificationService.ShowSuccessAsync("Redirect URI copied to clipboard!");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Failed to copy to clipboard: {ex.Message}");
         }
     }
 }
