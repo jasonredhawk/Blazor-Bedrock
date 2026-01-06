@@ -161,6 +161,7 @@ builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IIdentityService, IdentityService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMenuService, MenuService>();
+builder.Services.AddScoped<ISafeNavigationService, SafeNavigationService>();
 builder.Services.AddSingleton<IApplicationLoggerService, ApplicationLoggerService>();
 
 // Add custom logger provider to capture all logs

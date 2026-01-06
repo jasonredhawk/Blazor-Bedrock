@@ -7,6 +7,7 @@
 @using Blazor_Bedrock.Services.Logger
 @using Blazor_Bedrock.Services
 @using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Navigation
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Authorization
@@ -22,6 +23,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
+@inject ISafeNavigationService SafeNavigation
 @inject INotificationService NotificationService
 @inject ILogger<UserEdit> Logger
 @inject IApplicationLoggerService AppLogger
@@ -267,19 +269,19 @@
                 if (!hasPermission)
                 {
                     await NotificationService.ShowErrorAsync($"You do not have permission to {(_isEdit ? "edit" : "add")} users.");
-                    Navigation.NavigateTo("/admin/users");
+                    SafeNavigation.NavigateTo("/admin/users");
                     return;
                 }
             }
             else
             {
-                Navigation.NavigateTo("/");
+                SafeNavigation.NavigateTo("/");
                 return;
             }
         }
         else
         {
-            Navigation.NavigateTo("/auth/login");
+            SafeNavigation.NavigateTo("/auth/login");
             return;
         }
 
@@ -287,7 +289,7 @@
         if (!tenantIdForData.HasValue)
         {
             await NotificationService.ShowErrorAsync("No tenant selected");
-            Navigation.NavigateTo("/");
+            SafeNavigation.NavigateTo("/");
             return;
         }
 
@@ -426,7 +428,7 @@
         if (firstRender && _featureDisabled)
         {
             await Task.Delay(100);
-            Navigation.NavigateTo("/?error=" + Uri.EscapeDataString("User management feature has been disabled"));
+            SafeNavigation.NavigateTo("/?error=" + Uri.EscapeDataString("User management feature has been disabled"));
             return;
         }
         
@@ -554,7 +556,7 @@
 
                     Logger.LogInformation("[UserEdit.HandleSubmit] Role update complete. Navigating to user list.");
                     await NotificationService.ShowSuccessAsync("User updated successfully");
-                    Navigation.NavigateTo("/admin/users");
+                    SafeNavigation.NavigateTo("/admin/users");
                 }
                 else
                 {
@@ -599,7 +601,7 @@
                 }
 
                 await NotificationService.ShowSuccessAsync("User added to organization successfully");
-                Navigation.NavigateTo("/admin/users");
+                SafeNavigation.NavigateTo("/admin/users");
             }
         }
         catch (Exception ex)
@@ -614,7 +616,7 @@
 
     private void NavigateBack()
     {
-        Navigation.NavigateTo("/admin/users");
+        SafeNavigation.NavigateTo("/admin/users");
     }
 
 }

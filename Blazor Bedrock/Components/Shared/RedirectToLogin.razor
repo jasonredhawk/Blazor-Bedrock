@@ -1,8 +1,10 @@
+@using Blazor_Bedrock.Services.Navigation
 @inject NavigationManager Navigation
+@inject ISafeNavigationService SafeNavigation
 @code {
     protected override void OnInitialized()
     {
-        Navigation.NavigateTo("/auth/login", forceLoad: true);
+        SafeNavigation.NavigateTo("/auth/login", forceLoad: true);
     }
 }
 

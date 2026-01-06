@@ -1,5 +1,6 @@
 @using Blazor_Bedrock.Services.Tenant
 @using Blazor_Bedrock.Services
+@using Blazor_Bedrock.Services.Navigation
 @using Blazor_Bedrock.Components.Layout
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -8,6 +9,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
+@inject ISafeNavigationService SafeNavigation
 @inject INotificationService NotificationService
 @inject IDatabaseSyncService DbSync
 @rendermode InteractiveServer
@@ -88,6 +90,6 @@ else
 
     private void NavigateToCreateOrganization()
     {
-        Navigation.NavigateTo("/tenant/create-organization");
+        SafeNavigation.NavigateTo("/tenant/create-organization");
     }
 }
