@@ -208,16 +208,57 @@ using (var scope = app.Services.CreateScope())
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
         
-        // Apply migrations with error handling for existing tables
+        // Ensure database exists
+        var logger = services.GetRequiredService<ILogger<Program>>();
         try
         {
-            context.Database.Migrate();
+            var canConnect = await context.Database.CanConnectAsync();
+            if (!canConnect)
+            {
+                logger.LogInformation("Database does not exist. Creating database...");
+                await context.Database.EnsureCreatedAsync();
+                logger.LogInformation("Database created successfully.");
+            }
+            else
+            {
+                logger.LogInformation("Database connection verified.");
+            }
         }
-        catch (Exception ex) when (ex.Message.Contains("already exists") || ex.Message.Contains("Table") && ex.Message.Contains("already exists"))
+        catch (Exception ex)
         {
-            // Table already exists - this is okay, migration may have been partially applied
-            var logger = services.GetRequiredService<ILogger<Program>>();
-            logger.LogWarning(ex, "Some tables already exist. Migration may have been partially applied. Continuing...");
+            logger.LogError(ex, "Error checking/creating database. This may be normal if the database server is not available.");
+            // Continue - migrations will handle database creation if needed
+        }
+        
+        // Apply migrations - this will create all tables and apply schema changes
+        try
+        {
+            logger.LogInformation("Applying database migrations...");
+            var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+            if (pendingMigrations.Any())
+            {
+                logger.LogInformation("Found {Count} pending migration(s): {Migrations}", 
+                    pendingMigrations.Count(), 
+                    string.Join(", ", pendingMigrations));
+            }
+            
+            await context.Database.MigrateAsync();
+            logger.LogInformation("Database migrations applied successfully.");
+        }
+        catch (MySqlConnector.MySqlException ex) when (ex.Message.Contains("already exists") || 
+                                                       (ex.Message.Contains("Table") && ex.Message.Contains("already exists")))
+        {
+            // Table already exists - this can happen if migrations were partially applied
+            // This is acceptable and we can continue
+            logger.LogWarning(ex, "Some tables already exist. This may indicate a partially applied migration. Continuing...");
+        }
+        catch (Exception ex)
+        {
+            // For a fresh database, migration errors should be logged but we should still try to continue
+            // The application may still work if core tables exist
+            logger.LogError(ex, "An error occurred during database migration: {ErrorMessage}", ex.Message);
+            logger.LogWarning("Attempting to continue application startup despite migration error. Some features may not work correctly.");
+            // Don't rethrow - allow application to start, but log the error clearly
         }
         
         // Seed database

@@ -13,6 +13,9 @@ public class Tenant
     // Subscription
     public int? SubscriptionPlanId { get; set; }
     
+    // ChatGPT Configuration
+    public string? PreferredModel { get; set; }
+    
     // Navigation properties
     public virtual SubscriptionPlan? SubscriptionPlan { get; set; }
     public virtual ICollection<UserTenant> UserTenants { get; set; } = new List<UserTenant>();

@@ -279,50 +279,137 @@ else
         text-overflow: ellipsis;
         max-width: 200px;
     }
+    
+    /* Mobile Responsive Styles */
+    @media (max-width: 767.98px) {
+        .chat-page-container {
+            height: calc(100vh - 56px - var(--logger-height, 0px)) !important;
+            max-height: calc(100vh - 56px - var(--logger-height, 0px)) !important;
+            margin-top: 0 !important;
+        }
+        
+        .sidebar-mobile-toggle {
+            display: block !important;
+            position: fixed;
+            top: 60px;
+            left: 12px;
+            z-index: 1000;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .conversation-sidebar-wrapper {
+            position: fixed !important;
+            top: 56px !important;
+            left: 0 !important;
+            width: 100% !important;
+            max-width: 320px !important;
+            height: calc(100vh - 56px - var(--logger-height, 0px)) !important;
+            max-height: calc(100vh - 56px - var(--logger-height, 0px)) !important;
+            z-index: 999 !important;
+            background: white;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+        }
+        
+        .conversation-sidebar-wrapper.show {
+            transform: translateX(0) !important;
+        }
+        
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 56px;
+            left: 0;
+            width: 100%;
+            height: calc(100vh - 56px - var(--logger-height, 0px));
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+        
+        .sidebar-overlay.show {
+            display: block;
+        }
+        
+        .chat-main-wrapper {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            max-width: 100% !important;
+        }
+        
+        .message-bubble {
+            max-width: 85%;
+        }
+        
+        .chat-page-container .row {
+            flex-direction: row;
+        }
+        
+        .chat-page-container .row > .col-md-3 {
+            display: none !important;
+        }
+        
+        .chat-page-container .row > .col-md-9 {
+            flex: 1 1 100% !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+    }
+    
+    @media (min-width: 768px) {
+        .sidebar-mobile-toggle {
+            display: none !important;
+        }
+        
+        .sidebar-overlay {
+            display: none !important;
+        }
+        
+        .conversation-sidebar-wrapper {
+            position: relative !important;
+            transform: none !important;
+            top: auto !important;
+            left: auto !important;
+            width: auto !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            z-index: auto !important;
+            box-shadow: none !important;
+        }
+    }
 </style>
 
 <div class="container-fluid p-0 chat-page-container" style="height: calc(100vh - 56px - var(--logger-height, 0px) - 32px); max-height: calc(100vh - 56px - var(--logger-height, 0px) - 32px); overflow: hidden; position: relative; width: 100%; box-sizing: border-box; margin: 0; margin-top: -1.5rem; display: flex; flex-direction: column;">
-    @if (!_hasApiKey)
+    @if (!_featureDisabled)
     {
-        <div class="container mt-5" style="max-width: 600px;">
-            <div class="card shadow text-center">
-                <div class="card-body p-5">
-                    <i class="bi bi-chat-dots text-warning" style="font-size: 64px;"></i>
-                    <h5 class="mt-3 mb-3">ChatGPT Not Configured</h5>
-                    <p class="text-muted mb-4">
-                        ChatGPT API key needs to be configured by a MasterAdmin in the Features Configuration page.
-                    </p>
-                    @if (_isMasterAdmin)
-                    {
-                        <a href="/masteradmin/features" class="btn btn-primary btn-lg">
-                            <i class="bi bi-gear me-2"></i>
-                            Configure API Key
-                        </a>
-                    }
-                    else
-                    {
-                        <p class="text-muted">
-                            <i class="bi bi-info-circle me-2"></i>
-                            Please contact your MasterAdmin to configure the ChatGPT API key.
-                        </p>
-                    }
-                </div>
-            </div>
-        </div>
-    }
-    else
-    {
+        @* Mobile Sidebar Toggle Button *@
+        <button class="btn btn-sm sidebar-mobile-toggle" @onclick="ToggleSidebar" title="Toggle Sidebar">
+            <i class="bi bi-list"></i>
+        </button>
+        
+        @* Mobile Sidebar Overlay *@
+        <div class="sidebar-overlay @(_sidebarVisible ? "show" : "")" @onclick="CloseSidebar"></div>
+        
         <div class="row g-0" style="height: 100%; max-height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important; flex-grow: 1;">
             @* Left Sidebar - Conversations and Questions *@
-            <div class="col-md-3 p-0" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%; display: flex; flex-direction: column; border-right: 1px solid #dee2e6;">
+            <div class="col-md-3 p-0 conversation-sidebar-wrapper @(_sidebarVisible ? "show" : "")" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; max-width: 100%; display: flex; flex-direction: column; border-right: 1px solid #dee2e6;">
                 <div class="conversation-sidebar" style="height: 100%; max-height: 100%; width: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;">
                     @* Conversations Section *@
                     <div style="padding: 16px; border-bottom: 1px solid #dee2e6;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0">Conversations</h6>
-                            <button class="btn btn-sm btn-primary" @onclick="CreateNewConversation" title="New Conversation">
-                                <i class="bi bi-plus-circle"></i>
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" @onclick="CreateNewConversation" title="New Conversation">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary d-md-none" @onclick="CloseSidebar" title="Close Sidebar">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         @if (!string.IsNullOrEmpty(_preferredModel))
                         {
@@ -527,7 +614,7 @@ else
             </div>
             
             @* Main Chat Area *@
-            <div class="col-md-9 p-0" style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
+            <div class="col-md-9 p-0 chat-main-wrapper" style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
                 <div style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
                     @* Header *@
                     <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex: 0 0 auto; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
@@ -541,12 +628,9 @@ else
                                 <h6 class="mb-0" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                     @(_currentConversationId.HasValue ? GetCurrentConversationTitle() : "New Conversation")
                                 </h6>
-                                @if (!string.IsNullOrEmpty(_preferredModel))
-                                {
-                                    <small class="text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                        Model: @_preferredModel
-                                    </small>
-                                }
+                                <small class="text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    Model: <button type="button" @onclick="OpenModelSelector" class="btn btn-link p-0 text-primary border-0 align-baseline" style="font-size: 0.875rem; text-decoration: underline; cursor: pointer; vertical-align: baseline;">@(_preferredModel ?? "Default")</button>
+                                </small>
                                 @if (_currentConversationId.HasValue && _conversationLimitations?.MaxQueriesPerConversation.HasValue == true)
                                 {
                                     var userMessageCount = _messages.Count(m => m.Role == "user");
@@ -895,10 +979,51 @@ else
 </div>
 }
 
+<!-- Model Selector Modal -->
+<div class="modal fade" id="modelSelectorModal" tabindex="-1" aria-labelledby="modelSelectorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modelSelectorModalLabel">Select ChatGPT Model</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Choose a model for this organization. This preference will be saved and used for all new conversations.</p>
+                <div class="mb-3">
+                    <label for="modelSelect" class="form-label small">Model</label>
+                    <select class="form-select" id="modelSelect" @bind="_selectedModel" disabled="@_isLoading">
+                        <option value="">Use Default (@_defaultModelDisplay)</option>
+                        @foreach (var model in _availableModels)
+                        {
+                            <option value="@model">@model</option>
+                        }
+                    </select>
+                    <small class="text-muted" style="font-size: 0.75rem;">Tenant-level preference</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveModelSelection" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    }
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @code {
     private bool _hasApiKey = false;
     private bool _isMasterAdmin = false;
     private string? _preferredModel;
+    private string? _selectedModel;
+    private List<string> _availableModels = new();
+    private bool _isLoadingModels = false;
+    private bool _showModelSelector = false;
+    private string _defaultModelDisplay = "Default";
     private List<ChatGptConversation> _conversations = new();
     private int? _currentConversationId;
     private List<ChatGptMessage> _messages = new();
@@ -936,6 +1061,9 @@ else
 
     private bool _featureDisabled = false;
     private string? _featureError = null;
+    
+    // Mobile sidebar state
+    private bool _sidebarVisible = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -969,6 +1097,14 @@ else
                     var apiKey = await ChatGptService.GetDecryptedApiKeyAsync(userId, tenantId);
                     _hasApiKey = true;
                     _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
+                    _selectedModel = _preferredModel;
+                    
+                    // Get default model for display
+                    var defaultModel = await ChatGptService.GetPreferredModelAsync(null);
+                    _defaultModelDisplay = defaultModel ?? "gpt-3.5-turbo";
+                    
+                    // Load available models (try from API, fallback to default)
+                    await LoadAvailableModelsAsync(apiKey);
                     
                     // Load prompts (only Chat type for chat page)
                     _availablePrompts = await PromptService.GetAllPromptsAsync(tenantId, PromptType.Chat);
@@ -1237,6 +1373,9 @@ else
             _currentPromptIdForConversation = _selectedPromptId;
             _conversations = await ChatGptService.GetConversationsAsync(userId, tenantId);
             
+            // Close sidebar on mobile when new conversation is created
+            _sidebarVisible = false;
+            
             // Refresh limitation counter
             if (_subscriptionsEnabled)
             {
@@ -1270,6 +1409,9 @@ else
     {
         _currentConversationId = conversationId;
         _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        
+        // Close sidebar on mobile when conversation is loaded
+        _sidebarVisible = false;
         
         // Simple chat - no batch processing needed
         
@@ -1411,6 +1553,101 @@ else
         _currentPromptIdForConversation = _selectedPromptId;
         StateHasChanged();
     }
+    
+    private async Task LoadAvailableModelsAsync(string apiKey)
+    {
+        _isLoadingModels = true;
+        try
+        {
+            _availableModels = await ChatGptService.GetAvailableModelsAsync(apiKey);
+            // If no models returned, use default list
+            if (!_availableModels.Any())
+            {
+                _availableModels = new List<string>
+                {
+                    "gpt-4o-2024-11-20",
+                    "gpt-4o-mini-2024-11-20",
+                    "gpt-4-turbo-2024-04-09",
+                    "gpt-4-0125-preview",
+                    "gpt-4",
+                    "gpt-3.5-turbo-0125",
+                    "gpt-3.5-turbo-16k",
+                    "gpt-3.5-turbo"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fallback to default models on error
+            _availableModels = new List<string>
+            {
+                "gpt-4o-2024-11-20",
+                "gpt-4o-mini-2024-11-20",
+                "gpt-4-turbo-2024-04-09",
+                "gpt-4-0125-preview",
+                "gpt-4",
+                "gpt-3.5-turbo-0125",
+                "gpt-3.5-turbo-16k",
+                "gpt-3.5-turbo"
+            };
+            Logger.LogWarning(ex, "Failed to load available models from API, using default list");
+        }
+        finally
+        {
+            _isLoadingModels = false;
+        }
+    }
+    
+    private async Task OpenModelSelector()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        if (!tenantId.HasValue)
+        {
+            await NotificationService.ShowWarningAsync("Please select an organization to change model preference.");
+            return;
+        }
+        
+        // Set current model as selected
+        _selectedModel = _preferredModel;
+        _showModelSelector = true;
+        StateHasChanged();
+        
+        // Show modal using JavaScript
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('modelSelectorModal')).show()");
+    }
+    
+    private async Task SaveModelSelection()
+    {
+        var tenantId = TenantService.GetCurrentTenantId();
+        if (!tenantId.HasValue)
+        {
+            await NotificationService.ShowWarningAsync("Please select an organization to save model preference.");
+            return;
+        }
+        
+        _isLoading = true;
+        try
+        {
+            await ChatGptService.SaveTenantPreferredModelAsync(tenantId.Value, _selectedModel);
+            _preferredModel = await ChatGptService.GetPreferredModelAsync(tenantId);
+            await NotificationService.ShowSuccessAsync($"Model preference saved. Using: {(_preferredModel ?? "Default")}");
+            
+            // Close modal
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('modelSelectorModal'))?.hide()");
+            _showModelSelector = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving model preference: {ex.Message}");
+            Logger.LogError(ex, "Error saving tenant preferred model");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+    
 
     private async Task OnDocumentChanged(ChangeEventArgs e)
     {
@@ -2344,6 +2581,16 @@ else
     private void NavigateToQuestions()
     {
         Navigation.NavigateTo("/chatgpt/questions");
+    }
+    
+    private void ToggleSidebar()
+    {
+        _sidebarVisible = !_sidebarVisible;
+    }
+    
+    private void CloseSidebar()
+    {
+        _sidebarVisible = false;
     }
     
     /// <summary>

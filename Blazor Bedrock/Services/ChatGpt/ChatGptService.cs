@@ -25,6 +25,7 @@ public interface IChatGptService
 {
     Task<string> GetDecryptedApiKeyAsync(string userId, int? tenantId);
     Task<string?> GetPreferredModelAsync(int? tenantId);
+    Task SaveTenantPreferredModelAsync(int tenantId, string? preferredModel);
     Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null);
     Task<List<string>> GetAvailableModelsAsync(string apiKey);
     Task<string> SendChatMessageAsync(string userId, int? tenantId, string message, string? model = null, string? systemPrompt = null);
@@ -100,8 +101,36 @@ public class ChatGptService : IChatGptService
 
     public async Task<string?> GetPreferredModelAsync(int? tenantId)
     {
-        // Get preferred model from MasterAdmin-level configuration
+        // First check tenant-level preference
+        if (tenantId.HasValue)
+        {
+            var tenant = await _dbSync.ExecuteAsync(async () =>
+            {
+                return await _context.Tenants.FindAsync(tenantId.Value);
+            });
+            
+            if (tenant != null && !string.IsNullOrEmpty(tenant.PreferredModel))
+            {
+                return tenant.PreferredModel;
+            }
+        }
+        
+        // Fallback to MasterAdmin-level default model
         return await _apiConfigurationService.GetConfigurationValueAsync("ChatGPT", "PreferredModel");
+    }
+    
+    public async Task SaveTenantPreferredModelAsync(int tenantId, string? preferredModel)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var tenant = await _context.Tenants.FindAsync(tenantId);
+            if (tenant != null)
+            {
+                tenant.PreferredModel = preferredModel;
+                tenant.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        });
     }
 
     public async Task SaveApiKeyAsync(string userId, int? tenantId, string apiKey, string? preferredModel = null)
@@ -216,13 +245,51 @@ public class ChatGptService : IChatGptService
             }
 
             const string baseUrl = "https://api.openai.com";
-            var requestBody = new
+            
+            // Determine which parameters to use based on model version
+            // Newer models (gpt-5.x, o1, o3) use max_completion_tokens
+            // Older models use max_tokens
+            // Some models (o1, o3) don't support temperature
+            bool useMaxCompletionTokens = model.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase) ||
+                                         model.StartsWith("o1", StringComparison.OrdinalIgnoreCase) ||
+                                         model.StartsWith("o3", StringComparison.OrdinalIgnoreCase);
+            
+            bool supportsTemperature = !model.StartsWith("o1", StringComparison.OrdinalIgnoreCase) &&
+                                      !model.StartsWith("o3", StringComparison.OrdinalIgnoreCase);
+            
+            object requestBody;
+            if (useMaxCompletionTokens && supportsTemperature)
             {
-                model = model,
-                messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
-                max_tokens = 2000,
-                temperature = 0.7
-            };
+                // Newer models that support temperature (gpt-5.x)
+                requestBody = new
+                {
+                    model = model,
+                    messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
+                    max_completion_tokens = 2000,
+                    temperature = 0.7
+                };
+            }
+            else if (useMaxCompletionTokens && !supportsTemperature)
+            {
+                // Models that use max_completion_tokens but don't support temperature (o1, o3)
+                requestBody = new
+                {
+                    model = model,
+                    messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
+                    max_completion_tokens = 2000
+                };
+            }
+            else
+            {
+                // Older models (gpt-3.5, gpt-4, etc.)
+                requestBody = new
+                {
+                    model = model,
+                    messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
+                    max_tokens = 2000,
+                    temperature = 0.7
+                };
+            }
 
             // Create a new HTTP request with custom headers
             var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/chat/completions");

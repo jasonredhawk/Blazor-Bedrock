@@ -1,11 +1,13 @@
 @page "/masteradmin/features"
 @using Blazor_Bedrock.Services.FeatureFlag
 @using Blazor_Bedrock.Services.ApiConfiguration
+@using Blazor_Bedrock.Services.ChatGpt
 @using Blazor_Bedrock.Data.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject IFeatureFlagService FeatureFlagService
 @inject IApiConfigurationService ApiConfigurationService
+@inject IChatGptService ChatGptService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
@@ -243,7 +245,31 @@
                                         <i class="bi @(_showChatGptApiKey ? "bi-eye-slash" : "bi-eye")"></i>
                                     </button>
                                 </div>
-                                <small class="text-muted" style="font-size: 0.75rem;">Get one at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></small>
+                                <div class="d-flex align-items-center gap-2 mt-1">
+                                    <small class="text-muted" style="font-size: 0.75rem;">Get one at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></small>
+                                    @if (!string.IsNullOrEmpty(_chatGptApiKey))
+                                    {
+                                        <button class="btn btn-outline-info btn-sm" @onclick="TestChatGptApiKey" disabled="@_isTestingApiKey" style="font-size: 0.75rem;">
+                                            @if (_isTestingApiKey)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                <span>Testing...</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-check-circle me-1"></i>
+                                                <span>Test & Load Models</span>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                                @if (_testResult != null)
+                                {
+                                    <div class="alert alert-@(_testResult.Success ? "success" : "danger") alert-sm mt-2 mb-0 py-1" style="font-size: 0.75rem;">
+                                        <i class="bi @(_testResult.Success ? "bi-check-circle" : "bi-x-circle") me-1"></i>
+                                        @_testResult.Message
+                                    </div>
+                                }
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small mb-1"><i class="bi bi-cpu me-1"></i>Default Model</label>
@@ -447,6 +473,8 @@
     private string _chatGptApiKey = string.Empty;
     private string _chatGptPreferredModel = string.Empty;
     private bool _showChatGptApiKey = false;
+    private bool _isTestingApiKey = false;
+    private TestResult? _testResult;
     private List<string> _availableModels = new()
     {
         "gpt-4o-2024-11-20",
@@ -458,6 +486,12 @@
         "gpt-3.5-turbo-16k",
         "gpt-3.5-turbo"
     };
+
+    private class TestResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
 
     // Google Auth configuration
     private string _googleClientId = string.Empty;
@@ -666,6 +700,87 @@
         await ToggleFeatureAsync("Logger_Enabled", _loggerEnabled);
     }
 
+    private async Task TestChatGptApiKey()
+    {
+        if (string.IsNullOrWhiteSpace(_chatGptApiKey))
+        {
+            _testResult = new TestResult
+            {
+                Success = false,
+                Message = "Please enter an API key to test."
+            };
+            StateHasChanged();
+            return;
+        }
+
+        _isTestingApiKey = true;
+        _testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            // Test the API key by fetching available models
+            var models = await ChatGptService.GetAvailableModelsAsync(_chatGptApiKey);
+            
+            if (models != null && models.Any())
+            {
+                // Update available models with the fetched list
+                _availableModels = models;
+                
+                _testResult = new TestResult
+                {
+                    Success = true,
+                    Message = $"API key is valid! Found {models.Count} available models. You can now select a model from the dropdown."
+                };
+                
+                await NotificationService.ShowSuccessAsync($"API key validated successfully. Found {models.Count} models.");
+                
+                // Auto-save the API key if test is successful
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    var config = new Dictionary<string, string>
+                    {
+                        ["ApiKey"] = _chatGptApiKey
+                    };
+                    
+                    // Preserve existing preferred model if set
+                    if (!string.IsNullOrEmpty(_chatGptPreferredModel))
+                    {
+                        config["PreferredModel"] = _chatGptPreferredModel;
+                    }
+                    
+                    await ApiConfigurationService.SaveConfigurationAsync("ChatGPT", config, userId);
+                }
+            }
+            else
+            {
+                _testResult = new TestResult
+                {
+                    Success = false,
+                    Message = "API key test completed but no models were found. The key may be invalid or have limited access."
+                };
+                await NotificationService.ShowWarningAsync("API key test completed but no models were found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _testResult = new TestResult
+            {
+                Success = false,
+                Message = $"API key test failed: {ex.Message}"
+            };
+            await NotificationService.ShowErrorAsync($"Error testing API key: {ex.Message}");
+        }
+        finally
+        {
+            _isTestingApiKey = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task SaveChatGptConfigurationAsync()
     {
         try
@@ -692,6 +807,9 @@
 
             await ApiConfigurationService.SaveConfigurationAsync("ChatGPT", config, userId);
             await NotificationService.ShowSuccessAsync("ChatGPT configuration saved successfully.");
+            
+            // Clear test result after saving
+            _testResult = null;
         }
         catch (Exception ex)
         {
@@ -700,6 +818,7 @@
         finally
         {
             _isSaving = false;
+            StateHasChanged();
         }
     }
 

@@ -12,6 +12,7 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.Name).IsRequired().HasMaxLength(200);
         builder.Property(t => t.Description).HasMaxLength(1000);
         builder.Property(t => t.Domain).HasMaxLength(255);
+        builder.Property(t => t.PreferredModel).HasMaxLength(100);
         builder.HasIndex(t => t.Name);
         builder.HasIndex(t => t.Domain);
         
