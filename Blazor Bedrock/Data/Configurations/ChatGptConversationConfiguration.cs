@@ -27,6 +27,11 @@ public class ChatGptConversationConfiguration : IEntityTypeConfiguration<ChatGpt
             .HasForeignKey(c => c.TenantId)
             .OnDelete(DeleteBehavior.SetNull);
             
+        builder.HasOne(c => c.RagGroup)
+            .WithMany()
+            .HasForeignKey(c => c.RagGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+            
         builder.HasMany(c => c.Messages)
             .WithOne(m => m.Conversation)
             .HasForeignKey(m => m.ConversationId)

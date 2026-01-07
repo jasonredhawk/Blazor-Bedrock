@@ -722,7 +722,7 @@ else
                             <div class="d-flex align-items-center mt-2" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
                                 <div style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;">
                                     <label class="form-label small mb-1">Knowledge Base (RAG)</label>
-                                    <select class="form-select form-select-sm" value="@_selectedRagGroupId" @onchange="OnRagGroupChanged" disabled="@_isLoading">
+                                    <select class="form-select form-select-sm" value="@_selectedRagGroupId" @onchange="OnRagGroupChanged" @bind:event="onchange" disabled="@_isLoading">
                                         <option value="">No Knowledge Base</option>
                                         @foreach (var ragGroup in _availableRagGroups)
                                         {
@@ -734,7 +734,7 @@ else
                                 @if (_selectedRagGroupId.HasValue)
                                 {
                                     <div class="d-flex align-items-center gap-2" style="flex-shrink: 0; margin-top: 1.5rem;">
-                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedRagGroup" title="Remove knowledge base">
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedRagGroup" disabled="@_isLoading" title="Remove knowledge base">
                                             <i class="bi bi-x"></i>
                                         </button>
                                     </div>
@@ -1407,7 +1407,7 @@ else
         
         if (!string.IsNullOrEmpty(userId) && tenantId != null)
         {
-            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId);
+            var conversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, null, _selectedRagGroupId);
             _currentConversationId = conversation.Id;
             _messages = new();
             // Keep prompt selection for new conversation
@@ -1500,6 +1500,25 @@ else
                 _selectedSheetNames.Clear();
             }
             
+            // Load the RAG group associated with this conversation
+            if (conversation.RagGroupId.HasValue)
+            {
+                // Verify the RAG group still exists and is available
+                var ragGroup = _availableRagGroups.FirstOrDefault(r => r.Id == conversation.RagGroupId.Value);
+                if (ragGroup != null)
+                {
+                    _selectedRagGroupId = conversation.RagGroupId.Value;
+                }
+                else
+                {
+                    _selectedRagGroupId = null;
+                }
+            }
+            else
+            {
+                _selectedRagGroupId = null;
+            }
+            
             // Reload conversations to ensure we have the latest data including uploaded document IDs
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -1514,6 +1533,7 @@ else
             _selectedPromptId = null;
             _selectedDocumentId = null;
             _conversationDocumentId = null;
+            _selectedRagGroupId = null;
         }
         
         _currentPromptIdForConversation = _selectedPromptId;
@@ -1690,7 +1710,7 @@ else
     }
     
 
-    private void OnRagGroupChanged(ChangeEventArgs e)
+    private async Task OnRagGroupChanged(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var ragGroupId) && ragGroupId > 0)
         {
@@ -1700,11 +1720,27 @@ else
         {
             _selectedRagGroupId = null;
         }
+        
+        // If there's an active conversation, update it with the new RAG group
+        if (_currentConversationId.HasValue)
+        {
+            await ChatGptService.UpdateConversationRagGroupAsync(_currentConversationId.Value, _selectedRagGroupId);
+        }
+        
+        StateHasChanged();
     }
 
-    private void ClearSelectedRagGroup()
+    private async Task ClearSelectedRagGroup()
     {
         _selectedRagGroupId = null;
+        
+        // If there's an active conversation, update it to remove the RAG group
+        if (_currentConversationId.HasValue)
+        {
+            await ChatGptService.UpdateConversationRagGroupAsync(_currentConversationId.Value, null);
+        }
+        
+        StateHasChanged();
     }
 
     private async Task OnDocumentChanged(ChangeEventArgs e)
@@ -1947,7 +1983,7 @@ else
                 _uploadProgress = "Uploading file to OpenAI...";
                 StateHasChanged();
                 conversation = await ChatGptService.CreateConversationAsync(
-                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, selectedSheets, progress);
+                    userId, tenantId, title, _preferredModel, _selectedPromptId, _selectedDocumentId.Value, _selectedRagGroupId, selectedSheets, progress);
                 
                 var newConversationId = conversation.Id;
                 _currentConversationId = newConversationId;
@@ -2107,7 +2143,7 @@ else
             if (!_currentConversationId.HasValue)
             {
                 var selectedSheets = _selectedSheetNames.Any() ? _selectedSheetNames.ToList() : null;
-                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, _selectedDocumentId, selectedSheets);
+                var newConversation = await ChatGptService.CreateConversationAsync(userId, tenantId, "New Conversation", _preferredModel, _selectedPromptId, _selectedDocumentId, _selectedRagGroupId, selectedSheets);
                 _currentConversationId = newConversation.Id;
                 _messages = new List<ChatGptMessage>();
                 // Track the current prompt and document for this new conversation
@@ -2404,22 +2440,77 @@ else
                 }
             }
 
-            // Query RAG group if selected
+            // Query RAG group if selected - use conversation's saved RAG group or current selection
             string? ragContext = null;
-            if (_selectedRagGroupId.HasValue && _ragEnabled && !string.IsNullOrWhiteSpace(_messageText))
+            int? ragGroupIdToUse = null;
+            
+            // First, check if conversation has a saved RAG group
+            if (conversationForApi?.RagGroupId.HasValue == true)
             {
+                ragGroupIdToUse = conversationForApi.RagGroupId.Value;
+            }
+            // Otherwise, use the currently selected RAG group (for new conversations)
+            else if (_selectedRagGroupId.HasValue)
+            {
+                ragGroupIdToUse = _selectedRagGroupId.Value;
+            }
+            
+            if (ragGroupIdToUse.HasValue && _ragEnabled && !string.IsNullOrWhiteSpace(_messageText))
+            {
+                Console.WriteLine($"[SendMessage] Querying RAG group {ragGroupIdToUse.Value} for query: {_messageText.Substring(0, Math.Min(50, _messageText.Length))}...");
                 try
                 {
-                    var ragResults = await RagService.QueryRagGroupAsync(_selectedRagGroupId.Value, _messageText, userId, tenantId.Value);
-                    if (ragResults.Any())
+                    var ragResults = await RagService.QueryRagGroupAsync(ragGroupIdToUse.Value, _messageText, userId, tenantId.Value);
+                    Console.WriteLine($"[SendMessage] RAG query returned {ragResults?.Count ?? 0} results");
+                    
+                    if (ragResults != null && ragResults.Any())
                     {
-                        ragContext = string.Join("\n\n", ragResults);
+                        // Format RAG results with better structure for ChatGPT
+                        var ragContextBuilder = new System.Text.StringBuilder();
+                        ragContextBuilder.AppendLine("Relevant information from the knowledge base:");
+                        ragContextBuilder.AppendLine();
+                        
+                        for (int i = 0; i < ragResults.Count; i++)
+                        {
+                            ragContextBuilder.AppendLine($"[Document {i + 1}]");
+                            ragContextBuilder.AppendLine(ragResults[i]);
+                            ragContextBuilder.AppendLine();
+                        }
+                        
+                        ragContext = ragContextBuilder.ToString().Trim();
+                        
+                        Console.WriteLine($"[SendMessage] RAG context length: {ragContext.Length} characters");
+                        Logger.LogInformation("Retrieved {Count} relevant chunks from RAG group {RagGroupId} for query: {Query}", ragResults.Count, ragGroupIdToUse.Value, _messageText);
                     }
+                    else
+                    {
+                        Console.WriteLine($"[SendMessage] WARNING: RAG group {ragGroupIdToUse.Value} returned no results for query");
+                        Logger.LogWarning("RAG group {RagGroupId} returned no results for query: {Query}", ragGroupIdToUse.Value, _messageText);
+                        await NotificationService.ShowInfoAsync("No relevant information found in the knowledge base for this query. The AI will answer based on its general knowledge.");
+                    }
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("not indexed"))
+                {
+                    Console.WriteLine($"[SendMessage] ERROR: RAG group {ragGroupIdToUse.Value} is not indexed yet");
+                    Logger.LogWarning("RAG group {RagGroupId} is not indexed yet", ragGroupIdToUse.Value);
+                    await NotificationService.ShowWarningAsync("The knowledge base is not indexed yet. Please index it first in the Knowledge Bases page.");
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "Error querying RAG group {RagGroupId}", _selectedRagGroupId.Value);
+                    Console.WriteLine($"[SendMessage] ERROR querying RAG group {ragGroupIdToUse.Value}: {ex.Message}");
+                    Logger.LogError(ex, "Error querying RAG group {RagGroupId}", ragGroupIdToUse.Value);
                     await NotificationService.ShowWarningAsync($"Error querying knowledge base: {ex.Message}");
+                }
+            }
+            else
+            {
+                if (!ragGroupIdToUse.HasValue)
+                {
+                    Console.WriteLine($"[SendMessage] No RAG group selected - conversation RagGroupId: {conversationForApi?.RagGroupId}, selected: {_selectedRagGroupId}");
+                }
+                if (!_ragEnabled)
+                {
+                    Console.WriteLine($"[SendMessage] RAG is not enabled");
                 }
             }
 
@@ -2430,7 +2521,8 @@ else
             var userMessageTextForChat = originalMessageText;
             if (!string.IsNullOrEmpty(ragContext))
             {
-                userMessageTextForChat = $"Context from Knowledge Base:\n{ragContext}\n\nUser Question: {originalMessageText}";
+                // Better format for ChatGPT to understand the context
+                userMessageTextForChat = $"{ragContext}\n\n---\n\nBased on the information above, please answer the following question:\n\n{originalMessageText}";
             }
             
             // Add to conversation messages (with RAG context for ChatGPT)

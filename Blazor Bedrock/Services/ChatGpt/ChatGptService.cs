@@ -32,8 +32,9 @@ public interface IChatGptService
     Task<string> SendConversationMessageAsync(List<ChatMessage> messages, string apiKey, string? model = null);
     Task<string> SendConversationMessageAsync(string userId, int? tenantId, List<ChatMessage> messages);
     Task<string> SendConversationMessageWithDocumentsAsync(string userId, int? tenantId, int conversationId, string message);
-    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null);
+    Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, int? ragGroupId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null);
     Task UpdateConversationDocumentAsync(int conversationId, int? documentId, List<string>? selectedSheetNames = null, IProgress<string>? progress = null);
+    Task UpdateConversationRagGroupAsync(int conversationId, int? ragGroupId);
     Task UpdateConversationSheetSelectionAsync(int conversationId, List<string>? selectedSheetNames);
     Task<List<ChatGptConversation>> GetConversationsAsync(string userId, int? tenantId);
     Task<List<ChatGptMessage>> GetConversationMessagesAsync(int conversationId);
@@ -354,7 +355,7 @@ public class ChatGptService : IChatGptService
         }
     }
 
-    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null)
+    public async Task<ChatGptConversation> CreateConversationAsync(string userId, int? tenantId, string title, string? model = null, int? promptId = null, int? documentId = null, int? ragGroupId = null, List<string>? selectedSheetNames = null, IProgress<string>? progress = null)
     {
         return await _dbSync.ExecuteAsync(async () =>
         {
@@ -366,6 +367,7 @@ public class ChatGptService : IChatGptService
                 Model = model,
                 PromptId = promptId,
                 DocumentId = documentId,
+                RagGroupId = ragGroupId,
                 SelectedSheetNames = selectedSheetNames != null && selectedSheetNames.Any() 
                     ? System.Text.Json.JsonSerializer.Serialize(selectedSheetNames) 
                     : null
@@ -812,6 +814,20 @@ public class ChatGptService : IChatGptService
                     }
                 }
                 
+                await _context.SaveChangesAsync();
+            }
+        });
+    }
+
+    public async Task UpdateConversationRagGroupAsync(int conversationId, int? ragGroupId)
+    {
+        await _dbSync.ExecuteAsync(async () =>
+        {
+            var existingConversation = await _context.ChatGptConversations.FindAsync(conversationId);
+            if (existingConversation != null)
+            {
+                existingConversation.RagGroupId = ragGroupId;
+                existingConversation.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
         });

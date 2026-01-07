@@ -9,6 +9,7 @@ public class ChatGptConversation
     public string? Model { get; set; }
     public int? PromptId { get; set; }
     public int? DocumentId { get; set; }
+    public int? RagGroupId { get; set; } // RAG group ID for knowledge base queries
     public string? SelectedSheetNames { get; set; } // JSON array of selected sheet names for Excel files
     public string? OpenAiThreadId { get; set; } // OpenAI Assistants API thread ID
     public string? OpenAiAssistantId { get; set; } // OpenAI Assistants API assistant ID
@@ -20,6 +21,7 @@ public class ChatGptConversation
     // Navigation properties
     public virtual ApplicationUser User { get; set; } = null!;
     public virtual Tenant? Tenant { get; set; }
+    public virtual RagGroup? RagGroup { get; set; }
     public virtual ICollection<ChatGptMessage> Messages { get; set; } = new List<ChatGptMessage>();
 }
 
