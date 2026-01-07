@@ -5,6 +5,7 @@
 @using Blazor_Bedrock.Services.Document
 @using Blazor_Bedrock.Services.Subscription
 @using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Rag
 @using Blazor_Bedrock.Data.Models
 @using Blazor_Bedrock.Data
 @using Microsoft.AspNetCore.Components.Authorization
@@ -17,6 +18,7 @@
 @inject IQuestionService QuestionService
 @inject ITenantService TenantService
 @inject IDocumentService DocumentService
+@inject IRagService RagService
 @inject ISubscriptionLimitationService LimitationService
 @inject IFeatureFlagService FeatureFlagService
 @inject Blazor_Bedrock.Infrastructure.ExternalApis.IDocumentProcessor DocumentProcessor
@@ -715,6 +717,30 @@ else
                                 </div>
                             }
                         </div>
+                        @if (_ragEnabled)
+                        {
+                            <div class="d-flex align-items-center mt-2" style="gap: 12px; flex-wrap: wrap; width: 100%; box-sizing: border-box;">
+                                <div style="min-width: 200px; max-width: calc(100% - 40px); flex: 1 1 auto; width: auto;">
+                                    <label class="form-label small mb-1">Knowledge Base (RAG)</label>
+                                    <select class="form-select form-select-sm" value="@_selectedRagGroupId" @onchange="OnRagGroupChanged" disabled="@_isLoading">
+                                        <option value="">No Knowledge Base</option>
+                                        @foreach (var ragGroup in _availableRagGroups)
+                                        {
+                                            <option value="@ragGroup.Id">@ragGroup.Name</option>
+                                        }
+                                    </select>
+                                    <small class="text-muted" style="font-size: 0.7rem;">Query documents from a knowledge base using RAG</small>
+                                </div>
+                                @if (_selectedRagGroupId.HasValue)
+                                {
+                                    <div class="d-flex align-items-center gap-2" style="flex-shrink: 0; margin-top: 1.5rem;">
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedRagGroup" title="Remove knowledge base">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
                         @* Upload Progress Bar *@
                         @if (_isUploadingDocument && !string.IsNullOrEmpty(_uploadProgress))
                         {
@@ -1045,6 +1071,9 @@ else
     private List<Document> _availableDocuments = new();
     private int? _selectedDocumentId;
     private int? _conversationDocumentId; // Track which document is associated with the current conversation
+    private List<RagGroup> _availableRagGroups = new();
+    private int? _selectedRagGroupId;
+    private bool _ragEnabled = false;
     private List<string> _availableSheetNames = new();
     private HashSet<string> _selectedSheetNames = new();
     private bool _isLoadingSheets = false;
@@ -1119,6 +1148,13 @@ else
                     
                     // Load documents
                     _availableDocuments = await DocumentService.GetAllDocumentsAsync(userId, tenantId.Value);
+                    
+                    // Load RAG groups if feature is enabled
+                    _ragEnabled = await FeatureFlagService.IsEnabledAsync("RAG_Enabled");
+                    if (_ragEnabled)
+                    {
+                        _availableRagGroups = await RagService.GetRagGroupsAsync(userId, tenantId.Value);
+                    }
                     
                     // Load questions and groups
                     _questionGroups = await QuestionService.GetAllGroupsAsync(tenantId);
@@ -1653,6 +1689,23 @@ else
         }
     }
     
+
+    private void OnRagGroupChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var ragGroupId) && ragGroupId > 0)
+        {
+            _selectedRagGroupId = ragGroupId;
+        }
+        else
+        {
+            _selectedRagGroupId = null;
+        }
+    }
+
+    private void ClearSelectedRagGroup()
+    {
+        _selectedRagGroupId = null;
+    }
 
     private async Task OnDocumentChanged(ChangeEventArgs e)
     {
@@ -2351,21 +2404,48 @@ else
                 }
             }
 
-            // Add the new user message to conversation (without document text - it's already in system prompt)
-            var userMessageText = _messageText;
+            // Query RAG group if selected
+            string? ragContext = null;
+            if (_selectedRagGroupId.HasValue && _ragEnabled && !string.IsNullOrWhiteSpace(_messageText))
+            {
+                try
+                {
+                    var ragResults = await RagService.QueryRagGroupAsync(_selectedRagGroupId.Value, _messageText, userId, tenantId.Value);
+                    if (ragResults.Any())
+                    {
+                        ragContext = string.Join("\n\n", ragResults);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Error querying RAG group {RagGroupId}", _selectedRagGroupId.Value);
+                    await NotificationService.ShowWarningAsync($"Error querying knowledge base: {ex.Message}");
+                }
+            }
+
+            // Store the original message text for display
+            var originalMessageText = _messageText;
             
+            // Create message text for ChatGPT (with RAG context if available)
+            var userMessageTextForChat = originalMessageText;
+            if (!string.IsNullOrEmpty(ragContext))
+            {
+                userMessageTextForChat = $"Context from Knowledge Base:\n{ragContext}\n\nUser Question: {originalMessageText}";
+            }
+            
+            // Add to conversation messages (with RAG context for ChatGPT)
             conversationMessages.Add(new ChatMessage
             {
                 Role = "user",
-                Content = userMessageText
+                Content = userMessageTextForChat
             });
 
-            // Save user message to database
+            // Save user message to database (save original text for display)
             var userMessage = new ChatGptMessage
             {
                 ConversationId = _currentConversationId.Value,
                 Role = "user",
-                Content = userMessageText
+                Content = originalMessageText  // Save original message without RAG context for display
             };
             
             userMessage = await ChatGptService.SaveMessageAsync(userMessage);
@@ -2388,7 +2468,7 @@ else
                 // Use Assistants API for document-based conversations
                 Console.WriteLine($"[SendMessage] Using Assistants API for conversation {_currentConversationId.Value}");
                 response = await ChatGptService.SendConversationMessageWithDocumentsAsync(
-                    userId, tenantId, _currentConversationId.Value, userMessageText);
+                    userId, tenantId, _currentConversationId.Value, userMessageTextForChat);
             }
             else
             {
@@ -2420,7 +2500,7 @@ else
             {
                 try
                 {
-                    var generatedTitle = await ChatGptService.GenerateConversationTitleAsync(userId, tenantId, userMessageText);
+                    var generatedTitle = await ChatGptService.GenerateConversationTitleAsync(userId, tenantId, originalMessageText);
                     await ChatGptService.UpdateConversationTitleAsync(_currentConversationId.Value, generatedTitle);
                 }
                 catch (Exception ex)

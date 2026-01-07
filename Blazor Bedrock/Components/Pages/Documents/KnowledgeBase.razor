@@ -1,0 +1,685 @@
+@page "/documents/knowledge-base"
+@using Blazor_Bedrock.Services.Rag
+@using Blazor_Bedrock.Services.Document
+@using Blazor_Bedrock.Services.Tenant
+@using Blazor_Bedrock.Services.FeatureFlag
+@using Blazor_Bedrock.Services.Navigation
+@using Blazor_Bedrock.Data.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject IRagService RagService
+@inject IDocumentService DocumentService
+@inject ITenantService TenantService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IFeatureFlagService FeatureFlagService
+@inject ISafeNavigationService SafeNavigation
+@inject INotificationService NotificationService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Knowledge Base - Blazor Bedrock</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h4 class="mb-4">
+        <i class="bi bi-book me-2"></i>Knowledge Base
+    </h4>
+    <p class="text-muted mb-4">Create and manage knowledge bases (RAG groups) to enable intelligent document search and querying in ChatGPT.</p>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @_errorMessage
+            <button type="button" class="btn-close" @onclick="() => { _errorMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_successMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @_successMessage
+            <button type="button" class="btn-close" @onclick="() => { _successMessage = null; StateHasChanged(); }" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Knowledge Bases</h5>
+                    <button class="btn btn-primary" @onclick="ShowCreateModal">
+                        <i class="bi bi-plus-circle me-1"></i>Create Knowledge Base
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_ragGroups == null)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (!_ragGroups.Any())
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            No knowledge bases created yet. Click "Create Knowledge Base" to get started.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Documents</th>
+                                        <th>Top-K</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var group in _ragGroups)
+                                    {
+                                        var indexedCount = group.RagGroupDocuments.Count(rgd => rgd.IsIndexed);
+                                        var totalCount = group.RagGroupDocuments.Count;
+                                        <tr>
+                                            <td><strong>@group.Name</strong></td>
+                                            <td>@(group.Description ?? "-")</td>
+                                            <td>
+                                                @if (totalCount > 0)
+                                                {
+                                                    <span class="badge bg-info">@totalCount document(s)</span>
+                                                    @if (indexedCount < totalCount)
+                                                    {
+                                                        <br /><small class="text-warning">@indexedCount indexed</small>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">No documents</span>
+                                                }
+                                            </td>
+                                            <td>@group.TopK</td>
+                                            <td>
+                                                @if (string.IsNullOrEmpty(group.PineconeIndexName))
+                                                {
+                                                    <span class="badge bg-secondary">Not Indexed</span>
+                                                }
+                                                else if (indexedCount == totalCount && totalCount > 0)
+                                                {
+                                                    <span class="badge bg-success">Ready</span>
+                                                }
+                                                else if (indexedCount > 0)
+                                                {
+                                                    <span class="badge bg-warning">Partially Indexed</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">Not Indexed</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowEditModal(group)" title="Edit">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-info" @onclick="() => ShowManageDocumentsModal(group)" title="Manage Documents">
+                                                        <i class="bi bi-file-earmark"></i>
+                                                    </button>
+                                                    @if (totalCount > 0)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-success" @onclick="() => IndexGroup(group.Id)" disabled="@_isIndexing" title="Index to Pinecone">
+                                                            <i class="bi bi-cloud-upload"></i>
+                                                        </button>
+                                                    }
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGroup(group.Id)" title="Delete">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Create/Edit Modal *@
+@if (_showCreateEditModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editingGroup == null ? "Create Knowledge Base" : "Edit Knowledge Base")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCreateEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_groupName" placeholder="Enter knowledge base name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" @bind="_groupDescription" rows="3" placeholder="Enter description (optional)"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Top-K (Number of results to retrieve) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" @bind="_groupTopK" min="1" max="100" />
+                        <small class="text-muted">Number of most relevant document chunks to retrieve when querying (1-100)</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseCreateEditModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveGroup" disabled="@_isSaving">
+                        @if (_isSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@* Manage Documents Modal *@
+@if (_showManageDocumentsModal && _managingGroup != null)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Manage Documents: @_managingGroup.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseManageDocumentsModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_availableDocuments == null)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <input type="text" class="form-control" @bind="_documentSearchTerm" @oninput="FilterDocuments" placeholder="Search documents..." />
+                        </div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            @if (!_filteredDocuments.Any())
+                            {
+                                <div class="alert alert-info">
+                                    @(_availableDocuments.Any() ? "No documents match your search." : "No documents available. Upload documents first.")
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="list-group">
+                                    @foreach (var doc in _filteredDocuments)
+                                    {
+                                        var isInGroup = _managingGroup.RagGroupDocuments.Any(rgd => rgd.DocumentId == doc.Id);
+                                        <div class="list-group-item">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" checked="@isInGroup" 
+                                                       @onchange="(e) => ToggleDocument(doc.Id, (bool)(e.Value ?? false))" />
+                                                <label class="form-check-label w-100">
+                                                    <strong>@(doc.Title ?? doc.FileName)</strong>
+                                                    @if (!string.IsNullOrEmpty(doc.Title) && doc.Title != doc.FileName)
+                                                    {
+                                                        <br /><small class="text-muted">@doc.FileName</small>
+                                                    }
+                                                    <br /><small class="text-muted">Uploaded: @doc.UploadedAt.ToString("yyyy-MM-dd")</small>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseManageDocumentsModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@* Indexing Progress Modal *@
+@if (_isIndexing)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cloud-upload me-2"></i>Indexing to Pinecone
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <p class="mb-2"><strong>@_indexingProgress</strong></p>
+                        @if (!string.IsNullOrEmpty(_indexingDetails))
+                        {
+                            <p class="text-muted small mb-2">@_indexingDetails</p>
+                        }
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar progress-bar-striped @(_indexingPercent < 100 ? "progress-bar-animated" : "")" 
+                                 role="progressbar" 
+                                 style="width: @_indexingPercent%;"
+                                 aria-valuenow="@_indexingPercent" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                @_indexingPercent%
+                            </div>
+                        </div>
+                        @if (_indexingPercent > 0 && _indexingPercent < 100)
+                        {
+                            <small class="text-muted mt-1 d-block">Please wait, this may take several minutes depending on document size...</small>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<RagGroup>? _ragGroups;
+    private List<Document>? _availableDocuments;
+    private List<Document> _filteredDocuments = new();
+    private string? _errorMessage;
+    private string? _successMessage;
+    private string? _userId;
+    private int? _tenantId;
+
+    // Create/Edit Modal
+    private bool _showCreateEditModal = false;
+    private RagGroup? _editingGroup;
+    private string _groupName = string.Empty;
+    private string? _groupDescription;
+    private int _groupTopK = 5;
+    private bool _isSaving = false;
+
+    // Manage Documents Modal
+    private bool _showManageDocumentsModal = false;
+    private RagGroup? _managingGroup;
+    private string _documentSearchTerm = string.Empty;
+
+    // Indexing
+    private bool _isIndexing = false;
+    private string _indexingProgress = string.Empty;
+    private string _indexingDetails = string.Empty;
+    private int _indexingPercent = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if RAG feature is enabled
+        var isEnabled = await FeatureFlagService.IsEnabledAsync("RAG_Enabled");
+        if (!isEnabled)
+        {
+            SafeNavigation.NavigateTo("/");
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        _tenantId = TenantService.GetCurrentTenantId();
+
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+        {
+            _errorMessage = "Unable to identify user or organization.";
+            return;
+        }
+
+        await LoadRagGroups();
+        await LoadDocuments();
+    }
+
+    private async Task LoadRagGroups()
+    {
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        try
+        {
+            _ragGroups = await RagService.GetRagGroupsAsync(_userId, _tenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading knowledge bases: {ex.Message}";
+        }
+    }
+
+    private async Task LoadDocuments()
+    {
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        try
+        {
+            _availableDocuments = await DocumentService.GetAllDocumentsAsync(_userId, _tenantId.Value);
+            _filteredDocuments = _availableDocuments;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading documents: {ex.Message}";
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        _editingGroup = null;
+        _groupName = string.Empty;
+        _groupDescription = null;
+        _groupTopK = 5;
+        _showCreateEditModal = true;
+    }
+
+    private void ShowEditModal(RagGroup group)
+    {
+        _editingGroup = group;
+        _groupName = group.Name;
+        _groupDescription = group.Description;
+        _groupTopK = group.TopK;
+        _showCreateEditModal = true;
+    }
+
+    private void CloseCreateEditModal()
+    {
+        _showCreateEditModal = false;
+        _editingGroup = null;
+    }
+
+    private async Task SaveGroup()
+    {
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(_groupName))
+        {
+            _errorMessage = "Name is required.";
+            return;
+        }
+
+        if (_groupTopK < 1 || _groupTopK > 100)
+        {
+            _errorMessage = "Top-K must be between 1 and 100.";
+            return;
+        }
+
+        try
+        {
+            _isSaving = true;
+            _errorMessage = null;
+
+            if (_editingGroup == null)
+            {
+                await RagService.CreateRagGroupAsync(_groupName, _groupDescription, _groupTopK, _userId, _tenantId.Value);
+                _successMessage = "Knowledge base created successfully.";
+            }
+            else
+            {
+                await RagService.UpdateRagGroupAsync(_editingGroup.Id, _groupName, _groupDescription, _groupTopK, _userId, _tenantId.Value);
+                _successMessage = "Knowledge base updated successfully.";
+            }
+
+            await LoadRagGroups();
+            CloseCreateEditModal();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error saving knowledge base: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteGroup(int groupId)
+    {
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this knowledge base? This will also delete the Pinecone index if it exists.");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var deleted = await RagService.DeleteRagGroupAsync(groupId, _userId, _tenantId.Value);
+            if (deleted)
+            {
+                _successMessage = "Knowledge base deleted successfully.";
+                await LoadRagGroups();
+            }
+            else
+            {
+                _errorMessage = "Failed to delete knowledge base.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error deleting knowledge base: {ex.Message}";
+        }
+    }
+
+    private void ShowManageDocumentsModal(RagGroup group)
+    {
+        _managingGroup = group;
+        _documentSearchTerm = string.Empty;
+        FilterDocuments();
+        _showManageDocumentsModal = true;
+    }
+
+    private void CloseManageDocumentsModal()
+    {
+        _showManageDocumentsModal = false;
+        _managingGroup = null;
+        _documentSearchTerm = string.Empty;
+    }
+
+    private void FilterDocuments()
+    {
+        if (_availableDocuments == null)
+        {
+            _filteredDocuments = new();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_documentSearchTerm))
+        {
+            _filteredDocuments = _availableDocuments;
+        }
+        else
+        {
+            var term = _documentSearchTerm.ToLower();
+            _filteredDocuments = _availableDocuments.Where(d =>
+                (d.Title?.ToLower().Contains(term) ?? false) ||
+                (d.FileName.ToLower().Contains(term)) ||
+                (d.Author?.ToLower().Contains(term) ?? false)
+            ).ToList();
+        }
+    }
+
+    private async Task ToggleDocument(int documentId, bool add)
+    {
+        if (_managingGroup == null || string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        try
+        {
+            if (add)
+            {
+                await RagService.AddDocumentsToRagGroupAsync(_managingGroup.Id, new List<int> { documentId }, _userId, _tenantId.Value);
+            }
+            else
+            {
+                await RagService.RemoveDocumentFromRagGroupAsync(_managingGroup.Id, documentId, _userId, _tenantId.Value);
+            }
+
+            // Reload the group to get updated document list
+            var updatedGroup = await RagService.GetRagGroupByIdAsync(_managingGroup.Id, _userId, _tenantId.Value);
+            if (updatedGroup != null)
+            {
+                _managingGroup = updatedGroup;
+            }
+
+            await LoadRagGroups();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error updating document: {ex.Message}");
+        }
+    }
+
+    private async Task IndexGroup(int groupId)
+    {
+        if (string.IsNullOrEmpty(_userId) || _tenantId == null)
+            return;
+
+        try
+        {
+            _isIndexing = true;
+            _indexingProgress = "Starting indexing process...";
+            _indexingDetails = string.Empty;
+            _indexingPercent = 0;
+
+            var progress = new Progress<string>(message =>
+            {
+                UpdateProgress(message);
+                InvokeAsync(StateHasChanged);
+            });
+
+            await RagService.IndexRagGroupAsync(groupId, _userId, _tenantId.Value, progress);
+
+            _successMessage = "Knowledge base indexed successfully!";
+            await LoadRagGroups();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error indexing knowledge base: {ex.Message}";
+        }
+        finally
+        {
+            _isIndexing = false;
+            _indexingProgress = string.Empty;
+            _indexingDetails = string.Empty;
+            _indexingPercent = 0;
+        }
+    }
+
+    private void UpdateProgress(string message)
+    {
+        _indexingProgress = message;
+        _indexingDetails = string.Empty;
+
+        // Parse progress message to extract details and calculate percentage
+        if (message.Contains("Processing document"))
+        {
+            // Extract document number: "Processing document 1/3: filename..."
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Processing document (\d+)/(\d+)");
+            if (match.Success)
+            {
+                var current = int.Parse(match.Groups[1].Value);
+                var total = int.Parse(match.Groups[2].Value);
+                var docPercent = (int)((current - 1) * 100.0 / total);
+                _indexingPercent = docPercent;
+                _indexingDetails = $"Document {current} of {total}";
+            }
+        }
+        else if (message.Contains("Chunking text"))
+        {
+            // Keep current percentage, just update details
+            _indexingDetails = "Splitting document into chunks...";
+        }
+        else if (message.Contains("Created") && message.Contains("chunks"))
+        {
+            // Extract chunk count: "Created 189 chunks from 'filename'"
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Created (\d+) chunks");
+            if (match.Success)
+            {
+                var chunkCount = match.Groups[1].Value;
+                _indexingDetails = $"Document split into {chunkCount} chunks";
+            }
+        }
+        else if (message.Contains("Generating embedding"))
+        {
+            // Extract embedding progress: "Generating embedding 50/189 for 'filename' (chunk 50)..."
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Generating embedding (\d+)/(\d+)");
+            if (match.Success)
+            {
+                var current = int.Parse(match.Groups[1].Value);
+                var total = int.Parse(match.Groups[2].Value);
+                var embedPercent = (int)(current * 100.0 / total);
+                
+                // Calculate overall progress: document progress + embedding progress within document
+                // Assuming we're in the middle of a document (50% of document phase + embedding phase)
+                var docMatch = System.Text.RegularExpressions.Regex.Match(_indexingProgress, @"Processing document (\d+)/(\d+)");
+                if (docMatch.Success)
+                {
+                    var docCurrent = int.Parse(docMatch.Groups[1].Value);
+                    var docTotal = int.Parse(docMatch.Groups[2].Value);
+                    var docBasePercent = (int)((docCurrent - 1) * 100.0 / docTotal);
+                    var docPhasePercent = (int)(100.0 / docTotal);
+                    var embedPhasePercent = (int)(embedPercent * docPhasePercent / 100.0);
+                    _indexingPercent = docBasePercent + embedPhasePercent;
+                }
+                
+                _indexingDetails = $"Generating embedding {current} of {total}";
+            }
+        }
+        else if (message.Contains("Uploading batch"))
+        {
+            // Extract batch progress: "Uploading batch 2/3 (100 vectors)..."
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Uploading batch (\d+)/(\d+)");
+            if (match.Success)
+            {
+                var current = int.Parse(match.Groups[1].Value);
+                var total = int.Parse(match.Groups[2].Value);
+                var batchPercent = (int)(current * 100.0 / total);
+                _indexingDetails = $"Uploading batch {current} of {total} to Pinecone";
+                
+                // If we're uploading, we're near completion (90-100%)
+                _indexingPercent = Math.Min(90 + (batchPercent / 10), 99);
+            }
+        }
+        else if (message.Contains("Completed document"))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Completed document (\d+)/(\d+)");
+            if (match.Success)
+            {
+                var current = int.Parse(match.Groups[1].Value);
+                var total = int.Parse(match.Groups[2].Value);
+                _indexingPercent = (int)(current * 100.0 / total);
+                _indexingDetails = $"Completed {current} of {total} documents";
+            }
+        }
+        else if (message.Contains("Indexing completed"))
+        {
+            _indexingPercent = 100;
+            _indexingDetails = "All documents indexed successfully!";
+        }
+        else if (message.Contains("Error"))
+        {
+            _indexingDetails = message;
+        }
+    }
+}

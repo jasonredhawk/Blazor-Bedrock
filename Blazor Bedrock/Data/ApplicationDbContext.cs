@@ -35,6 +35,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<ChatGptQuestion> ChatGptQuestions { get; set; }
     public DbSet<ChatGptQuestionResponse> ChatGptQuestionResponses { get; set; }
     public DbSet<ApiConfiguration> ApiConfigurations { get; set; }
+    public DbSet<RagGroup> RagGroups { get; set; }
+    public DbSet<RagGroupDocument> RagGroupDocuments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -64,6 +66,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.ApplyConfiguration(new ChatGptQuestionConfiguration());
         builder.ApplyConfiguration(new ChatGptQuestionResponseConfiguration());
         builder.ApplyConfiguration(new ApiConfigurationConfiguration());
+        builder.ApplyConfiguration(new RagGroupConfiguration());
+        builder.ApplyConfiguration(new RagGroupDocumentConfiguration());
 
         // Rename Identity tables to match our naming convention
         builder.Entity<ApplicationUser>().ToTable("Users");

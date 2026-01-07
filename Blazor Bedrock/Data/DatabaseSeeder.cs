@@ -45,7 +45,8 @@ public class DatabaseSeeder
             new FeatureFlag { Name = "Logger_Enabled", Description = "Enable Application Logger", IsEnabled = true },
             new FeatureFlag { Name = "FeatureFlags_Enabled", Description = "Enable Feature Flags Management", IsEnabled = true },
             new FeatureFlag { Name = "Documents_Enabled", Description = "Enable Document Management", IsEnabled = true },
-            new FeatureFlag { Name = "Charts_Enabled", Description = "Enable Chart Creation from Excel/CSV Data", IsEnabled = true }
+            new FeatureFlag { Name = "Charts_Enabled", Description = "Enable Chart Creation from Excel/CSV Data", IsEnabled = true },
+            new FeatureFlag { Name = "RAG_Enabled", Description = "Enable Knowledge Base (RAG) with Pinecone integration", IsEnabled = false }
         };
 
         foreach (var flag in flags)

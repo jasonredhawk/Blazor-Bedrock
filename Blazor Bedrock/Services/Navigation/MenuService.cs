@@ -83,6 +83,7 @@ public class MenuService : IMenuService
 
             // Documents Menu (Feature flag-based, requires tenant)
             var documentsEnabled = await _featureFlagService.IsEnabledAsync("Documents_Enabled");
+            var ragEnabled = await _featureFlagService.IsEnabledAsync("RAG_Enabled");
             if (tenantId.HasValue && documentsEnabled)
             {
                 var documentsMenu = new MenuItem
@@ -107,6 +108,15 @@ public class MenuService : IMenuService
                         Href = "/documents/upload",
                         Icon = "bi bi-upload"
                     });
+                    if (ragEnabled)
+                    {
+                        documentsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Knowledge Base",
+                            Href = "/documents/knowledge-base",
+                            Icon = "bi bi-book"
+                        });
+                    }
                 }
                 else
                 {
@@ -123,6 +133,15 @@ public class MenuService : IMenuService
                         Href = "/documents/upload",
                         Icon = "bi bi-upload"
                     });
+                    if (ragEnabled)
+                    {
+                        documentsMenu.Children.Add(new MenuItem
+                        {
+                            Title = "Knowledge Base",
+                            Href = "/documents/knowledge-base",
+                            Icon = "bi bi-book"
+                        });
+                    }
                 }
 
                 menuItems.Add(documentsMenu);

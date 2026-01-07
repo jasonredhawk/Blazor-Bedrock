@@ -474,6 +474,67 @@
                     </div>
                 </div>
             </div>
+
+            @* RAG / Knowledge Base Feature Panel - Compact *@
+            <div class="col-12">
+                <div class="card shadow-sm feature-panel @(_ragCollapsed ? "collapsed" : "")">
+                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center py-2" style="cursor: pointer;" @onclick="() => _ragCollapsed = !_ragCollapsed">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-book me-2"></i>
+                            <div>
+                                <h6 class="mb-0">Knowledge Base (RAG)</h6>
+                                <small class="d-flex align-items-center">
+                                    <span class="badge feature-status-badge @(_ragEnabled ? "bg-light text-dark" : "bg-secondary") me-2">
+                                        @(_ragEnabled ? "Enabled" : "Disabled")
+                                    </span>
+                                    Pinecone vector database integration
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="form-check form-switch" @onclick:stopPropagation="true">
+                                <input class="form-check-input" type="checkbox" checked="@_ragEnabled" @onchange="async (ChangeEventArgs e) => { _ragEnabled = (bool)(e.Value ?? false); await ToggleRagFeatureAsync(); }" />
+                                <label class="form-check-label text-white">Enabled</label>
+                            </div>
+                            <button class="btn btn-sm btn-link text-white p-0" @onclick:stopPropagation="true" @onclick="() => _ragCollapsed = !_ragCollapsed">
+                                <i class="bi @(_ragCollapsed ? "bi-chevron-down" : "bi-chevron-up")"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-key me-1"></i>API Key</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="@(_showPineconeApiKey ? "text" : "password")" 
+                                           class="form-control form-control-sm" 
+                                           @bind="_pineconeApiKey" 
+                                           placeholder="Enter Pinecone API key" />
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="() => _showPineconeApiKey = !_showPineconeApiKey">
+                                        <i class="bi @(_showPineconeApiKey ? "bi-eye-slash" : "bi-eye")"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75rem;">Get one at <a href="https://app.pinecone.io" target="_blank" class="text-white">app.pinecone.io</a></small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1"><i class="bi bi-geo-alt me-1"></i>Region</label>
+                                <input type="text" class="form-control form-control-sm" @bind="_pineconeRegion" placeholder="e.g., us-east-1" />
+                                <small class="text-muted" style="font-size: 0.75rem;">Region for serverless indexes (e.g., us-east-1, us-west-2)</small>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end mt-2">
+                            <button class="btn btn-secondary btn-sm text-white" @onclick="async () => await SavePineconeConfigurationAsync()" disabled="@_isSaving">
+                                <i class="bi bi-save me-1"></i>
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     }
     else
@@ -495,11 +556,13 @@
     private bool _chatGptCollapsed = false;
     private bool _googleAuthCollapsed = false;
     private bool _facebookAuthCollapsed = false;
+    private bool _ragCollapsed = false;
 
     // Feature flags
     private bool _chatGptEnabled = false;
     private bool _googleAuthEnabled = false;
     private bool _facebookAuthEnabled = false;
+    private bool _ragEnabled = false;
     private bool _usersEnabled = false;
     private bool _rolesEnabled = false;
     private bool _documentsEnabled = false;
@@ -545,6 +608,11 @@
     private string _facebookAppSecret = string.Empty;
     private bool _showFacebookAppId = false;
     private bool _showFacebookAppSecret = false;
+
+    // Pinecone/RAG configuration
+    private string _pineconeApiKey = string.Empty;
+    private string _pineconeRegion = "us-east-1";
+    private bool _showPineconeApiKey = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -629,6 +697,9 @@
         var facebookAuthFlag = await FeatureFlagService.GetFlagAsync("Auth_Facebook");
         _facebookAuthEnabled = facebookAuthFlag?.IsEnabled ?? false;
 
+        var ragFlag = await FeatureFlagService.GetFlagAsync("RAG_Enabled");
+        _ragEnabled = ragFlag?.IsEnabled ?? false;
+
         var usersFlag = await FeatureFlagService.GetFlagAsync("Users_Enabled");
         _usersEnabled = usersFlag?.IsEnabled ?? false;
 
@@ -682,6 +753,17 @@
         {
             _facebookAppSecret = appSecret;
         }
+
+        // Load Pinecone configuration
+        var pineconeConfig = await ApiConfigurationService.GetConfigurationAsync("Pinecone");
+        if (pineconeConfig.TryGetValue("ApiKey", out var pineconeApiKey))
+        {
+            _pineconeApiKey = pineconeApiKey;
+        }
+        if (pineconeConfig.TryGetValue("Region", out var region))
+        {
+            _pineconeRegion = region;
+        }
     }
 
     private async Task ToggleFeatureAsync(string featureName, bool isEnabled)
@@ -730,6 +812,11 @@
     private async Task ToggleFacebookAuthFeatureAsync()
     {
         await ToggleFeatureAsync("Auth_Facebook", _facebookAuthEnabled);
+    }
+
+    private async Task ToggleRagFeatureAsync()
+    {
+        await ToggleFeatureAsync("RAG_Enabled", _ragEnabled);
     }
 
     private async Task ToggleUsersFeatureAsync()
@@ -956,6 +1043,43 @@
         catch (Exception ex)
         {
             await NotificationService.ShowErrorAsync($"Error saving Facebook Authentication configuration: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SavePineconeConfigurationAsync()
+    {
+        try
+        {
+            _isSaving = true;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                await NotificationService.ShowErrorAsync("User not authenticated.");
+                return;
+            }
+
+            var config = new Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(_pineconeApiKey))
+            {
+                config["ApiKey"] = _pineconeApiKey;
+            }
+            if (!string.IsNullOrEmpty(_pineconeRegion))
+            {
+                config["Region"] = _pineconeRegion;
+            }
+
+            await ApiConfigurationService.SaveConfigurationAsync("Pinecone", config, userId);
+            await NotificationService.ShowSuccessAsync("Pinecone configuration saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error saving Pinecone configuration: {ex.Message}");
         }
         finally
         {

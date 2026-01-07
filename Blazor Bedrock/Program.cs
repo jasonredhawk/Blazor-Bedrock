@@ -14,6 +14,7 @@ using Blazor_Bedrock.Services.Document;
 using Blazor_Bedrock.Services.Chart;
 using Blazor_Bedrock.Services.Migrations;
 using Blazor_Bedrock.Services.Stripe;
+using Blazor_Bedrock.Services.Rag;
 using Blazor_Bedrock.Infrastructure.ExternalApis;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication;
@@ -425,10 +426,12 @@ builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.ISubscriptionPlanService, Blazor_Bedrock.Services.Subscription.SubscriptionPlanService>();
 builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.IOrganizationSubscriptionService, Blazor_Bedrock.Services.Subscription.OrganizationSubscriptionService>();
 builder.Services.AddScoped<Blazor_Bedrock.Services.Subscription.ISubscriptionLimitationService, Blazor_Bedrock.Services.Subscription.SubscriptionLimitationService>();
+builder.Services.AddScoped<IRagService, RagService>();
 
 // HttpClient for ChatGPT API calls (AddHttpClient registers the service automatically)
 builder.Services.AddHttpClient<IChatGptService, ChatGptService>();
 builder.Services.AddHttpClient<IOpenAIFileThreadService, OpenAIFileThreadService>();
+builder.Services.AddHttpClient(); // For RAG service HTTP calls
 builder.Services.AddScoped<IPromptService, PromptService>();
 builder.Services.AddScoped<IQuestionService, QuestionService>();
 
