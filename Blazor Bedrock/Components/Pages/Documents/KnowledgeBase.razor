@@ -273,24 +273,62 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <p class="mb-2"><strong>@_indexingProgress</strong></p>
-                        @if (!string.IsNullOrEmpty(_indexingDetails))
+                        @if (!string.IsNullOrEmpty(_currentDocumentName))
                         {
-                            <p class="text-muted small mb-2">@_indexingDetails</p>
+                            <p class="mb-2"><strong>Processing: @_currentDocumentName</strong></p>
                         }
-                        <div class="progress" style="height: 25px;">
-                            <div class="progress-bar progress-bar-striped @(_indexingPercent < 100 ? "progress-bar-animated" : "")" 
-                                 role="progressbar" 
-                                 style="width: @_indexingPercent%;"
-                                 aria-valuenow="@_indexingPercent" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="100">
-                                @_indexingPercent%
+                        else if (!string.IsNullOrEmpty(_indexingProgress))
+                        {
+                            <p class="mb-2"><strong>@_indexingProgress</strong></p>
+                        }
+                        
+                        @* Overall Document Progress Bar *@
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="text-muted">Overall Progress</small>
+                                <small class="text-muted">@_indexingPercent%</small>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar progress-bar-striped @(_indexingPercent < 100 ? "progress-bar-animated" : "")" 
+                                     role="progressbar" 
+                                     style="width: @_indexingPercent%;"
+                                     aria-valuenow="@_indexingPercent" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    @_indexingPercent%
+                                </div>
                             </div>
                         </div>
+                        
+                        @* Embedding Progress Bar (only show when generating embeddings) *@
+                        @if (_embeddingProgressPercent > 0 && _embeddingProgressPercent < 100)
+                        {
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">Generating Embeddings</small>
+                                    <small class="text-muted">@_embeddingProgressPercent%</small>
+                                </div>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                                         role="progressbar" 
+                                         style="width: @_embeddingProgressPercent%;"
+                                         aria-valuenow="@_embeddingProgressPercent" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        @_embeddingProgressPercent%
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(_indexingDetails))
+                        {
+                            <p class="text-muted small mb-0 mt-2">@_indexingDetails</p>
+                        }
+                        
                         @if (_indexingPercent > 0 && _indexingPercent < 100)
                         {
-                            <small class="text-muted mt-1 d-block">Please wait, this may take several minutes depending on document size...</small>
+                            <small class="text-muted mt-2 d-block">Please wait, this may take several minutes depending on document size...</small>
                         }
                     </div>
                 </div>
@@ -327,6 +365,9 @@
     private string _indexingProgress = string.Empty;
     private string _indexingDetails = string.Empty;
     private int _indexingPercent = 0;
+    private int _documentProgressPercent = 0;
+    private int _embeddingProgressPercent = 0;
+    private string _currentDocumentName = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -561,6 +602,9 @@
             _indexingProgress = "Starting indexing process...";
             _indexingDetails = string.Empty;
             _indexingPercent = 0;
+            _documentProgressPercent = 0;
+            _embeddingProgressPercent = 0;
+            _currentDocumentName = string.Empty;
 
             var progress = new Progress<string>(message =>
             {
@@ -583,6 +627,9 @@
             _indexingProgress = string.Empty;
             _indexingDetails = string.Empty;
             _indexingPercent = 0;
+            _documentProgressPercent = 0;
+            _embeddingProgressPercent = 0;
+            _currentDocumentName = string.Empty;
         }
     }
 
@@ -590,48 +637,59 @@
     {
         _indexingProgress = message;
         _indexingDetails = string.Empty;
+        _embeddingProgressPercent = 0; // Reset embedding progress when not generating embeddings
 
         // Parse progress message to extract details and calculate percentage
         if (message.Contains("Processing document"))
         {
-            // Extract document number: "Processing document 1/3: filename..."
-            var match = System.Text.RegularExpressions.Regex.Match(message, @"Processing document (\d+)/(\d+)");
+            // Extract document number and filename: "Processing document 1/3: filename..."
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Processing document (\d+)/(\d+): (.+?)\.\.\.");
             if (match.Success)
             {
                 var current = int.Parse(match.Groups[1].Value);
                 var total = int.Parse(match.Groups[2].Value);
-                var docPercent = (int)((current - 1) * 100.0 / total);
-                _indexingPercent = docPercent;
+                var filename = match.Groups[3].Value;
+                _documentProgressPercent = (int)((current - 1) * 100.0 / total);
+                _indexingPercent = _documentProgressPercent;
+                _currentDocumentName = filename;
                 _indexingDetails = $"Document {current} of {total}";
             }
         }
         else if (message.Contains("Chunking text"))
         {
-            // Keep current percentage, just update details
+            // Extract filename: "Chunking text from 'filename'..."
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Chunking text from '(.+?)'");
+            if (match.Success)
+            {
+                _currentDocumentName = match.Groups[1].Value;
+            }
             _indexingDetails = "Splitting document into chunks...";
         }
         else if (message.Contains("Created") && message.Contains("chunks"))
         {
             // Extract chunk count: "Created 189 chunks from 'filename'"
-            var match = System.Text.RegularExpressions.Regex.Match(message, @"Created (\d+) chunks");
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Created (\d+) chunks from '(.+?)'");
             if (match.Success)
             {
                 var chunkCount = match.Groups[1].Value;
-                _indexingDetails = $"Document split into {chunkCount} chunks";
+                _currentDocumentName = match.Groups[2].Value;
+                _indexingDetails = $"Created {chunkCount} chunks";
             }
         }
         else if (message.Contains("Generating embedding"))
         {
             // Extract embedding progress: "Generating embedding 50/189 for 'filename' (chunk 50)..."
-            var match = System.Text.RegularExpressions.Regex.Match(message, @"Generating embedding (\d+)/(\d+)");
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"Generating embedding (\d+)/(\d+) for '(.+?)'");
             if (match.Success)
             {
                 var current = int.Parse(match.Groups[1].Value);
                 var total = int.Parse(match.Groups[2].Value);
-                var embedPercent = (int)(current * 100.0 / total);
+                _currentDocumentName = match.Groups[3].Value;
+                _embeddingProgressPercent = (int)(current * 100.0 / total);
                 
                 // Calculate overall progress: document progress + embedding progress within document
-                // Assuming we're in the middle of a document (50% of document phase + embedding phase)
+                // Each document phase is worth (100 / totalDocuments) percent
+                // Within that phase, embedding takes up most of the time
                 var docMatch = System.Text.RegularExpressions.Regex.Match(_indexingProgress, @"Processing document (\d+)/(\d+)");
                 if (docMatch.Success)
                 {
@@ -639,16 +697,18 @@
                     var docTotal = int.Parse(docMatch.Groups[2].Value);
                     var docBasePercent = (int)((docCurrent - 1) * 100.0 / docTotal);
                     var docPhasePercent = (int)(100.0 / docTotal);
-                    var embedPhasePercent = (int)(embedPercent * docPhasePercent / 100.0);
+                    // Embedding phase takes about 80% of each document's time
+                    var embedPhasePercent = (int)(_embeddingProgressPercent * docPhasePercent * 0.8 / 100.0);
                     _indexingPercent = docBasePercent + embedPhasePercent;
                 }
                 
-                _indexingDetails = $"Generating embedding {current} of {total}";
+                // Don't show duplicate info in details - it's already in the progress bar
+                _indexingDetails = $"Embedding chunk {current} of {total}";
             }
         }
         else if (message.Contains("Uploading batch"))
         {
-            // Extract batch progress: "Uploading batch 2/3 (100 vectors)..."
+            // Extract batch progress: "Uploading batch 2/3 (100 vectors) to Pinecone for 'filename'..."
             var match = System.Text.RegularExpressions.Regex.Match(message, @"Uploading batch (\d+)/(\d+)");
             if (match.Success)
             {
@@ -657,8 +717,18 @@
                 var batchPercent = (int)(current * 100.0 / total);
                 _indexingDetails = $"Uploading batch {current} of {total} to Pinecone";
                 
-                // If we're uploading, we're near completion (90-100%)
-                _indexingPercent = Math.Min(90 + (batchPercent / 10), 99);
+                // Uploading is near completion - adjust overall progress
+                var docMatch = System.Text.RegularExpressions.Regex.Match(_indexingProgress, @"Processing document (\d+)/(\d+)");
+                if (docMatch.Success)
+                {
+                    var docCurrent = int.Parse(docMatch.Groups[1].Value);
+                    var docTotal = int.Parse(docMatch.Groups[2].Value);
+                    var docBasePercent = (int)((docCurrent - 1) * 100.0 / docTotal);
+                    var docPhasePercent = (int)(100.0 / docTotal);
+                    // Upload takes the remaining 20% of document phase
+                    var uploadPhasePercent = (int)(batchPercent * docPhasePercent * 0.2 / 100.0);
+                    _indexingPercent = docBasePercent + (int)(docPhasePercent * 0.8) + uploadPhasePercent;
+                }
             }
         }
         else if (message.Contains("Completed document"))
@@ -668,13 +738,16 @@
             {
                 var current = int.Parse(match.Groups[1].Value);
                 var total = int.Parse(match.Groups[2].Value);
-                _indexingPercent = (int)(current * 100.0 / total);
+                _documentProgressPercent = (int)(current * 100.0 / total);
+                _indexingPercent = _documentProgressPercent;
                 _indexingDetails = $"Completed {current} of {total} documents";
             }
         }
         else if (message.Contains("Indexing completed"))
         {
             _indexingPercent = 100;
+            _documentProgressPercent = 100;
+            _embeddingProgressPercent = 0;
             _indexingDetails = "All documents indexed successfully!";
         }
         else if (message.Contains("Error"))
