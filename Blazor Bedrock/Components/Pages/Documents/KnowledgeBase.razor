@@ -216,7 +216,34 @@
                     else
                     {
                         <div class="mb-3">
-                            <input type="text" class="form-control" @bind="_documentSearchTerm" @oninput="FilterDocuments" placeholder="Search documents..." />
+                            <div class="input-group">
+                                <input type="text" class="form-control" value="@_documentSearchTerm" @oninput="OnSearchInput" placeholder="Search documents..." />
+                                @if (!string.IsNullOrWhiteSpace(_documentSearchTerm))
+                                {
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="Clear search">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                                @if (_filteredDocuments.Any())
+                                {
+                                    <button class="btn btn-outline-primary" type="button" @onclick="SelectAllVisible" title="Select all visible documents">
+                                        <i class="bi bi-check-square me-1"></i>Select All
+                                    </button>
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="DeselectAllVisible" title="Deselect all visible documents">
+                                        <i class="bi bi-square me-1"></i>Deselect All
+                                    </button>
+                                }
+                            </div>
+                            @if (_filteredDocuments.Any())
+                            {
+                                <small class="text-muted">
+                                    Showing @_filteredDocuments.Count of @_availableDocuments.Count document(s)
+                                    @if (!string.IsNullOrWhiteSpace(_documentSearchTerm))
+                                    {
+                                        <span>(filtered)</span>
+                                    }
+                                </small>
+                            }
                         </div>
                         <div style="max-height: 400px; overflow-y: auto;">
                             @if (!_filteredDocuments.Any())
@@ -537,17 +564,31 @@
         _documentSearchTerm = string.Empty;
     }
 
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _documentSearchTerm = e.Value?.ToString() ?? string.Empty;
+        FilterDocuments();
+    }
+
+    private void ClearSearch()
+    {
+        _documentSearchTerm = string.Empty;
+        FilterDocuments();
+    }
+
     private void FilterDocuments()
     {
         if (_availableDocuments == null)
         {
-            _filteredDocuments = new();
+            _filteredDocuments = new List<Document>();
+            StateHasChanged();
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_documentSearchTerm))
         {
-            _filteredDocuments = _availableDocuments;
+            // Create a new list reference to ensure UI updates
+            _filteredDocuments = _availableDocuments.ToList();
         }
         else
         {
@@ -558,6 +599,8 @@
                 (d.Author?.ToLower().Contains(term) ?? false)
             ).ToList();
         }
+        
+        StateHasChanged(); // Refresh UI on every filter change
     }
 
     private async Task ToggleDocument(int documentId, bool add)
@@ -584,10 +627,94 @@
             }
 
             await LoadRagGroups();
+            StateHasChanged(); // Refresh the UI to update checkboxes
         }
         catch (Exception ex)
         {
             await NotificationService.ShowErrorAsync($"Error updating document: {ex.Message}");
+        }
+    }
+
+    private async Task SelectAllVisible()
+    {
+        if (_managingGroup == null || string.IsNullOrEmpty(_userId) || _tenantId == null || !_filteredDocuments.Any())
+            return;
+
+        try
+        {
+            // Get IDs of visible documents that are NOT already in the group
+            var visibleDocumentIds = _filteredDocuments
+                .Where(doc => !_managingGroup.RagGroupDocuments.Any(rgd => rgd.DocumentId == doc.Id))
+                .Select(doc => doc.Id)
+                .ToList();
+
+            if (visibleDocumentIds.Any())
+            {
+                await RagService.AddDocumentsToRagGroupAsync(_managingGroup.Id, visibleDocumentIds, _userId, _tenantId.Value);
+                
+                // Reload the group to get updated document list
+                var updatedGroup = await RagService.GetRagGroupByIdAsync(_managingGroup.Id, _userId, _tenantId.Value);
+                if (updatedGroup != null)
+                {
+                    _managingGroup = updatedGroup;
+                }
+
+                await LoadRagGroups();
+                StateHasChanged();
+                
+                await NotificationService.ShowSuccessAsync($"Added {visibleDocumentIds.Count} document(s) to the knowledge base.");
+            }
+            else
+            {
+                await NotificationService.ShowInfoAsync("All visible documents are already in the knowledge base.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error adding documents: {ex.Message}");
+        }
+    }
+
+    private async Task DeselectAllVisible()
+    {
+        if (_managingGroup == null || string.IsNullOrEmpty(_userId) || _tenantId == null || !_filteredDocuments.Any())
+            return;
+
+        try
+        {
+            // Get IDs of visible documents that ARE in the group
+            var visibleDocumentIds = _filteredDocuments
+                .Where(doc => _managingGroup.RagGroupDocuments.Any(rgd => rgd.DocumentId == doc.Id))
+                .Select(doc => doc.Id)
+                .ToList();
+
+            if (visibleDocumentIds.Any())
+            {
+                foreach (var documentId in visibleDocumentIds)
+                {
+                    await RagService.RemoveDocumentFromRagGroupAsync(_managingGroup.Id, documentId, _userId, _tenantId.Value);
+                }
+
+                // Reload the group to get updated document list
+                var updatedGroup = await RagService.GetRagGroupByIdAsync(_managingGroup.Id, _userId, _tenantId.Value);
+                if (updatedGroup != null)
+                {
+                    _managingGroup = updatedGroup;
+                }
+
+                await LoadRagGroups();
+                StateHasChanged();
+                
+                await NotificationService.ShowSuccessAsync($"Removed {visibleDocumentIds.Count} document(s) from the knowledge base.");
+            }
+            else
+            {
+                await NotificationService.ShowInfoAsync("No visible documents are currently in the knowledge base.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error removing documents: {ex.Message}");
         }
     }
 
