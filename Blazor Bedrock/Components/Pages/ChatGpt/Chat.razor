@@ -274,6 +274,44 @@ else
         color: #6c757d;
     }
     
+    /* Keyword Visualization Styles */
+    /* Visualization panel styles */
+    #visualization-panel {
+        min-width: 300px;
+        max-width: 70%;
+    }
+    
+    #chat-panel {
+        min-width: 400px;
+    }
+    
+    #resizable-splitter {
+        background: #dee2e6;
+        cursor: col-resize;
+        user-select: none;
+        transition: background 0.2s ease;
+    }
+    
+    #resizable-splitter:hover {
+        background: #0d6efd;
+    }
+    
+    #keyword-network-container {
+        touch-action: pan-x pan-y;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Tooltip styles for keyword visualization */
+    .keyword-tooltip {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    /* Compact sidebar styles */
+    .conversation-sidebar-wrapper {
+        transition: width 0.3s ease;
+    }
+    
     .question-quick-btn {
         font-size: 0.75rem;
         white-space: nowrap;
@@ -365,6 +403,28 @@ else
             max-width: 100% !important;
             width: 100% !important;
         }
+        
+        /* Mobile layout - stack visualization and chat vertically */
+        #visualization-panel {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 40% !important;
+            border-right: none !important;
+            border-bottom: 1px solid #dee2e6 !important;
+        }
+        
+        #chat-panel {
+            width: 100% !important;
+            height: 60% !important;
+        }
+        
+        #resizable-splitter {
+            display: none !important;
+        }
+        
+        #keyword-network-container {
+            min-height: 200px !important;
+        }
     }
     
     @@media (min-width: 768px) {
@@ -402,68 +462,67 @@ else
         <div class="sidebar-overlay @(_sidebarVisible ? "show" : "")" @onclick="CloseSidebar"></div>
         
         <div class="row g-0" style="height: 100%; max-height: 100%; flex: 1; min-height: 0; overflow: hidden; display: flex; width: 100%; box-sizing: border-box; margin: 0 !important; flex-grow: 1;">
-            @* Left Sidebar - Conversations and Questions *@
-            <div class="col-md-3 p-0 conversation-sidebar-wrapper @(_sidebarVisible ? "show" : "")" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; border-right: 1px solid #dee2e6;">
+            @* Minimized Left Sidebar - Conversations and Questions (Collapsible) *@
+            <div class="col-auto p-0 conversation-sidebar-wrapper" style="height: 100%; max-height: 100%; overflow: hidden; box-sizing: border-box; border-right: 1px solid #dee2e6; width: @(_sidebarVisible ? "280px" : "60px"); transition: width 0.3s ease; flex-shrink: 0;">
                 <div class="conversation-sidebar" style="height: 100%; max-height: 100%; width: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;">
-                    @* Conversations Section *@
-                    <div style="padding: 16px; border-bottom: 1px solid #dee2e6;">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <h6 class="mb-0">Conversations</h6>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-primary" @onclick="CreateNewConversation" title="New Conversation">
-                                    <i class="bi bi-plus-circle"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary d-md-none" @onclick="CloseSidebar" title="Close Sidebar">
-                                    <i class="bi bi-x-lg"></i>
+                    @* Minimized Conversations Section *@
+                    <div style="padding: 8px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            @if (_sidebarVisible)
+                            {
+                                <h6 class="mb-0" style="font-size: 0.875rem;">Conversations</h6>
+                            }
+                            else
+                            {
+                                <h6 class="mb-0" style="font-size: 0.875rem; width: 100%; text-align: center;">
+                                    <i class="bi bi-list"></i>
+                                </h6>
+                            }
+                            <div class="d-flex gap-1">
+                                @if (_sidebarVisible)
+                                {
+                                    <button class="btn btn-sm btn-primary p-1" @onclick="CreateNewConversation" title="New Conversation" style="font-size: 0.75rem; padding: 2px 6px !important;">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary p-1" @onclick="ToggleSidebar" title="@(_sidebarVisible ? "Collapse" : "Expand") Sidebar" style="font-size: 0.75rem; padding: 2px 6px !important;">
+                                    <i class="bi @(_sidebarVisible ? "bi-chevron-left" : "bi-chevron-right")"></i>
                                 </button>
                             </div>
                         </div>
-                        @if (!string.IsNullOrEmpty(_preferredModel))
+                        @if (_sidebarVisible)
                         {
-                            <span class="badge bg-info">@_preferredModel</span>
-                        }
-                        @* Subscription Limitation Counter *@
-                        @if (_subscriptionsEnabled && _conversationLimitations != null)
-                        {
-                            <div class="mt-2">
-                                <div class="d-flex align-items-center">
-                                    <span class="text-muted me-2" style="font-size: 0.875rem;">
+                            @if (!string.IsNullOrEmpty(_preferredModel))
+                            {
+                                <span class="badge bg-info" style="font-size: 0.65rem;">@_preferredModel</span>
+                            }
+                            @* Subscription Limitation Counter *@
+                            @if (_subscriptionsEnabled && _conversationLimitations != null)
+                            {
+                                <div class="mt-1">
+                                    <small class="text-muted" style="font-size: 0.7rem;">
                                         <i class="bi bi-info-circle me-1"></i>
-                                        Conversations:
-                                    </span>
-                                    @if (_maxConversations.HasValue)
-                                    {
-                                        <span class="@GetConversationBadgeClass()" style="font-size: 0.875rem;">
-                                            @_currentConversationCount / @_maxConversations
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-success" style="font-size: 0.875rem;">
-                                            @_currentConversationCount (Unlimited)
-                                        </span>
-                                    }
+                                        @if (_maxConversations.HasValue)
+                                        {
+                                            <span class="@GetConversationBadgeClass()" style="font-size: 0.7rem;">
+                                                @_currentConversationCount / @_maxConversations
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success" style="font-size: 0.7rem;">
+                                                @_currentConversationCount
+                                            </span>
+                                        }
+                                    </small>
                                 </div>
-                                @if (_maxConversations.HasValue)
-                                {
-                                    @if (_currentConversationCount >= _maxConversations)
-                                    {
-                                        <div class="alert alert-warning alert-sm mt-2 mb-0 py-1" style="font-size: 0.75rem;">
-                                            <small><i class="bi bi-exclamation-triangle me-1"></i>Limit reached.</small>
-                                        </div>
-                                    }
-                                    else if (_currentConversationCount >= _maxConversations * 0.9)
-                                    {
-                                        <div class="alert alert-info alert-sm mt-2 mb-0 py-1" style="font-size: 0.75rem;">
-                                            <small><i class="bi bi-info-circle me-1"></i>Approaching limit.</small>
-                                        </div>
-                                    }
-                                }
-                            </div>
+                            }
                         }
                     </div>
                     
-                    <div style="flex: 1 1 40%; min-height: 200px; max-height: 50%; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #dee2e6;">
+                    @if (_sidebarVisible)
+                    {
+                        <div style="flex: 1 1 40%; min-height: 150px; max-height: 45%; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #dee2e6;">
                         @if (_conversations.Any())
                         {
                             @foreach (var conv in _conversations)
@@ -473,31 +532,32 @@ else
                                                     !string.IsNullOrEmpty(conv.OpenAiFileIds);
                                 
                                 <div class="conversation-item @(conv.Id == _currentConversationId ? "active" : "")"
-                                     @onclick="() => LoadConversation(conv.Id)">
+                                     @onclick="() => LoadConversation(conv.Id)"
+                                     style="padding: 6px 8px; font-size: 0.75rem;">
                                     <div class="d-flex align-items-center justify-content-between">
                                         <div class="d-flex align-items-center" style="flex: 1; min-width: 0;">
-                                            <i class="bi bi-chat-bubble me-2"></i>
+                                            <i class="bi bi-chat-bubble me-1" style="font-size: 0.7rem;"></i>
                                             <div style="flex: 1; min-width: 0;">
-                                                <div style="@GetConversationItemStyle(conv.Id)">
+                                                <div style="@GetConversationItemStyle(conv.Id); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                                                     @conv.Title
                                                     @if (hasUploadedDoc)
                                                     {
-                                                        <i class="bi bi-cloud-check-fill text-success ms-1" style="font-size: 0.75rem;" title="Document in OpenAI memory"></i>
+                                                        <i class="bi bi-cloud-check-fill text-success ms-1" style="font-size: 0.65rem;" title="Document in OpenAI memory"></i>
                                                     }
                                                 </div>
                                                 @if (conv.UpdatedAt.HasValue)
                                                 {
-                                                    <small class="text-muted" style="font-size: 0.7rem;">
+                                                    <small class="text-muted" style="font-size: 0.65rem;">
                                                         @GetRelativeTime(conv.UpdatedAt.Value)
                                                     </small>
                                                 }
                                             </div>
                                         </div>
-                                        <button class="btn btn-sm btn-link text-danger p-1 ms-2" 
+                                        <button class="btn btn-sm btn-link text-danger p-0 ms-1" 
                                                 @onclick:stopPropagation="true"
                                                 @onclick="() => DeleteConversation(conv.Id)"
                                                 title="Delete conversation"
-                                                style="flex-shrink: 0; opacity: 0.7; transition: opacity 0.2s;">
+                                                style="flex-shrink: 0; opacity: 0.7; font-size: 0.7rem;">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -506,32 +566,28 @@ else
                         }
                         else
                         {
-                            <div class="text-center p-4 text-muted">
-                                <p class="mb-1">No conversations yet</p>
-                                <small>Start a new conversation to begin</small>
+                            <div class="text-center p-2 text-muted" style="font-size: 0.7rem;">
+                                <p class="mb-0">No conversations</p>
                             </div>
                         }
-                    </div>
-                    
-                    @* Questions Section *@
-                    <div style="flex: 1 1 60%; min-height: 200px; overflow: hidden; display: flex; flex-direction: column;">
-                        <div style="padding: 16px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <h6 class="mb-0">Saved Questions</h6>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="NavigateToQuestions" title="Manage Questions">
-                                    <i class="bi bi-gear"></i>
-                                </button>
-                            </div>
-                            <div class="mb-2">
+                        </div>
+                        
+                        @* Minimized Questions Section *@
+                        <div style="flex: 1 1 55%; min-height: 150px; overflow: hidden; display: flex; flex-direction: column;">
+                            <div style="padding: 8px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <h6 class="mb-0" style="font-size: 0.875rem;">Questions</h6>
+                                    <button class="btn btn-sm btn-outline-primary p-1" @onclick="NavigateToQuestions" title="Manage Questions" style="font-size: 0.7rem; padding: 2px 6px !important;">
+                                        <i class="bi bi-gear"></i>
+                                    </button>
+                                </div>
                                 <input type="text" 
                                        class="form-control form-control-sm" 
-                                       placeholder="Filter questions..." 
+                                       placeholder="Filter..." 
                                        @bind="_questionFilter"
                                        @bind:event="oninput"
-                                       style="font-size: 0.75rem;" />
-                            </div>
-                            <div class="mb-2">
-                                <select class="form-select form-select-sm" @bind="_selectedQuestionGroupFilter" @bind:event="onchange">
+                                       style="font-size: 0.7rem; padding: 2px 6px; height: 24px;" />
+                                <select class="form-select form-select-sm mt-1" @bind="_selectedQuestionGroupFilter" @bind:event="onchange" style="font-size: 0.7rem; padding: 2px 6px; height: 24px;">
                                     <option value="">All Groups</option>
                                     @foreach (var group in _questionGroups)
                                     {
@@ -539,63 +595,44 @@ else
                                     }
                                 </select>
                             </div>
-                        </div>
-                        
-                        <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
+                            
+                            <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;">
                             @if (_filteredQuestions.Any())
                             {
-                                @* Group questions by their group *@
+                                @* Group questions by their group - Compact view *@
                                 @foreach (var questionGroup in _filteredQuestions.GroupBy(q => q.Group?.Name ?? "Ungrouped").OrderBy(g => g.Key == "Ungrouped" ? 1 : 0).ThenBy(g => g.Key))
                                 {
-                                    <div style="border-bottom: 1px solid #e9ecef; margin-bottom: 8px;">
-                                        @* Group Header *@
-                                        <div style="padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+                                    <div style="border-bottom: 1px solid #e9ecef; margin-bottom: 4px;">
+                                        @* Compact Group Header *@
+                                        <div style="padding: 4px 8px; background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
                                             <div class="d-flex align-items-center">
-                                                <i class="bi bi-folder-fill me-2" style="color: #6c757d;"></i>
-                                                <strong style="font-size: 0.8rem; color: #495057;">@questionGroup.Key</strong>
-                                                <span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">@questionGroup.Count()</span>
+                                                <i class="bi bi-folder-fill me-1" style="color: #6c757d; font-size: 0.7rem;"></i>
+                                                <strong style="font-size: 0.7rem; color: #495057;">@questionGroup.Key</strong>
+                                                <span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">@questionGroup.Count()</span>
                                             </div>
                                         </div>
                                         
-                                        @* Questions in this group *@
+                                        @* Questions in this group - Compact *@
                                         @foreach (var question in questionGroup.OrderBy(q => q.Order))
                                         {
-                                            <div class="conversation-item" style="cursor: default; padding: 8px 12px; padding-left: 32px;">
-                                                <div class="d-flex align-items-start justify-content-between">
-                                                    <div style="flex: 1; min-width: 0; margin-right: 8px;">
-                                                        <div style="font-size: 0.875rem; font-weight: 500; margin-bottom: 4px;">
+                                            <div class="conversation-item" style="cursor: pointer; padding: 4px 8px; padding-left: 20px;" @onclick="() => AskQuestionInConversation(question.QuestionText)">
+                                                <div class="d-flex align-items-center justify-content-between">
+                                                    <div style="flex: 1; min-width: 0;">
+                                                        <div style="font-size: 0.7rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@question.QuestionText">
                                                             @question.QuestionText
                                                         </div>
-                                                        @* Show group name below question (old way) *@
-                                                        @if (question.Group != null)
-                                                        {
-                                                            <small class="text-muted" style="font-size: 0.7rem;">
-                                                                <i class="bi bi-folder me-1"></i>@question.Group.Name
-                                                            </small>
-                                                        }
-                                                        @if (!string.IsNullOrWhiteSpace(question.Description))
-                                                        {
-                                                            <small class="text-muted d-block" style="font-size: 0.7rem;">
-                                                                @question.Description
-                                                            </small>
-                                                        }
                                                     </div>
-                                                    <div class="d-flex gap-1" style="flex-shrink: 0; flex-direction: column;">
-                                                        @* Simple button to ask question in current conversation *@
-                                                        @if (_currentConversationId.HasValue)
-                                                        {
-                                                            <button class="btn btn-sm btn-primary" 
-                                                                    @onclick="() => AskQuestionInConversation(question.QuestionText)"
-                                                                    disabled="@_isLoading"
-                                                                    title="Ask this question in the current conversation">
-                                                                <i class="bi bi-send me-1"></i>Ask
-                                                            </button>
-                                                        }
-                                                        else
-                                                        {
-                                                            <small class="text-muted" style="font-size: 0.7rem;">Load a conversation</small>
-                                                        }
-                                                    </div>
+                                                    @if (_currentConversationId.HasValue)
+                                                    {
+                                                        <button class="btn btn-sm btn-primary p-1 ms-1" 
+                                                                @onclick:stopPropagation="true"
+                                                                @onclick="() => AskQuestionInConversation(question.QuestionText)"
+                                                                disabled="@_isLoading"
+                                                                title="Ask"
+                                                                style="font-size: 0.65rem; padding: 1px 4px !important;">
+                                                            <i class="bi bi-send"></i>
+                                                        </button>
+                                                    }
                                                 </div>
                                             </div>
                                         }
@@ -604,25 +641,145 @@ else
                             }
                             else if (_questionGroups.Any() || _allQuestions.Any())
                             {
-                                <div class="text-center p-4 text-muted">
-                                    <p class="mb-1">No questions match filter</p>
+                                <div class="text-center p-2 text-muted" style="font-size: 0.7rem;">
+                                    <p class="mb-0">No match</p>
                                 </div>
                             }
                             else
                             {
-                                <div class="text-center p-4 text-muted">
-                                    <p class="mb-1">No saved questions</p>
-                                    <small><a href="/chatgpt/questions" class="text-primary">Create questions</a> to use batch processing</small>
+                                <div class="text-center p-2 text-muted" style="font-size: 0.7rem;">
+                                    <p class="mb-0">No questions</p>
                                 </div>
                             }
+                            </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
             
-            @* Main Chat Area *@
-            <div class="col-md-9 p-0 chat-main-wrapper" style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
-                <div style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; max-width: 100%; flex: 1; min-height: 0;">
+            @* Visualization Panel (Left) and Chat Area (Right) with Resizable Splitter *@
+            <div class="col p-0" style="height: 100%; max-height: 100%; display: flex; flex-direction: row; overflow: hidden; width: 100%; box-sizing: border-box; flex: 1; min-height: 0;">
+                @* Visualization Panel - Left Side *@
+                <div id="visualization-panel" class="p-0" style="height: 100%; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #dee2e6; background: #f8f9fa;">
+                    @if (_showKeywordVisualization)
+                    {
+                        <div class="d-flex align-items-center justify-content-between p-2 border-bottom" style="background: white; flex-shrink: 0;">
+                            <h6 class="mb-0" style="font-size: 0.9rem;">
+                                <i class="bi bi-diagram-3 me-2 text-primary"></i>
+                                Keyword Network
+                            </h6>
+                            <div class="d-flex align-items-center gap-2">
+                                <small class="text-muted" style="font-size: 0.7rem;">
+                                    @(_keywordStats?.TotalKeywords ?? 0) nodes
+                                </small>
+                                @if (_keywordStats != null && _keywordStats.Clusters > 0)
+                                {
+                                    <small class="text-info" style="font-size: 0.7rem; font-weight: 600;">
+                                        @_keywordStats.Clusters questions
+                                    </small>
+                                }
+                                <button class="btn btn-sm btn-outline-primary p-1" 
+                                        @onclick="RefreshKeywordVisualization" 
+                                        disabled="@(!_messages.Any())"
+                                        title="Refresh"
+                                        style="font-size: 0.7rem; padding: 2px 6px !important;">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary p-1" @onclick="ToggleKeywordVisualization" title="Hide" style="font-size: 0.7rem; padding: 2px 6px !important;">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="px-2 py-1 border-bottom" style="background: #f8f9fa; font-size: 0.7rem;">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <div class="d-flex align-items-center gap-1">
+                                    <div style="width: 10px; height: 10px; background: #0d6efd; border-radius: 50%; border: 2px solid #ffc107;"></div>
+                                    <span>User</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <div style="width: 10px; height: 10px; background: #198754; border-radius: 50%; border: 2px solid #ffc107;"></div>
+                                    <span>AI</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <div style="width: 10px; height: 10px; background: #6f42c1; border-radius: 50%;"></div>
+                                    <span>Concepts</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <div style="width: 10px; height: 10px; background: #ff6b35; border-radius: 50%;"></div>
+                                    <span>Manual</span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <input type="text" 
+                                       class="form-control form-control-sm" 
+                                       placeholder="Add keywords (comma-separated)" 
+                                       @bind="_manualKeywordsInput"
+                                       @bind:event="oninput"
+                                       @onkeydown="@(e => { if (e.Key == "Enter") AddManualKeywords(); })"
+                                       style="flex: 1; font-size: 0.7rem; padding: 2px 6px; height: 24px;" />
+                                <button class="btn btn-sm btn-outline-primary p-1" 
+                                        @onclick="AddManualKeywords"
+                                        disabled="@string.IsNullOrWhiteSpace(_manualKeywordsInput)"
+                                        title="Add"
+                                        style="font-size: 0.7rem; padding: 2px 6px !important;">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                                @if (_manualKeywordsList.Any())
+                                {
+                                    <button class="btn btn-sm btn-outline-danger p-1" 
+                                            @onclick="ClearManualKeywords"
+                                            title="Clear"
+                                            style="font-size: 0.7rem; padding: 2px 6px !important;">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                }
+                            </div>
+                            @if (_manualKeywordsList.Any())
+                            {
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @foreach (var keyword in _manualKeywordsList)
+                                    {
+                                        <span class="badge bg-warning text-dark d-flex align-items-center gap-1" style="font-size: 0.65rem; padding: 2px 6px;">
+                                            @keyword
+                                            <button type="button" 
+                                                    class="btn-close btn-close-sm" 
+                                                    style="font-size: 0.5rem;"
+                                                    @onclick="() => RemoveManualKeyword(keyword)"
+                                                    aria-label="Remove"></button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div id="keyword-network-container" style="flex: 1 1 0; min-height: 0; width: 100%; overflow: hidden; position: relative;">
+                            @if (!_messages.Any())
+                            {
+                                <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                                    <div class="text-center">
+                                        <i class="bi bi-diagram-3" style="font-size: 48px; opacity: 0.3;"></i>
+                                        <p class="mt-2 mb-0" style="font-size: 0.8rem;">Start a conversation to see visualization</p>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center justify-content-center h-100">
+                            <button class="btn btn-outline-primary" @onclick="ToggleKeywordVisualization" title="Show Visualization">
+                                <i class="bi bi-diagram-3 me-2"></i>Show Keyword Network
+                            </button>
+                        </div>
+                    }
+                </div>
+                
+                @* Resizable Splitter *@
+                <div id="resizable-splitter" style="width: 4px; background: #dee2e6; cursor: col-resize; flex-shrink: 0; position: relative; z-index: 10;" title="Drag to resize">
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 40px; background: #6c757d; border-radius: 1px;"></div>
+                </div>
+                
+                @* Main Chat Area - Right Side *@
+                <div id="chat-panel" class="p-0 chat-main-wrapper" style="height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; width: 100%; box-sizing: border-box; flex: 1; min-height: 0;">
                     @* Header *@
                     <div style="padding: 12px 16px; border-bottom: 1px solid #dee2e6; background: white; flex: 0 0 auto; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden;">
                         <div class="d-flex align-items-center justify-content-between mb-2" style="width: 100%; box-sizing: border-box;">
@@ -1096,8 +1253,32 @@ else
     private bool _featureDisabled = false;
     private string? _featureError = null;
     
-    // Mobile sidebar state
+    // Mobile sidebar state (start minimized on desktop)
     private bool _sidebarVisible = false;
+    
+    // Keyword visualization state
+    private bool _showKeywordVisualization = false;
+    private ElementReference _keywordNetworkContainer;
+    private Microsoft.JSInterop.DotNetObjectReference<Chat>? _keywordVizDotNetRef;
+    private KeywordStats? _keywordStats;
+    private int _lastMessageCount = 0; // Track message count to only update when it changes
+    private string _manualKeywordsInput = string.Empty;
+    private List<string> _manualKeywordsList = new();
+    
+    public class KeywordStats
+    {
+        public int TotalKeywords { get; set; }
+        public int TotalLinks { get; set; }
+        public int Clusters { get; set; }
+        public int ManualKeywords { get; set; }
+        public List<KeywordInfo> TopKeywords { get; set; } = new();
+    }
+    
+    public class KeywordInfo
+    {
+        public string Keyword { get; set; } = string.Empty;
+        public int Frequency { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1240,6 +1421,35 @@ else
         if (firstRender && !_isLoading)
         {
             await FocusTextarea();
+        }
+        
+        // Initialize keyword visualization if needed
+        if (firstRender)
+        {
+            _keywordVizDotNetRef = Microsoft.JSInterop.DotNetObjectReference.Create(this);
+            
+            // Initialize resizable splitter (only on desktop)
+            try
+            {
+                await Task.Delay(500); // Wait for DOM to be ready
+                await JSRuntime.InvokeVoidAsync("resizableSplitter.init", 
+                    "visualization-panel", 
+                    "chat-panel", 
+                    "resizable-splitter",
+                    35); // 35% for visualization panel initially
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error initializing resizable splitter: {Error}", ex.Message);
+            }
+        }
+        
+        // Only update visualization if message count changed (not on every render)
+        if (_showKeywordVisualization && _messages.Count != _lastMessageCount)
+        {
+            _lastMessageCount = _messages.Count;
+            await Task.Delay(300); // Wait for panel to render
+            await UpdateKeywordVisualization();
         }
     }
 
@@ -1429,8 +1639,22 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        _dotNetRef?.Dispose();
-        await Task.CompletedTask;
+        if (_dotNetRef != null)
+        {
+            _dotNetRef.Dispose();
+        }
+        
+        if (_keywordVizDotNetRef != null)
+        {
+            _keywordVizDotNetRef.Dispose();
+        }
+        
+        // Clear visualization on dispose
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.clear");
+        }
+        catch { }
     }
 
     private async Task LoadConversations()
@@ -1450,6 +1674,7 @@ else
     {
         _currentConversationId = conversationId;
         _messages = await ChatGptService.GetConversationMessagesAsync(conversationId);
+        _lastMessageCount = _messages.Count; // Reset message count tracking
         
         // Close sidebar on mobile when conversation is loaded
         _sidebarVisible = false;
@@ -1517,8 +1742,25 @@ else
         }
         
         _currentPromptIdForConversation = _selectedPromptId;
+        _lastMessageCount = _messages.Count;
         StateHasChanged();
         await ScrollToBottom();
+        
+        // Auto-show visualization if we have messages
+        if (_messages.Any() && !_showKeywordVisualization)
+        {
+            _showKeywordVisualization = true;
+            StateHasChanged();
+            await Task.Delay(300);
+            await InitializeKeywordVisualization();
+            await Task.Delay(200);
+            await UpdateKeywordVisualization();
+        }
+        else if (_showKeywordVisualization)
+        {
+            // Update visualization if already visible
+            await UpdateKeywordVisualization();
+        }
     }
 
     private async Task DeleteConversation(int conversationId)
@@ -2515,6 +2757,12 @@ else
             StateHasChanged();
             await ScrollToBottom();
             
+            // Update visualization if visible (message count changed)
+            if (_showKeywordVisualization && _messages.Count != _lastMessageCount)
+            {
+                await UpdateKeywordVisualization();
+            }
+            
             // Refocus the textarea so user can type immediately
             await FocusTextarea();
         }
@@ -2864,4 +3112,326 @@ else
     // Removed AskManualQuestion - manual questions now use regular SendMessage
     
     // Removed all batch processing UI methods and BatchResult class
+    
+    // Keyword Network Visualization Methods
+    private async Task ToggleKeywordVisualization()
+    {
+        _showKeywordVisualization = !_showKeywordVisualization;
+        
+        if (_showKeywordVisualization)
+        {
+            // Update UI first to show the panel
+            StateHasChanged();
+            
+            // Delay to ensure DOM is updated and container exists
+            await Task.Delay(300);
+            
+            // Always initialize, even if no messages yet
+            await InitializeKeywordVisualization();
+            await Task.Delay(200);
+            
+            // Sync manual keywords if any
+            if (_manualKeywordsList.Any())
+            {
+                var keywordsString = string.Join(", ", _manualKeywordsList);
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.addManualKeywords", keywordsString);
+            }
+            
+            // Update visualization (will handle empty messages case)
+            await UpdateKeywordVisualization();
+        }
+        else if (!_showKeywordVisualization)
+        {
+            // Clear visualization
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.clear");
+                _keywordStats = null;
+                _lastMessageCount = 0;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error clearing keyword visualization");
+            }
+        }
+        
+        StateHasChanged();
+    }
+    
+    
+    private async Task InitializeKeywordVisualization()
+    {
+        try
+        {
+            if (_keywordVizDotNetRef == null)
+            {
+                _keywordVizDotNetRef = Microsoft.JSInterop.DotNetObjectReference.Create(this);
+            }
+            
+            await JSRuntime.InvokeVoidAsync(
+                "keywordNetworkVisualization.init",
+                "keyword-network-container",
+                _keywordVizDotNetRef
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing keyword visualization");
+        }
+    }
+    
+    private async Task UpdateKeywordVisualization()
+    {
+        if (!_showKeywordVisualization)
+            return;
+            
+        try
+        {
+            // If no messages, clear visualization
+            if (!_messages.Any())
+            {
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.clear");
+                    _keywordStats = new KeywordStats { TotalKeywords = 0, TotalLinks = 0 };
+                    _lastMessageCount = 0;
+                    StateHasChanged();
+                }
+                catch { }
+                return;
+            }
+            
+            // Ensure visualization is initialized first
+            if (!await IsVisualizationInitialized())
+            {
+                await InitializeKeywordVisualization();
+                await Task.Delay(200); // Delay for initialization
+            }
+            
+            // Sync manual keywords to JavaScript
+            if (_manualKeywordsList.Any())
+            {
+                var keywordsString = string.Join(", ", _manualKeywordsList);
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.addManualKeywords", keywordsString);
+            }
+            
+            // Convert messages to JavaScript-compatible format
+            var messagesForJs = _messages.Select(m => new
+            {
+                role = m.Role,
+                content = m.Content ?? string.Empty
+            }).ToArray();
+            
+            // Update visualization (this will call ChatGPT API)
+            await JSRuntime.InvokeVoidAsync(
+                "keywordNetworkVisualization.update",
+                messagesForJs
+            );
+            
+            // Wait for ChatGPT extraction and rendering to complete
+            await Task.Delay(2000); // Give ChatGPT API time to respond
+            
+            // Get stats
+            var stats = await JSRuntime.InvokeAsync<KeywordStats>(
+                "keywordNetworkVisualization.getStats"
+            );
+            
+            _keywordStats = stats;
+            _lastMessageCount = _messages.Count;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating keyword visualization: {Error}", ex.Message);
+        }
+    }
+    
+    private async Task AddManualKeywords()
+    {
+        if (string.IsNullOrWhiteSpace(_manualKeywordsInput))
+            return;
+            
+        try
+        {
+            var keywords = _manualKeywordsInput
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(k => k.Trim())
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .ToList();
+            
+            foreach (var keyword in keywords)
+            {
+                if (!_manualKeywordsList.Contains(keyword, StringComparer.OrdinalIgnoreCase))
+                {
+                    _manualKeywordsList.Add(keyword);
+                }
+            }
+            
+            _manualKeywordsInput = string.Empty;
+            
+            // Update visualization with new keywords
+            if (_showKeywordVisualization && _messages.Any())
+            {
+                var keywordsString = string.Join(", ", _manualKeywordsList);
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.addManualKeywords", keywordsString);
+                
+                // Rebuild visualization
+                var messagesForJs = _messages.Select(m => new
+                {
+                    role = m.Role,
+                    content = m.Content ?? string.Empty
+                }).ToArray();
+                
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.update", messagesForJs);
+                await Task.Delay(2000);
+                
+                var stats = await JSRuntime.InvokeAsync<KeywordStats>("keywordNetworkVisualization.getStats");
+                _keywordStats = stats;
+            }
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding manual keywords: {Error}", ex.Message);
+        }
+    }
+    
+    private async Task RemoveManualKeyword(string keyword)
+    {
+        _manualKeywordsList.Remove(keyword);
+        
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.removeManualKeyword", keyword);
+            
+            // Rebuild visualization
+            if (_showKeywordVisualization && _messages.Any())
+            {
+                var messagesForJs = _messages.Select(m => new
+                {
+                    role = m.Role,
+                    content = m.Content ?? string.Empty
+                }).ToArray();
+                
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.update", messagesForJs);
+                await Task.Delay(2000);
+                
+                var stats = await JSRuntime.InvokeAsync<KeywordStats>("keywordNetworkVisualization.getStats");
+                _keywordStats = stats;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error removing manual keyword: {Error}", ex.Message);
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task ClearManualKeywords()
+    {
+        _manualKeywordsList.Clear();
+        
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.clearManualKeywords");
+            
+            // Rebuild visualization
+            if (_showKeywordVisualization && _messages.Any())
+            {
+                var messagesForJs = _messages.Select(m => new
+                {
+                    role = m.Role,
+                    content = m.Content ?? string.Empty
+                }).ToArray();
+                
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.update", messagesForJs);
+                await Task.Delay(2000);
+                
+                var stats = await JSRuntime.InvokeAsync<KeywordStats>("keywordNetworkVisualization.getStats");
+                _keywordStats = stats;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error clearing manual keywords: {Error}", ex.Message);
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task<bool> IsVisualizationInitialized()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>(
+                "eval",
+                "window.keywordNetworkVisualization && window.keywordNetworkVisualization.svg !== null"
+            );
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private async Task RefreshKeywordVisualization()
+    {
+        if (!_showKeywordVisualization)
+            return;
+            
+        if (!_messages.Any())
+        {
+            // Clear if no messages
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.clear");
+                _keywordStats = new KeywordStats { TotalKeywords = 0, TotalLinks = 0 };
+                StateHasChanged();
+            }
+            catch { }
+            return;
+        }
+            
+        try
+        {
+            // Sync manual keywords
+            if (_manualKeywordsList.Any())
+            {
+                var keywordsString = string.Join(", ", _manualKeywordsList);
+                await JSRuntime.InvokeVoidAsync("keywordNetworkVisualization.addManualKeywords", keywordsString);
+            }
+            
+            // Convert messages to JavaScript-compatible format
+            var messagesForJs = _messages.Select(m => new
+            {
+                role = m.Role,
+                content = m.Content ?? string.Empty
+            }).ToArray();
+            
+            Logger.LogInformation($"Refreshing visualization with {messagesForJs.Length} messages");
+            
+            await JSRuntime.InvokeVoidAsync(
+                "keywordNetworkVisualization.refresh",
+                messagesForJs
+            );
+            
+            // Wait for ChatGPT extraction and rendering to complete
+            await Task.Delay(2500);
+            
+            // Get stats after refresh
+            var stats = await JSRuntime.InvokeAsync<KeywordStats>(
+                "keywordNetworkVisualization.getStats"
+            );
+            
+            _keywordStats = stats;
+            Logger.LogInformation($"Visualization refreshed: {stats?.TotalKeywords ?? 0} concepts, {stats?.TotalLinks ?? 0} links");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing keyword visualization: {Error}", ex.Message);
+        }
+    }
 }

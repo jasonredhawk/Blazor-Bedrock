@@ -901,6 +901,42 @@ app.MapGet("/api/documents/{id}/file", async (int id, HttpContext context, IDocu
     }
 }).RequireAuthorization();
 
+// Extract concepts from conversation endpoint
+app.MapPost("/api/conversations/extract-concepts", async (HttpContext context, IChatGptService chatGptService, ITenantService tenantService) =>
+{
+    var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var tenantId = tenantService.GetCurrentTenantId();
+
+    if (string.IsNullOrEmpty(userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    try
+    {
+        var requestBody = await context.Request.ReadFromJsonAsync<ExtractConceptsRequest>();
+        if (requestBody == null || requestBody.Messages == null)
+        {
+            return Results.BadRequest(new { error = "Messages are required" });
+        }
+
+        var chatMessages = requestBody.Messages.Select(m => new Blazor_Bedrock.Services.ChatGpt.ChatMessage
+        {
+            Role = m.Role,
+            Content = m.Content ?? string.Empty
+        }).ToList();
+
+        var result = await chatGptService.ExtractConceptsFromConversationAsync(userId, tenantId, chatMessages);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Error extracting concepts");
+        return Results.StatusCode(500);
+    }
+}).RequireAuthorization();
+
 // Export conversation to DOCX endpoint
 app.MapGet("/api/conversations/{id}/export", async (int id, HttpContext context, IChatGptService chatGptService, ITenantService tenantService) =>
 {
@@ -932,3 +968,15 @@ app.MapGet("/api/conversations/{id}/export", async (int id, HttpContext context,
 }).RequireAuthorization();
 
 app.Run();
+
+// DTOs for API endpoints
+public class ExtractConceptsRequest
+{
+    public List<MessageDto> Messages { get; set; } = new();
+}
+
+public class MessageDto
+{
+    public string Role { get; set; } = string.Empty;
+    public string? Content { get; set; }
+}

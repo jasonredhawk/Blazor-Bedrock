@@ -45,6 +45,24 @@ public interface IChatGptService
     Task<string> GenerateConversationTitleAsync(string userId, int? tenantId, string firstMessage);
     Task<byte[]> ExportConversationToDocxAsync(int conversationId, string userId, int? tenantId);
     Task<bool> DeleteConversationMessagesAsync(int conversationId, string userId, int? tenantId);
+    Task<ConceptExtractionResult> ExtractConceptsFromConversationAsync(string userId, int? tenantId, List<ChatMessage> messages);
+}
+
+public class ConceptExtractionResult
+{
+    public List<ConceptNode> UserRequestNodes { get; set; } = new();
+    public List<ConceptNode> AiResponseNodes { get; set; } = new();
+    public List<ConceptNode> ConceptNodes { get; set; } = new();
+}
+
+public class ConceptNode
+{
+    public string Id { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty; // "userRequest", "aiResponse", "concept"
+    public double Relevance { get; set; }
+    public int IterationIndex { get; set; }
+    public string? OriginalText { get; set; }
 }
 
 public class ChatGptService : IChatGptService
@@ -1074,5 +1092,127 @@ public class ChatGptService : IChatGptService
             await _context.SaveChangesAsync();
             return true;
         });
+    }
+
+    public async Task<ConceptExtractionResult> ExtractConceptsFromConversationAsync(string userId, int? tenantId, List<ChatMessage> messages)
+    {
+        try
+        {
+            var apiKey = await GetDecryptedApiKeyAsync(userId, tenantId);
+            var preferredModel = await GetPreferredModelAsync(tenantId);
+            var model = preferredModel ?? "gpt-3.5-turbo";
+
+            // Build conversation text for analysis
+            var conversationText = string.Join("\n\n", messages.Select((m, i) => 
+                $"{m.Role.ToUpper()}: {m.Content}"));
+
+            // Create prompt for concept extraction
+            var systemPrompt = @"You are an expert at analyzing conversations and extracting key concepts and keywords.
+
+Analyze the conversation and extract:
+1. For each USER message: Create a summary node (short, 3-7 words) representing the user's request/question
+2. For each ASSISTANT message: Create a summary node (short, 3-7 words) representing the AI's response
+3. Extract important single keywords (not phrases) that represent key concepts discussed
+4. Rank relevance from 0.0 to 1.0 based on importance to the conversation
+
+Return ONLY valid JSON in this exact format:
+{
+  ""userRequestNodes"": [
+    {""id"": ""user_0"", ""label"": ""summary text"", ""type"": ""userRequest"", ""relevance"": 0.8, ""iterationIndex"": 0, ""originalText"": ""original message""}
+  ],
+  ""aiResponseNodes"": [
+    {""id"": ""ai_0"", ""label"": ""summary text"", ""type"": ""aiResponse"", ""relevance"": 0.8, ""iterationIndex"": 0, ""originalText"": ""original message""}
+  ],
+  ""conceptNodes"": [
+    {""id"": ""concept_keyword"", ""label"": ""keyword"", ""type"": ""concept"", ""relevance"": 0.7, ""iterationIndex"": 0}
+  ]
+}
+
+Rules:
+- Keywords must be single words, not phrases
+- Relevance should be higher for concepts mentioned multiple times or central to the conversation
+- Keep summaries concise (3-7 words)
+- Only include truly important keywords (5-15 keywords total)
+- Relevance range: 0.3 (less important) to 1.0 (very important)";
+
+            var extractionMessages = new List<ChatMessage>
+            {
+                new ChatMessage { Role = "system", Content = systemPrompt },
+                new ChatMessage { Role = "user", Content = $"Extract concepts from this conversation:\n\n{conversationText}" }
+            };
+
+            var response = await CallChatGptWithMessagesAsync(extractionMessages, apiKey, model);
+            
+            // Parse JSON response
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(response);
+                var root = jsonDoc.RootElement;
+
+                var result = new ConceptExtractionResult();
+
+                // Parse user request nodes
+                if (root.TryGetProperty("userRequestNodes", out var userNodes))
+                {
+                    foreach (var node in userNodes.EnumerateArray())
+                    {
+                        result.UserRequestNodes.Add(new ConceptNode
+                        {
+                            Id = node.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                            Label = node.TryGetProperty("label", out var label) ? label.GetString() ?? "" : "",
+                            Type = "userRequest",
+                            Relevance = node.TryGetProperty("relevance", out var rel) ? rel.GetDouble() : 0.5,
+                            IterationIndex = node.TryGetProperty("iterationIndex", out var iter) ? iter.GetInt32() : 0,
+                            OriginalText = node.TryGetProperty("originalText", out var orig) ? orig.GetString() : null
+                        });
+                    }
+                }
+
+                // Parse AI response nodes
+                if (root.TryGetProperty("aiResponseNodes", out var aiNodes))
+                {
+                    foreach (var node in aiNodes.EnumerateArray())
+                    {
+                        result.AiResponseNodes.Add(new ConceptNode
+                        {
+                            Id = node.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                            Label = node.TryGetProperty("label", out var label) ? label.GetString() ?? "" : "",
+                            Type = "aiResponse",
+                            Relevance = node.TryGetProperty("relevance", out var rel) ? rel.GetDouble() : 0.5,
+                            IterationIndex = node.TryGetProperty("iterationIndex", out var iter) ? iter.GetInt32() : 0,
+                            OriginalText = node.TryGetProperty("originalText", out var orig) ? orig.GetString() : null
+                        });
+                    }
+                }
+
+                // Parse concept nodes
+                if (root.TryGetProperty("conceptNodes", out var conceptNodes))
+                {
+                    foreach (var node in conceptNodes.EnumerateArray())
+                    {
+                        result.ConceptNodes.Add(new ConceptNode
+                        {
+                            Id = node.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                            Label = node.TryGetProperty("label", out var label) ? label.GetString() ?? "" : "",
+                            Type = "concept",
+                            Relevance = node.TryGetProperty("relevance", out var rel) ? rel.GetDouble() : 0.5,
+                            IterationIndex = node.TryGetProperty("iterationIndex", out var iter) ? iter.GetInt32() : 0
+                        });
+                    }
+                }
+
+                return result;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to parse concept extraction JSON. Response: {Response}", response);
+                return new ConceptExtractionResult();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting concepts from conversation");
+            return new ConceptExtractionResult();
+        }
     }
 }
