@@ -415,6 +415,13 @@ public class ChartService : IChartService
     private async Task<string?> CreateChartInWorksheetAsync(OfficeOpenXml.ExcelWorksheet worksheet, Infrastructure.ExternalApis.SheetData sheetData, ChartCreationRequest request, string userId, int tenantId, string sheetName, ExcelPackage? package = null)
     {
 
+        // Determine data start row (skip header row, so start from index 1)
+        int dataStartRowIndex = request.Configuration.DataStartRow ?? 1;
+        if (dataStartRowIndex < 1)
+            dataStartRowIndex = 1;
+        if (sheetData.Rows.Any() && dataStartRowIndex >= sheetData.Rows.Count)
+            dataStartRowIndex = 1;
+
         // Copy original data to the new worksheet
         int currentRow = 1;
         if (sheetData.Rows.Any())
@@ -429,13 +436,6 @@ public class ChartService : IChartService
                 worksheet.Cells[currentRow, col + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
             }
             currentRow++;
-
-            // Determine data start row (skip header row, so start from index 1)
-            int dataStartRowIndex = request.Configuration.DataStartRow ?? 1;
-            if (dataStartRowIndex < 1)
-                dataStartRowIndex = 1;
-            if (dataStartRowIndex >= sheetData.Rows.Count)
-                dataStartRowIndex = 1;
 
             // Write data rows (skip header row, so start from index 1)
             for (int rowIndex = dataStartRowIndex; rowIndex < sheetData.Rows.Count; rowIndex++)
@@ -468,45 +468,244 @@ public class ChartService : IChartService
         int chartStartColumn = lastDataColumn + 2; // 1-based, but SetPosition uses 0-based, so subtract 1
         int chartStartRow = 1; // Start at row 1 to align with header
 
-        // Get column indices for X and Y axes (header is at index 0)
+        // Get column indices for X, Y, and Variable columns
         var xAxisColumnIndex = GetColumnIndex(headerRow, request.Configuration.XAxisColumns.FirstOrDefault());
-        var yAxisColumnIndices = request.Configuration.YAxisColumns
-            .Select(colName => GetColumnIndex(headerRow, colName))
-            .Where(idx => idx >= 0)
-            .ToList();
-
-
-        if (xAxisColumnIndex < 0 || !yAxisColumnIndices.Any())
-        {
-            throw new InvalidOperationException("Invalid column selection for chart axes.");
-        }
-
-        // Create chart
+        var yAxisColumnIndex = GetColumnIndex(headerRow, request.Configuration.YAxisColumns.FirstOrDefault());
+        var variableColumnIndex = GetColumnIndex(headerRow, request.Configuration.VariableColumn);
+        
+        // Check if we're using the new VariableColumn approach (grouping by variable column)
+        bool useVariableColumnGrouping = variableColumnIndex >= 0 && !string.IsNullOrEmpty(request.Configuration.VariableColumn);
+        
+        // Create chart (will be configured in if/else blocks below)
         var chartType = ConvertToEPPlusChartType(request.Configuration.ChartType);
-        var chart = worksheet.Drawings.AddChart(request.Configuration.Title, chartType);
-        chart.Title.Text = request.Configuration.Title;
-        chart.Title.Font.Size = 14;
-        chart.Title.Font.Bold = true;
-
-        // Set chart position to the right of data (SetPosition uses 0-based indices)
-        chart.SetPosition(chartStartRow - 1, 0, chartStartColumn - 1, 0);
-        chart.SetSize(800, 400);
-        
-        // Calculate approximate chart width in columns (800 pixels / ~64 pixels per column = ~12-13 columns)
-        // We'll use this to position the analysis
+        OfficeOpenXml.Drawing.Chart.ExcelChart chart;
         int chartWidthColumns = 13;
-
-        // Add X-axis data (categories) - data starts at row 2 (row 1 is header)
-        var xAxisRange = worksheet.Cells[dataStartRowInWorksheet, xAxisColumnIndex + 1, dataEndRow, xAxisColumnIndex + 1];
         
-        // Add Y-axis series
-        foreach (var yAxisColIndex in yAxisColumnIndices)
+        if (useVariableColumnGrouping)
         {
-            var yAxisRange = worksheet.Cells[dataStartRowInWorksheet, yAxisColIndex + 1, dataEndRow, yAxisColIndex + 1];
-            var series = chart.Series.Add(yAxisRange, xAxisRange);
+            // New approach: Group by variable column - each unique value becomes a series
+            if (xAxisColumnIndex < 0 || yAxisColumnIndex < 0)
+            {
+                throw new InvalidOperationException("Invalid column selection. Please select X-axis (date), Y-axis (value), and Variable column.");
+            }
             
-            var headerIndex = yAxisColIndex < headerRow.Count ? yAxisColIndex : yAxisColIndex;
-            series.Header = headerIndex < headerRow.Count ? headerRow[headerIndex] : $"Series {yAxisColumnIndices.IndexOf(yAxisColIndex) + 1}";
+            // Extract data rows
+            // dataStartRowIndex is 1-based (1 = first data row after header)
+            // sheetData.Rows[0] is header, sheetData.Rows[1] is first data row
+            // So if dataStartRowIndex = 1, we want rows starting from index 1
+            // If dataStartRowIndex = 2, we want rows starting from index 2, etc.
+            var dataRows = sheetData.Rows
+                .Skip(dataStartRowIndex) // Skip header (index 0) + any additional rows specified by dataStartRowIndex
+                .Where(row => row != null && 
+                             variableColumnIndex < row.Count && 
+                             yAxisColumnIndex < row.Count && 
+                             xAxisColumnIndex < row.Count &&
+                             !string.IsNullOrWhiteSpace(row[variableColumnIndex])) // Ensure variable column has a value
+                .ToList();
+            
+            if (!dataRows.Any())
+            {
+                throw new InvalidOperationException("No data rows found after filtering. Please check your data start row setting and data filters.");
+            }
+            
+            // Group data by variable column values
+            var groupedByVariable = dataRows
+                .GroupBy(row => row[variableColumnIndex]?.Trim() ?? "Unknown")
+                .ToList();
+            
+            if (!groupedByVariable.Any())
+            {
+                throw new InvalidOperationException("No data found after grouping by variable column.");
+            }
+            
+            // Create transformed data structure for chart
+            // Get all unique X-axis values (dates) from the actual data rows
+            var allXValues = dataRows
+                .Where(row => xAxisColumnIndex < row.Count && !string.IsNullOrWhiteSpace(row[xAxisColumnIndex]))
+                .Select(row => row[xAxisColumnIndex]?.Trim() ?? "")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => 
+                {
+                    // Try to sort as date if possible, otherwise as string
+                    if (DateTime.TryParse(x, out DateTime dateValue))
+                        return dateValue.Ticks.ToString();
+                    return x;
+                })
+                .ToList();
+            
+            // Create chart
+            chart = worksheet.Drawings.AddChart(request.Configuration.Title, chartType);
+            chart.Title.Text = request.Configuration.Title;
+            chart.Title.Font.Size = 14;
+            chart.Title.Font.Bold = true;
+            
+            // Set chart position
+            chart.SetPosition(chartStartRow - 1, 0, chartStartColumn - 1, 0);
+            chart.SetSize(800, 400);
+            
+            // Create transformed data table for chart (pivot-like structure)
+            // Write transformed data starting after original data
+            int transformedDataStartCol = lastDataColumn + chartWidthColumns + 5;
+            int transformedDataStartRow = dataStartRowInWorksheet;
+            
+            // Write header row for transformed data
+            worksheet.Cells[transformedDataStartRow - 1, transformedDataStartCol].Value = headerRow[xAxisColumnIndex]; // X-axis header
+            int colOffset = 1;
+            var variableNames = groupedByVariable.Select(g => g.Key).OrderBy(v => v).ToList();
+            foreach (var varName in variableNames)
+            {
+                worksheet.Cells[transformedDataStartRow - 1, transformedDataStartCol + colOffset].Value = varName;
+                colOffset++;
+            }
+            
+            // Write transformed data rows
+            int transformedDataEndRow = transformedDataStartRow;
+            foreach (var xValue in allXValues)
+            {
+                // Write X-axis value - try to parse as date for proper formatting
+                if (DateTime.TryParse(xValue, out DateTime xDateValue))
+                {
+                    worksheet.Cells[transformedDataEndRow, transformedDataStartCol].Value = xDateValue;
+                    worksheet.Cells[transformedDataEndRow, transformedDataStartCol].Style.Numberformat.Format = "mm/dd/yyyy";
+                }
+                else
+                {
+                    worksheet.Cells[transformedDataEndRow, transformedDataStartCol].Value = xValue;
+                }
+                
+                colOffset = 1;
+                foreach (var varName in variableNames)
+                {
+                    // Find the Y value for this X value and variable
+                    // Use case-insensitive comparison for both variable name and X value
+                    var variableGroup = groupedByVariable.FirstOrDefault(g => 
+                        g.Key.Trim().Equals(varName.Trim(), StringComparison.OrdinalIgnoreCase));
+                    
+                    if (variableGroup != null)
+                    {
+                        // Normalize X value for comparison (trim and handle case)
+                        var normalizedXValue = xValue.Trim();
+                        var matchingRow = variableGroup.FirstOrDefault(row => 
+                        {
+                            if (xAxisColumnIndex >= row.Count)
+                                return false;
+                            
+                            var rowXValue = row[xAxisColumnIndex]?.Trim() ?? "";
+                            
+                            // Try exact match first
+                            if (rowXValue.Equals(normalizedXValue, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                            
+                            // Try date comparison if both are dates
+                            if (DateTime.TryParse(rowXValue, out DateTime rowDate) && 
+                                DateTime.TryParse(normalizedXValue, out DateTime targetDate))
+                            {
+                                return rowDate.Date == targetDate.Date;
+                            }
+                            
+                            return false;
+                        });
+                        
+                        if (matchingRow != null && yAxisColumnIndex < matchingRow.Count)
+                        {
+                            var yValue = matchingRow[yAxisColumnIndex]?.Trim() ?? "";
+                            if (!string.IsNullOrWhiteSpace(yValue))
+                            {
+                                if (double.TryParse(yValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                                {
+                                    worksheet.Cells[transformedDataEndRow, transformedDataStartCol + colOffset].Value = numValue;
+                                }
+                                else
+                                {
+                                    // Try to parse as date and convert to numeric if it's a date
+                                    if (DateTime.TryParse(yValue, out DateTime dateValue))
+                                    {
+                                        worksheet.Cells[transformedDataEndRow, transformedDataStartCol + colOffset].Value = dateValue.ToOADate();
+                                    }
+                                    else
+                                    {
+                                        // If it's not a number or date, try to extract number from string
+                                        var numberMatch = System.Text.RegularExpressions.Regex.Match(yValue, @"-?\d+\.?\d*");
+                                        if (numberMatch.Success && double.TryParse(numberMatch.Value, out double extractedNum))
+                                        {
+                                            worksheet.Cells[transformedDataEndRow, transformedDataStartCol + colOffset].Value = extractedNum;
+                                        }
+                                        else
+                                        {
+                                            worksheet.Cells[transformedDataEndRow, transformedDataStartCol + colOffset].Value = yValue;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Leave empty if no matching data (Excel will show as empty/zero)
+                    
+                    colOffset++;
+                }
+                transformedDataEndRow++;
+            }
+            
+            // Create chart using transformed data
+            var xAxisRange = worksheet.Cells[transformedDataStartRow, transformedDataStartCol, transformedDataEndRow - 1, transformedDataStartCol];
+            
+            // Add series - one for each unique variable value
+            colOffset = 1;
+            foreach (var varName in variableNames)
+            {
+                var seriesRange = worksheet.Cells[transformedDataStartRow, transformedDataStartCol + colOffset, transformedDataEndRow - 1, transformedDataStartCol + colOffset];
+                var series = chart.Series.Add(seriesRange, xAxisRange);
+                series.Header = varName;
+                colOffset++;
+            }
+            
+            // Store chartWidthColumns for analysis positioning
+            chartWidthColumns = 13;
+        }
+        else
+        {
+            // Legacy approach: Use VariableColumns or YAxisColumns as direct series
+            List<int> seriesColumnIndices;
+            if (request.Configuration.VariableColumns != null && request.Configuration.VariableColumns.Any())
+            {
+                seriesColumnIndices = request.Configuration.VariableColumns
+                    .Select(colName => GetColumnIndex(headerRow, colName))
+                    .Where(idx => idx >= 0)
+                    .ToList();
+            }
+            else
+            {
+                seriesColumnIndices = request.Configuration.YAxisColumns
+                    .Select(colName => GetColumnIndex(headerRow, colName))
+                    .Where(idx => idx >= 0)
+                    .ToList();
+            }
+
+            if (xAxisColumnIndex < 0 || !seriesColumnIndices.Any())
+            {
+                throw new InvalidOperationException("Invalid column selection for chart axes. Please select an X-axis column and at least one variable column.");
+            }
+
+            // Create chart
+            chart = worksheet.Drawings.AddChart(request.Configuration.Title, chartType);
+            chart.Title.Text = request.Configuration.Title;
+            chart.Title.Font.Size = 14;
+            chart.Title.Font.Bold = true;
+
+            // Set chart position
+            chart.SetPosition(chartStartRow - 1, 0, chartStartColumn - 1, 0);
+            chart.SetSize(800, 400);
+
+            // Add X-axis data
+            var xAxisRange = worksheet.Cells[dataStartRowInWorksheet, xAxisColumnIndex + 1, dataEndRow, xAxisColumnIndex + 1];
+            
+            // Add series - one for each variable column
+            foreach (var seriesColIndex in seriesColumnIndices)
+            {
+                var seriesRange = worksheet.Cells[dataStartRowInWorksheet, seriesColIndex + 1, dataEndRow, seriesColIndex + 1];
+                var series = chart.Series.Add(seriesRange, xAxisRange);
+                series.Header = seriesColIndex < headerRow.Count ? headerRow[seriesColIndex] : $"Series {seriesColumnIndices.IndexOf(seriesColIndex) + 1}";
+            }
         }
 
         // Configure axes
@@ -575,7 +774,7 @@ public class ChartService : IChartService
 
     public async Task<string> AnalyzeDataAsync(List<List<string>> data, List<string> headers, ChartCreationRequest request, string userId, int tenantId, string? prompt = null)
     {
-        // Filter to only include columns used in the chart (x-axis and y-axis columns)
+        // Filter to only include columns used in the chart (x-axis, y-axis, and variable column)
         var columnsToInclude = new List<string>();
         
         // Add X-axis column
@@ -584,10 +783,21 @@ public class ChartService : IChartService
             columnsToInclude.AddRange(request.Configuration.XAxisColumns);
         }
         
-        // Add Y-axis columns
+        // Add Y-axis column
         if (request.Configuration.YAxisColumns != null && request.Configuration.YAxisColumns.Any())
         {
             columnsToInclude.AddRange(request.Configuration.YAxisColumns);
+        }
+        
+        // Add variable column (if using new VariableColumn approach)
+        if (!string.IsNullOrEmpty(request.Configuration.VariableColumn))
+        {
+            columnsToInclude.Add(request.Configuration.VariableColumn);
+        }
+        // Legacy: Add variable columns (old approach)
+        else if (request.Configuration.VariableColumns != null && request.Configuration.VariableColumns.Any())
+        {
+            columnsToInclude.AddRange(request.Configuration.VariableColumns);
         }
         
         // Remove duplicates while preserving order

@@ -51,7 +51,9 @@ public class ChartConfiguration
     public bool ShowLegend { get; set; } = true;
     public string? LegendPosition { get; set; } = "Right"; // Right, Left, Top, Bottom
     public List<string> XAxisColumns { get; set; } = new();
-    public List<string> YAxisColumns { get; set; } = new();
+    public List<string> YAxisColumns { get; set; } = new(); // Legacy: kept for backward compatibility
+    public List<string> VariableColumns { get; set; } = new(); // Legacy: kept for backward compatibility
+    public string? VariableColumn { get; set; } // Column name (e.g., "variable") that contains values like "nitrogen", "phosphorus" - each unique value becomes a series
     public int? DataStartRow { get; set; } // 1-based row number where data starts
     public bool IncludeDataAnalysis { get; set; } = true;
 }

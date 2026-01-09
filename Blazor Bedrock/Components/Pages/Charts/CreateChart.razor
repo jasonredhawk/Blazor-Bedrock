@@ -151,27 +151,60 @@
                                 <!-- Chart Type -->
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">Chart Type *</label>
+                                    @if (!string.IsNullOrEmpty(_selectedVariableColumn))
+                                    {
+                                        <div class="alert alert-success mb-2">
+                                            <i class="bi bi-lightbulb me-2"></i>
+                                            <strong>Multi-Variable Chart:</strong> With multiple variables selected, consider:
+                                            <ul class="mb-0 mt-2 small">
+                                                <li><strong>Stacked types</strong> (Column Stacked, Bar Stacked, Area Stacked) - Stack variables on top of each other</li>
+                                                <li><strong>Clustered types</strong> (Column Clustered, Bar Clustered) - Show variables side-by-side</li>
+                                                <li><strong>Line types</strong> (Line, Line with Markers) - Show variables as separate lines</li>
+                                            </ul>
+                                        </div>
+                                    }
                                     <InputSelect class="form-select" @bind-Value="_request.Configuration.ChartType">
-                                        <option value="@ChartType.LineMarkers">Line with Markers</option>
-                                        <option value="@ChartType.Line">Line</option>
-                                        <option value="@ChartType.ColumnClustered">Column (Clustered)</option>
-                                        <option value="@ChartType.ColumnStacked">Column (Stacked)</option>
-                                        <option value="@ChartType.BarClustered">Bar (Clustered)</option>
-                                        <option value="@ChartType.BarStacked">Bar (Stacked)</option>
-                                        <option value="@ChartType.Pie">Pie</option>
-                                        <option value="@ChartType.Scatter">Scatter</option>
-                                        <option value="@ChartType.Area">Area</option>
-                                        <option value="@ChartType.AreaStacked">Area (Stacked)</option>
+                                        <optgroup label="Line Charts (Good for multiple variables)">
+                                            <option value="@ChartType.LineMarkers">Line with Markers</option>
+                                            <option value="@ChartType.Line">Line</option>
+                                        </optgroup>
+                                        <optgroup label="Column Charts">
+                                            <option value="@ChartType.ColumnClustered">Column (Clustered) - Side-by-side</option>
+                                            <option value="@ChartType.ColumnStacked">Column (Stacked) - Stacked on top</option>
+                                        </optgroup>
+                                        <optgroup label="Bar Charts">
+                                            <option value="@ChartType.BarClustered">Bar (Clustered) - Side-by-side</option>
+                                            <option value="@ChartType.BarStacked">Bar (Stacked) - Stacked</option>
+                                        </optgroup>
+                                        <optgroup label="Area Charts">
+                                            <option value="@ChartType.Area">Area</option>
+                                            <option value="@ChartType.AreaStacked">Area (Stacked) - Stacked</option>
+                                        </optgroup>
+                                        <optgroup label="Other">
+                                            <option value="@ChartType.Pie">Pie (Single variable only)</option>
+                                            <option value="@ChartType.Scatter">Scatter</option>
+                                        </optgroup>
                                     </InputSelect>
+                                    <small class="text-muted d-block mt-1">
+                                        @if (!string.IsNullOrEmpty(_selectedVariableColumn))
+                                        {
+                                            <text>💡 <strong>Tip:</strong> Stacked and clustered types work best with multiple variables. Line charts show each variable as a separate line.</text>
+                                        }
+                                        else
+                                        {
+                                            <text>Select X-axis, Y-axis, and Variable column above to create your chart.</text>
+                                        }
+                                    </small>
                                 </div>
 
                                 @if (_headers != null && _headers.Any())
                                 {
                                     <!-- X-Axis Column -->
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">X-Axis Column *</label>
-                                        <select class="form-select" @bind="_selectedXAxisColumn">
-                                            <option value="">-- Select column --</option>
+                                        <label class="form-label fw-bold">Step 1: X-Axis Column (Date) *</label>
+                                        <small class="text-muted d-block mb-2">Select the column containing dates or time values</small>
+                                        <select class="form-select" @bind="_selectedXAxisColumn" @bind:after="UpdatePreview">
+                                            <option value="">-- Select date column --</option>
                                             @foreach (var header in _headers)
                                             {
                                                 <option value="@header">@header</option>
@@ -179,22 +212,66 @@
                                         </select>
                                     </div>
 
-                                    <!-- Y-Axis Columns -->
+                                    <!-- Y-Axis Column -->
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">Y-Axis Columns *</label>
-                                        <small class="text-muted d-block mb-2">Select one or more columns for the Y-axis</small>
-                                        @foreach (var header in _headers)
+                                        <label class="form-label fw-bold">Step 2: Y-Axis Column (Value) *</label>
+                                        <small class="text-muted d-block mb-2">Select the column containing the concentration/measurement values</small>
+                                        <select class="form-select" @bind="_selectedYAxisColumn" @bind:after="UpdatePreview">
+                                            <option value="">-- Select value column --</option>
+                                            @foreach (var header in _headers)
+                                            {
+                                                var isXAxis = header.Equals(_selectedXAxisColumn, StringComparison.OrdinalIgnoreCase);
+                                                <option value="@header" disabled="@isXAxis">@header@(isXAxis ? " (X-axis)" : "")</option>
+                                            }
+                                        </select>
+                                    </div>
+
+                                    <!-- Variable Column -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Step 3: Variable Column *</label>
+                                        <small class="text-muted d-block mb-2">
+                                            Select the column that contains variable names (e.g., "variable" column with values like "nitrogen", "phosphorus", "copper"). 
+                                            Each unique value in this column will become a separate series (line, column, or bar) in your chart.
+                                        </small>
+                                        @if (!string.IsNullOrEmpty(_selectedVariableColumn))
                                         {
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" 
-                                                       id="yaxis-@header" 
-                                                       checked="@(_selectedYAxisColumns.Contains(header))"
-                                                       @onchange="@((ChangeEventArgs e) => ToggleYAxisColumn(header, e.Value?.ToString() == "True"))" />
-                                                <label class="form-check-label" for="yaxis-@header">
-                                                    @header
-                                                </label>
+                                            var uniqueVariableCount = GetUniqueVariableCount(_selectedVariableColumn);
+                                            <div class="alert alert-success mb-2">
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                <strong>Variable column selected:</strong> @_selectedVariableColumn
+                                                <br />
+                                                <small class="mt-1 d-block">
+                                                    @if (uniqueVariableCount > 0)
+                                                    {
+                                                        <text><strong>@uniqueVariableCount unique variable(s) found.</strong> Each will become a separate series in your chart.</text>
+                                                        <ul class="mb-0 mt-1">
+                                                            <li><strong>Stacked types</strong> (Column Stacked, Bar Stacked, Area Stacked) - Stack variables on top of each other</li>
+                                                            <li><strong>Clustered types</strong> (Column Clustered, Bar Clustered) - Show variables side-by-side</li>
+                                                            <li><strong>Line types</strong> (Line, Line with Markers) - Show each variable as a separate line</li>
+                                                        </ul>
+                                                    }
+                                                </small>
                                             </div>
                                         }
+                                        <select class="form-select" @bind="_selectedVariableColumn" @bind:after="UpdatePreview">
+                                            <option value="">-- Select variable column --</option>
+                                            @foreach (var header in _headers)
+                                            {
+                                                var isXAxis = header.Equals(_selectedXAxisColumn, StringComparison.OrdinalIgnoreCase);
+                                                var isYAxis = header.Equals(_selectedYAxisColumn, StringComparison.OrdinalIgnoreCase);
+                                                <option value="@header" disabled="@(isXAxis || isYAxis)">
+                                                    @header
+                                                    @if (isXAxis)
+                                                    {
+                                                        <text> (X-axis)</text>
+                                                    }
+                                                    else if (isYAxis)
+                                                    {
+                                                        <text> (Y-axis)</text>
+                                                    }
+                                                </option>
+                                            }
+                                        </select>
                                     </div>
 
                                     <!-- Data Start Row -->
@@ -481,12 +558,16 @@
                                 <hr class="my-4" />
 
                                 <!-- Advanced: Multiple Charts -->
-                                <h5 class="mb-3">Multiple Charts (Optional)</h5>
+                                <h5 class="mb-3">Multiple Charts by Station (Optional)</h5>
                                 <div class="mb-3">
                                     <div class="form-check">
                                         <InputCheckbox class="form-check-input" @bind-Value="_request.CreateMultipleCharts" />
-                                        <label class="form-check-label fw-bold">Create Multiple Charts</label>
-                                        <small class="text-muted d-block">Create separate worksheets, each with its own chart</small>
+                                        <label class="form-check-label fw-bold">Create Multiple Charts (One per Station)</label>
+                                        <small class="text-muted d-block">
+                                            Create separate worksheets, one for each station. Each worksheet will contain a chart with your selected variables (stacked, clustered, or as lines).
+                                            <br />
+                                            <strong>Example:</strong> If you have data from Station A, Station B, and Station C, you'll get 3 worksheets, each with a chart showing the selected variables for that station.
+                                        </small>
                                     </div>
                                 </div>
 
@@ -674,7 +755,8 @@
     private List<List<string>> _previewRows = new();
     private Infrastructure.ExternalApis.SheetData? _allRowsData; // Store ALL rows for filtering
     private string _selectedXAxisColumn = string.Empty;
-    private List<string> _selectedYAxisColumns = new();
+    private string _selectedYAxisColumn = string.Empty; // Y-axis column (value)
+    private string _selectedVariableColumn = string.Empty; // Variable column (contains values like "nitrogen", "phosphorus")
     private string _selectedFilterColumn = string.Empty;
     private Dictionary<string, List<string>> _filterValues = new(); // Column name -> unique values
     private Dictionary<string, string> _filterSearchTerms = new(); // Column name -> search term for filtering visible options
@@ -843,9 +925,10 @@
             // Load the configuration
             _request = savedRequest;
 
-            // Restore x-axis and y-axis selections from loaded configuration
+            // Restore x-axis, y-axis, and variable column selections from loaded configuration
             _selectedXAxisColumn = _request.Configuration.XAxisColumns?.FirstOrDefault() ?? string.Empty;
-            _selectedYAxisColumns = _request.Configuration.YAxisColumns?.ToList() ?? new List<string>();
+            _selectedYAxisColumn = _request.Configuration.YAxisColumns?.FirstOrDefault() ?? string.Empty;
+            _selectedVariableColumn = _request.Configuration.VariableColumn ?? string.Empty;
 
             // Restore grouping columns (support both old and new format)
             if (_request.GroupByColumns != null && _request.GroupByColumns.Any())
@@ -910,7 +993,8 @@
         {
             // Update request with current selections before saving
             _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
-            _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+            _request.Configuration.YAxisColumns = new List<string> { _selectedYAxisColumn };
+            _request.Configuration.VariableColumn = _selectedVariableColumn;
 
             var savedChartId = await ChartService.SaveChartAsync(_request, _chartName, _chartDescription, userId, tenantId.Value, _currentSavedChartId);
             _currentSavedChartId = savedChartId;
@@ -998,7 +1082,8 @@
             _headers.Clear();
             _previewRows.Clear();
             _selectedXAxisColumn = string.Empty;
-            _selectedYAxisColumns.Clear();
+            _selectedYAxisColumn = string.Empty;
+            _selectedVariableColumn = string.Empty;
             _request.Filters.Clear();
             _request.Sorts.Clear();
             _filterValues.Clear();
@@ -1054,7 +1139,8 @@
         
         // Clear axis selections, filters, and sorts when sheet changes
         _selectedXAxisColumn = string.Empty;
-        _selectedYAxisColumns.Clear();
+        _selectedYAxisColumn = string.Empty;
+        _selectedVariableColumn = string.Empty;
         _request.Filters.Clear();
         _request.Sorts.Clear();
         _request.GroupByColumns.Clear();
@@ -1447,16 +1533,25 @@
         return uniqueValues;
     }
 
-    private void ToggleYAxisColumn(string columnName, bool isSelected)
+    private int GetUniqueVariableCount(string variableColumnName)
     {
-        if (isSelected && !_selectedYAxisColumns.Contains(columnName))
-        {
-            _selectedYAxisColumns.Add(columnName);
-        }
-        else if (!isSelected)
-        {
-            _selectedYAxisColumns.Remove(columnName);
-        }
+        if (_allRowsData == null || string.IsNullOrEmpty(variableColumnName))
+            return 0;
+
+        var columnIndex = _headers.IndexOf(variableColumnName);
+        if (columnIndex < 0)
+            return 0;
+
+        // Apply active filters to ALL rows
+        var filteredRows = ApplyFiltersToAllRows();
+
+        var uniqueValues = filteredRows
+            .Where(row => columnIndex < row.Count && !string.IsNullOrWhiteSpace(row[columnIndex]))
+            .Select(row => row[columnIndex].Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        return uniqueValues;
     }
 
     private async Task CreateChartAsync()
@@ -1480,9 +1575,15 @@
             return;
         }
 
-        if (!_selectedYAxisColumns.Any())
+        if (string.IsNullOrEmpty(_selectedYAxisColumn))
         {
-            errorMessage = "Please select at least one Y-axis column.";
+            errorMessage = "Please select a Y-axis column (value) in Step 2.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_selectedVariableColumn))
+        {
+            errorMessage = "Please select a Variable column in Step 3.";
             return;
         }
 
@@ -1508,7 +1609,8 @@
 
         // Update request with selected columns
         _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
-        _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+        _request.Configuration.YAxisColumns = new List<string> { _selectedYAxisColumn };
+        _request.Configuration.VariableColumn = _selectedVariableColumn;
         
         // Ensure GroupByColumns is populated (support backward compatibility)
         if (_request.CreateMultipleCharts)
@@ -1541,7 +1643,8 @@
                 try
                 {
                     _request.Configuration.XAxisColumns = new List<string> { _selectedXAxisColumn };
-                    _request.Configuration.YAxisColumns = _selectedYAxisColumns.ToList();
+                    _request.Configuration.YAxisColumns = new List<string> { _selectedYAxisColumn };
+                    _request.Configuration.VariableColumn = _selectedVariableColumn;
                     await ChartService.SaveChartAsync(_request, _chartName, _chartDescription, userId, tenantId.Value, _currentSavedChartId);
                 }
                 catch (Exception ex)
