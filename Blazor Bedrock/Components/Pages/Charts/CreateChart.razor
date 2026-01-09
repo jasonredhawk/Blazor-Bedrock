@@ -163,7 +163,7 @@
                                             </ul>
                                         </div>
                                     }
-                                    <InputSelect class="form-select" @bind-Value="_request.Configuration.ChartType">
+                                    <InputSelect class="form-select" @bind-Value="_request.Configuration.ChartType" @bind-Value:after="OnChartTypeChanged">
                                         <optgroup label="Line Charts (Good for multiple variables)">
                                             <option value="@ChartType.LineMarkers">Line with Markers</option>
                                             <option value="@ChartType.Line">Line</option>
@@ -285,7 +285,7 @@
                                 <!-- Axis Titles -->
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">X-Axis Title</label>
-                                    <InputText class="form-control" @bind-Value="_request.Configuration.XAxisTitle" placeholder="Leave empty for default" />
+                                    <InputText class="form-control" @bind-Value="_request.Configuration.XAxisTitle" @bind-Value:after="UpdateChartPreviewAsync" placeholder="Leave empty for default" />
                                 </div>
 
                                 <div class="mb-3">
@@ -296,7 +296,7 @@
                                 <!-- Legend Options -->
                                 <div class="mb-3">
                                     <div class="form-check">
-                                        <InputCheckbox class="form-check-input" @bind-Value="_request.Configuration.ShowLegend" />
+                                        <InputCheckbox class="form-check-input" @bind-Value="_request.Configuration.ShowLegend" @bind-Value:after="UpdateChartPreviewAsync" />
                                         <label class="form-check-label fw-bold">Show Legend</label>
                                     </div>
                                 </div>
@@ -561,7 +561,7 @@
                                 <h5 class="mb-3">Multiple Charts by Station (Optional)</h5>
                                 <div class="mb-3">
                                     <div class="form-check">
-                                        <InputCheckbox class="form-check-input" @bind-Value="_request.CreateMultipleCharts" />
+                                        <InputCheckbox class="form-check-input" @bind-Value="_request.CreateMultipleCharts" @bind-Value:after="UpdateChartPreviewAsync" />
                                         <label class="form-check-label fw-bold">Create Multiple Charts (One per Station)</label>
                                         <small class="text-muted d-block">
                                             Create separate worksheets, one for each station. Each worksheet will contain a chart with your selected variables (stacked, clustered, or as lines).
@@ -587,7 +587,7 @@
                                                                type="checkbox" 
                                                                id="groupBy-@header" 
                                                                checked="@isSelected"
-                                                               @onchange="@((ChangeEventArgs e) => ToggleGroupByColumn(header, e.Value?.ToString() == "True"))" />
+                                                               @onchange="@(async (ChangeEventArgs e) => await ToggleGroupByColumn(header, e.Value?.ToString() == "True"))" />
                                                         <label class="form-check-label" for="groupBy-@header">
                                                             @header
                                                         </label>
@@ -665,8 +665,102 @@
                         </div>
                     </div>
 
-                    <!-- Right Column: Data Preview -->
+                    <!-- Right Column: Chart Preview and Data Preview -->
                     <div class="col-lg-6">
+                        <!-- Chart Preview -->
+                        <div class="card shadow mb-4">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-bar-chart me-2"></i>Chart Preview
+                                    @if (_request.CreateMultipleCharts && _request.GroupByColumns.Any())
+                                    {
+                                        var previewCount = GetUniqueGroupCountForMultipleColumns(_request.GroupByColumns);
+                                        <span class="badge bg-light text-dark ms-2">@previewCount chart(s)</span>
+                                    }
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                @if (_request.DocumentId == 0 || string.IsNullOrEmpty(_selectedXAxisColumn) || string.IsNullOrEmpty(_selectedYAxisColumn) || string.IsNullOrEmpty(_selectedVariableColumn))
+                                {
+                                    <div class="text-center text-muted py-5">
+                                        <i class="bi bi-graph-up display-1"></i>
+                                        <p class="mt-3">
+                                            @if (_request.DocumentId == 0)
+                                            {
+                                                <text>Select a document to preview chart</text>
+                                            }
+                                            else if (string.IsNullOrEmpty(_selectedXAxisColumn))
+                                            {
+                                                <text>Select X-axis column to preview chart</text>
+                                            }
+                                            else if (string.IsNullOrEmpty(_selectedYAxisColumn))
+                                            {
+                                                <text>Select Y-axis column to preview chart</text>
+                                            }
+                                            else if (string.IsNullOrEmpty(_selectedVariableColumn))
+                                            {
+                                                <text>Select Variable column to preview chart</text>
+                                            }
+                                        </p>
+                                    </div>
+                                }
+                                else if (_currentSheetData == null || !_currentSheetData.Rows.Any())
+                                {
+                                    <div class="alert alert-warning">
+                                        No data found in the selected sheet.
+                                    </div>
+                                }
+                                else if (_request.CreateMultipleCharts && _request.GroupByColumns.Any())
+                                {
+                                    <!-- Multiple Charts Preview -->
+                                    @if (_chartPreviewGroups.Any())
+                                    {
+                                        <div class="chart-preview-list">
+                                            @foreach (var chartGroup in _chartPreviewGroups)
+                                            {
+                                                <div class="card mb-3 border">
+                                                    <div class="card-header bg-light">
+                                                        <h6 class="mb-0">
+                                                            <i class="bi bi-file-earmark-spreadsheet me-2"></i>
+                                                            @chartGroup.GroupKey
+                                                        </h6>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <div class="position-relative" style="height: 350px;">
+                                                            <canvas id="chartPreviewCanvas_@chartGroup.Index"></canvas>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                        <small class="text-muted d-block mt-2">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            Preview of @_chartPreviewGroups.Count chart(s) that will be created. Each chart will be in a separate worksheet.
+                                        </small>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center text-muted py-3">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <p class="mt-2">Loading chart previews...</p>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <!-- Single Chart Preview -->
+                                    <div class="position-relative" style="height: 400px;">
+                                        <canvas id="chartPreviewCanvas"></canvas>
+                                    </div>
+                                    <small class="text-muted d-block mt-2">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        This is a preview based on filtered data. The final chart may include additional data.
+                                    </small>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Data Preview -->
                         <div class="card shadow mb-4">
                             <div class="card-header bg-info text-white">
                                 <h5 class="mb-0">Data Preview</h5>
@@ -773,6 +867,15 @@
     private int? _currentSavedChartId = null;
     private string _chartName = string.Empty;
     private string? _chartDescription = string.Empty;
+    private List<ChartPreviewGroup> _chartPreviewGroups = new();
+    private bool _isUpdatingChartPreview = false;
+
+    private class ChartPreviewGroup
+    {
+        public string GroupKey { get; set; } = string.Empty;
+        public int Index { get; set; }
+        public List<List<string>> DataRows { get; set; } = new();
+    }
 
     [Parameter] [SupplyParameterFromQuery] public int? chartId { get; set; }
 
@@ -827,7 +930,7 @@
         }
     }
 
-    private void ToggleGroupByColumn(string columnName, bool isSelected)
+    private async Task ToggleGroupByColumn(string columnName, bool isSelected)
     {
         if (isSelected && !_request.GroupByColumns.Contains(columnName, StringComparer.OrdinalIgnoreCase))
         {
@@ -846,6 +949,12 @@
         else
         {
             _request.GroupByColumn = null;
+        }
+        
+        // Update chart preview if all required columns are selected
+        if (!string.IsNullOrEmpty(_selectedXAxisColumn) && !string.IsNullOrEmpty(_selectedYAxisColumn) && !string.IsNullOrEmpty(_selectedVariableColumn))
+        {
+            await UpdateChartPreviewAsync();
         }
         
         StateHasChanged();
@@ -1196,6 +1305,20 @@
         {
             var doc = _availableDocuments?.FirstOrDefault(d => d.Id == _request.DocumentId);
             _request.Configuration.Title = $"Chart from {doc?.Title ?? doc?.FileName ?? "Data"}";
+        }
+
+        // Update chart preview if all required columns are selected
+        // Only update if not already updating
+        if (!string.IsNullOrEmpty(_selectedXAxisColumn) && !string.IsNullOrEmpty(_selectedYAxisColumn) && !string.IsNullOrEmpty(_selectedVariableColumn) && !_isUpdatingChartPreview)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(150); // Debounce delay
+                if (!_isUpdatingChartPreview)
+                {
+                    await InvokeAsync(async () => await UpdateChartPreviewAsync());
+                }
+            });
         }
     }
 
@@ -1552,6 +1675,871 @@
             .Count();
 
         return uniqueValues;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Wait for Chart.js to load
+            await Task.Delay(100);
+        }
+
+        // Update chart preview if all required columns are selected
+        // Only update if not already updating to prevent glitching
+        if (!string.IsNullOrEmpty(_selectedXAxisColumn) && !string.IsNullOrEmpty(_selectedYAxisColumn) && !string.IsNullOrEmpty(_selectedVariableColumn))
+        {
+            // For multiple charts, wait a bit longer for DOM to be ready
+            if (_request.CreateMultipleCharts && _request.GroupByColumns.Any())
+            {
+                await Task.Delay(150);
+            }
+            await UpdateChartPreviewAsync();
+        }
+    }
+
+    private async Task OnChartTypeChanged()
+    {
+        await UpdateChartPreviewAsync();
+        StateHasChanged();
+    }
+
+    private async Task UpdateChartPreviewAsync()
+    {
+        if (_allRowsData == null || _headers == null || !_headers.Any())
+            return;
+
+        if (string.IsNullOrEmpty(_selectedXAxisColumn) || string.IsNullOrEmpty(_selectedYAxisColumn) || string.IsNullOrEmpty(_selectedVariableColumn))
+            return;
+
+        // Prevent concurrent updates
+        if (_isUpdatingChartPreview)
+            return;
+
+        _isUpdatingChartPreview = true;
+
+        try
+        {
+            // Get filtered and sorted data
+            var filteredRows = ApplyFiltersToAllRows();
+            var sortedRows = ApplySortingToRows(filteredRows);
+
+            if (!sortedRows.Any())
+                return;
+
+            // Get column indices
+            var xAxisIndex = _headers.IndexOf(_selectedXAxisColumn);
+            var yAxisIndex = _headers.IndexOf(_selectedYAxisColumn);
+            var variableIndex = _headers.IndexOf(_selectedVariableColumn);
+
+            if (xAxisIndex < 0 || yAxisIndex < 0 || variableIndex < 0)
+                return;
+
+            // Handle multiple charts if enabled - skip single chart preview
+            if (_request.CreateMultipleCharts && _request.GroupByColumns.Any())
+            {
+                // Clear single chart if it exists
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("chartPreview.destroyChart", "chartPreviewCanvas");
+                }
+                catch { }
+                
+                await UpdateMultipleChartPreviewsAsync(sortedRows, xAxisIndex, yAxisIndex, variableIndex);
+                return;
+            }
+
+            // Single chart preview - clear multiple chart groups and destroy their charts first
+            foreach (var group in _chartPreviewGroups)
+            {
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("chartPreview.destroyChart", $"chartPreviewCanvas_{group.Index}");
+                }
+                catch { }
+            }
+            _chartPreviewGroups.Clear();
+            StateHasChanged();
+            await Task.Delay(50); // Small delay to ensure DOM is updated
+
+            // Group data by variable column (similar to ChartService logic)
+            var groupedByVariable = sortedRows
+                .Where(row => variableIndex < row.Count && yAxisIndex < row.Count && xAxisIndex < row.Count && !string.IsNullOrWhiteSpace(row[variableIndex]))
+                .GroupBy(row => row[variableIndex]?.Trim() ?? "Unknown")
+                .ToList();
+
+            if (!groupedByVariable.Any())
+                return;
+
+            // Get all unique X-axis values (sorted)
+            var allXValues = sortedRows
+                .Where(row => xAxisIndex < row.Count && !string.IsNullOrWhiteSpace(row[xAxisIndex]))
+                .Select(row => row[xAxisIndex]?.Trim() ?? "")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x =>
+                {
+                    // Try to sort as date if possible, otherwise as string
+                    if (DateTime.TryParse(x, out DateTime dateValue))
+                        return dateValue.Ticks.ToString();
+                    if (double.TryParse(x, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                        return numValue.ToString("F10");
+                    return x;
+                })
+                .ToList();
+
+            // Limit to reasonable number of data points for preview (max 100)
+            if (allXValues.Count > 100)
+            {
+                allXValues = allXValues.Take(100).ToList();
+            }
+
+            // Determine chart type
+            var chartType = _request.Configuration.ChartType switch
+            {
+                ChartType.Line => "line",
+                ChartType.LineMarkers => "line",
+                ChartType.ColumnClustered => "bar",
+                ChartType.ColumnStacked => "bar",
+                ChartType.BarClustered => "bar",
+                ChartType.BarStacked => "bar",
+                ChartType.Pie => "pie",
+                ChartType.Scatter => "scatter",
+                ChartType.Area => "line",
+                ChartType.AreaStacked => "line",
+                _ => "line"
+            };
+
+            var isStacked = _request.Configuration.ChartType == ChartType.ColumnStacked || 
+                           _request.Configuration.ChartType == ChartType.BarStacked || 
+                           _request.Configuration.ChartType == ChartType.AreaStacked;
+            var isPie = chartType == "pie";
+            var showMarkers = _request.Configuration.ChartType == ChartType.LineMarkers;
+            var isArea = _request.Configuration.ChartType == ChartType.Area || _request.Configuration.ChartType == ChartType.AreaStacked;
+
+            // Build datasets for Chart.js
+            var datasets = new List<object>();
+            var variableNames = groupedByVariable.Select(g => g.Key).OrderBy(v => v).ToList();
+
+            // Limit number of series for preview (max 10)
+            var seriesToShow = variableNames.Take(10).ToList();
+
+            // For pie charts, we need a different data structure
+            if (isPie && seriesToShow.Any())
+            {
+                // Pie chart: aggregate all values for each variable
+                var pieData = new List<object>();
+                foreach (var varName in seriesToShow)
+                {
+                    var variableGroup = groupedByVariable.FirstOrDefault(g => g.Key.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                    if (variableGroup == null) continue;
+
+                    double total = 0;
+                    foreach (var row in variableGroup)
+                    {
+                        if (yAxisIndex < row.Count)
+                        {
+                            var yValue = row[yAxisIndex]?.Trim() ?? "";
+                            if (!string.IsNullOrWhiteSpace(yValue))
+                            {
+                                if (double.TryParse(yValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                                {
+                                    total += numValue;
+                                }
+                                else
+                                {
+                                    var numberMatch = System.Text.RegularExpressions.Regex.Match(yValue, @"-?\d+\.?\d*");
+                                    if (numberMatch.Success && double.TryParse(numberMatch.Value, out double extractedNum))
+                                    {
+                                        total += extractedNum;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (total > 0)
+                    {
+                        pieData.Add(total);
+                    }
+                }
+
+                if (pieData.Any())
+                {
+                    var pieChartConfig = new
+                    {
+                        type = "pie",
+                        data = new
+                        {
+                            labels = seriesToShow,
+                            datasets = new[] {
+                                new {
+                                    data = pieData,
+                                    backgroundColor = new[] {
+                                        "rgba(54, 162, 235, 0.8)",
+                                        "rgba(255, 99, 132, 0.8)",
+                                        "rgba(255, 206, 86, 0.8)",
+                                        "rgba(75, 192, 192, 0.8)",
+                                        "rgba(153, 102, 255, 0.8)",
+                                        "rgba(255, 159, 64, 0.8)",
+                                        "rgba(199, 199, 199, 0.8)",
+                                        "rgba(83, 102, 255, 0.8)",
+                                        "rgba(255, 99, 255, 0.8)",
+                                        "rgba(99, 255, 132, 0.8)"
+                                    }
+                                }
+                            }
+                        },
+                        options = new
+                        {
+                            responsive = true,
+                            maintainAspectRatio = false,
+                            plugins = new
+                            {
+                                title = new
+                                {
+                                    display = !string.IsNullOrEmpty(_request.Configuration.Title),
+                                    text = _request.Configuration.Title ?? ""
+                                },
+                                legend = new
+                                {
+                                    display = _request.Configuration.ShowLegend,
+                                    position = (_request.Configuration.LegendPosition ?? "right").ToLower()
+                                }
+                            }
+                        }
+                    };
+
+                    var pieChartConfigJson = System.Text.Json.JsonSerializer.Serialize(pieChartConfig, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                    });
+
+                    await JSRuntime.InvokeVoidAsync("chartPreview.renderChart", "chartPreviewCanvas", pieChartConfigJson);
+                    return;
+                }
+            }
+
+            // For other chart types, build datasets with data points
+            foreach (var varName in seriesToShow)
+            {
+                var variableGroup = groupedByVariable.FirstOrDefault(g => g.Key.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                if (variableGroup == null) continue;
+
+                var dataPoints = new List<double?>();
+                foreach (var xValue in allXValues)
+                {
+                    var matchingRow = variableGroup.FirstOrDefault(row =>
+                    {
+                        if (xAxisIndex >= row.Count) return false;
+                        var rowXValue = row[xAxisIndex]?.Trim() ?? "";
+                        
+                        // Try exact match first
+                        if (rowXValue.Equals(xValue, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                        
+                        // Try date comparison if both are dates
+                        if (DateTime.TryParse(rowXValue, out DateTime rowDate) && 
+                            DateTime.TryParse(xValue, out DateTime targetDate))
+                        {
+                            return rowDate.Date == targetDate.Date;
+                        }
+                        
+                        return false;
+                    });
+
+                    if (matchingRow != null && yAxisIndex < matchingRow.Count)
+                    {
+                        var yValue = matchingRow[yAxisIndex]?.Trim() ?? "";
+                        if (!string.IsNullOrWhiteSpace(yValue))
+                        {
+                            if (double.TryParse(yValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                            {
+                                dataPoints.Add(numValue);
+                            }
+                            else
+                            {
+                                // Try to extract number from string
+                                var numberMatch = System.Text.RegularExpressions.Regex.Match(yValue, @"-?\d+\.?\d*");
+                                if (numberMatch.Success && double.TryParse(numberMatch.Value, out double extractedNum))
+                                {
+                                    dataPoints.Add(extractedNum);
+                                }
+                                else
+                                {
+                                    dataPoints.Add(null);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            dataPoints.Add(null);
+                        }
+                    }
+                    else
+                    {
+                        dataPoints.Add(null);
+                    }
+                }
+
+                if (dataPoints.Any(d => d.HasValue))
+                {
+                    var colorIndex = datasets.Count % 10;
+                    var colors = new[]
+                    {
+                        "rgba(54, 162, 235, 0.8)",
+                        "rgba(255, 99, 132, 0.8)",
+                        "rgba(255, 206, 86, 0.8)",
+                        "rgba(75, 192, 192, 0.8)",
+                        "rgba(153, 102, 255, 0.8)",
+                        "rgba(255, 159, 64, 0.8)",
+                        "rgba(199, 199, 199, 0.8)",
+                        "rgba(83, 102, 255, 0.8)",
+                        "rgba(255, 99, 255, 0.8)",
+                        "rgba(99, 255, 132, 0.8)"
+                    };
+
+                    datasets.Add(new
+                    {
+                        label = varName,
+                        data = dataPoints,
+                        borderWidth = 2,
+                        backgroundColor = isStacked || isArea ? colors[colorIndex] : colors[colorIndex].Replace("0.8", "0.2"),
+                        borderColor = colors[colorIndex].Replace("0.8", "1"),
+                        fill = isArea || isStacked,
+                        pointRadius = showMarkers ? 4 : (chartType == "line" ? 0 : 3),
+                        pointHoverRadius = 6
+                    });
+                }
+            }
+
+            if (!datasets.Any())
+                return;
+
+            // Build Chart.js configuration
+            var chartConfig = new
+            {
+                type = chartType,
+                data = new
+                {
+                    labels = allXValues,
+                    datasets = datasets
+                },
+                options = new
+                {
+                    responsive = true,
+                    maintainAspectRatio = false,
+                    plugins = new
+                    {
+                        title = new
+                        {
+                            display = !string.IsNullOrEmpty(_request.Configuration.Title),
+                            text = _request.Configuration.Title ?? ""
+                        },
+                        legend = new
+                        {
+                            display = _request.Configuration.ShowLegend,
+                            position = (_request.Configuration.LegendPosition ?? "right").ToLower()
+                        }
+                    },
+                    scales = chartType != "pie" ? new
+                    {
+                        x = new
+                        {
+                            title = new
+                            {
+                                display = !string.IsNullOrEmpty(_request.Configuration.XAxisTitle),
+                                text = _request.Configuration.XAxisTitle ?? _selectedXAxisColumn
+                            },
+                            stacked = isStacked
+                        },
+                        y = new
+                        {
+                            title = new
+                            {
+                                display = !string.IsNullOrEmpty(_request.Configuration.YAxisTitle),
+                                text = _request.Configuration.YAxisTitle ?? _selectedYAxisColumn
+                            },
+                            beginAtZero = true,
+                            stacked = isStacked
+                        }
+                    } : null
+                }
+            };
+
+            // Serialize and render chart
+            var chartConfigJson = System.Text.Json.JsonSerializer.Serialize(chartConfig, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+
+            await JSRuntime.InvokeVoidAsync("chartPreview.renderChart", "chartPreviewCanvas", chartConfigJson);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating chart preview: {ex.Message}");
+        }
+        finally
+        {
+            _isUpdatingChartPreview = false;
+        }
+    }
+
+    private async Task UpdateMultipleChartPreviewsAsync(List<List<string>> sortedRows, int xAxisIndex, int yAxisIndex, int variableIndex)
+    {
+        try
+        {
+            // Get indices of grouping columns
+            var groupByColumnIndices = _request.GroupByColumns
+                .Select(colName => _headers.IndexOf(colName))
+                .Where(idx => idx >= 0)
+                .ToList();
+
+            if (!groupByColumnIndices.Any())
+                return;
+
+            // Group data by the specified columns (similar to ChartService logic)
+            var groupedData = new Dictionary<string, List<List<string>>>();
+            
+            foreach (var row in sortedRows)
+            {
+                // Create composite key from all grouping columns
+                var keyParts = new List<string>();
+                bool validRow = true;
+                foreach (var colIndex in groupByColumnIndices)
+                {
+                    if (colIndex < row.Count)
+                    {
+                        keyParts.Add(row[colIndex]?.Trim() ?? "Unknown");
+                    }
+                    else
+                    {
+                        validRow = false;
+                        break;
+                    }
+                }
+
+                if (!validRow) continue;
+
+                var groupKey = string.Join(" + ", keyParts);
+                
+                if (!groupedData.ContainsKey(groupKey))
+                {
+                    groupedData[groupKey] = new List<List<string>>();
+                }
+                groupedData[groupKey].Add(row);
+            }
+
+            // Remove any groups that have no data
+            var groupsToRemove = groupedData.Where(g => !g.Value.Any()).Select(g => g.Key).ToList();
+            foreach (var key in groupsToRemove)
+            {
+                groupedData.Remove(key);
+            }
+
+            if (!groupedData.Any())
+                return;
+
+            // Destroy existing chart instances first
+            foreach (var group in _chartPreviewGroups)
+            {
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("chartPreview.destroyChart", $"chartPreviewCanvas_{group.Index}");
+                }
+                catch { }
+            }
+
+            // Build chart preview groups
+            _chartPreviewGroups.Clear();
+            int index = 0;
+            foreach (var group in groupedData.OrderBy(g => g.Key))
+            {
+                _chartPreviewGroups.Add(new ChartPreviewGroup
+                {
+                    GroupKey = group.Key,
+                    Index = index++,
+                    DataRows = group.Value
+                });
+            }
+
+            StateHasChanged();
+
+            // Wait for DOM to update with new canvas elements
+            await Task.Delay(200);
+
+            // Render each chart preview sequentially
+            foreach (var chartGroup in _chartPreviewGroups)
+            {
+                var canvasId = $"chartPreviewCanvas_{chartGroup.Index}";
+                
+                // Check if canvas exists, with retries
+                bool canvasExists = false;
+                for (int retry = 0; retry < 3; retry++)
+                {
+                    try
+                    {
+                        canvasExists = await JSRuntime.InvokeAsync<bool>("eval", $"document.getElementById('{canvasId}') !== null");
+                        if (canvasExists)
+                            break;
+                    }
+                    catch { }
+                    
+                    if (!canvasExists && retry < 2)
+                    {
+                        await Task.Delay(100 * (retry + 1)); // Increasing delay
+                    }
+                }
+                
+                if (canvasExists)
+                {
+                    await RenderSingleChartPreviewAsync(chartGroup.DataRows, xAxisIndex, yAxisIndex, variableIndex, canvasId, chartGroup.GroupKey);
+                    await Task.Delay(50); // Small delay between charts
+                }
+                else
+                {
+                    Console.WriteLine($"Canvas {canvasId} not found after retries");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating multiple chart previews: {ex.Message}");
+        }
+    }
+
+    private async Task RenderSingleChartPreviewAsync(List<List<string>> dataRows, int xAxisIndex, int yAxisIndex, int variableIndex, string canvasId, string? groupTitle = null)
+    {
+        try
+        {
+            if (!dataRows.Any())
+                return;
+
+            // Group data by variable column
+            var groupedByVariable = dataRows
+                .Where(row => variableIndex < row.Count && yAxisIndex < row.Count && xAxisIndex < row.Count && !string.IsNullOrWhiteSpace(row[variableIndex]))
+                .GroupBy(row => row[variableIndex]?.Trim() ?? "Unknown")
+                .ToList();
+
+            if (!groupedByVariable.Any())
+                return;
+
+            // Get all unique X-axis values (sorted)
+            var allXValues = dataRows
+                .Where(row => xAxisIndex < row.Count && !string.IsNullOrWhiteSpace(row[xAxisIndex]))
+                .Select(row => row[xAxisIndex]?.Trim() ?? "")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x =>
+                {
+                    if (DateTime.TryParse(x, out DateTime dateValue))
+                        return dateValue.Ticks.ToString();
+                    if (double.TryParse(x, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                        return numValue.ToString("F10");
+                    return x;
+                })
+                .ToList();
+
+            // Limit to reasonable number of data points for preview (max 100)
+            if (allXValues.Count > 100)
+            {
+                allXValues = allXValues.Take(100).ToList();
+            }
+
+            // Determine chart type
+            var chartType = _request.Configuration.ChartType switch
+            {
+                ChartType.Line => "line",
+                ChartType.LineMarkers => "line",
+                ChartType.ColumnClustered => "bar",
+                ChartType.ColumnStacked => "bar",
+                ChartType.BarClustered => "bar",
+                ChartType.BarStacked => "bar",
+                ChartType.Pie => "pie",
+                ChartType.Scatter => "scatter",
+                ChartType.Area => "line",
+                ChartType.AreaStacked => "line",
+                _ => "line"
+            };
+
+            var isStacked = _request.Configuration.ChartType == ChartType.ColumnStacked || 
+                           _request.Configuration.ChartType == ChartType.BarStacked || 
+                           _request.Configuration.ChartType == ChartType.AreaStacked;
+            var isPie = chartType == "pie";
+            var showMarkers = _request.Configuration.ChartType == ChartType.LineMarkers;
+            var isArea = _request.Configuration.ChartType == ChartType.Area || _request.Configuration.ChartType == ChartType.AreaStacked;
+
+            // Build datasets
+            var datasets = new List<object>();
+            var variableNames = groupedByVariable.Select(g => g.Key).OrderBy(v => v).ToList();
+            var seriesToShow = variableNames.Take(10).ToList();
+
+            // Handle pie charts
+            if (isPie && seriesToShow.Any())
+            {
+                var pieData = new List<object>();
+                foreach (var varName in seriesToShow)
+                {
+                    var variableGroup = groupedByVariable.FirstOrDefault(g => g.Key.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                    if (variableGroup == null) continue;
+
+                    double total = 0;
+                    foreach (var row in variableGroup)
+                    {
+                        if (yAxisIndex < row.Count)
+                        {
+                            var yValue = row[yAxisIndex]?.Trim() ?? "";
+                            if (!string.IsNullOrWhiteSpace(yValue))
+                            {
+                                if (double.TryParse(yValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                                {
+                                    total += numValue;
+                                }
+                                else
+                                {
+                                    var numberMatch = System.Text.RegularExpressions.Regex.Match(yValue, @"-?\d+\.?\d*");
+                                    if (numberMatch.Success && double.TryParse(numberMatch.Value, out double extractedNum))
+                                    {
+                                        total += extractedNum;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (total > 0)
+                    {
+                        pieData.Add(total);
+                    }
+                }
+
+                if (pieData.Any())
+                {
+                    var pieChartConfig = new
+                    {
+                        type = "pie",
+                        data = new
+                        {
+                            labels = seriesToShow,
+                            datasets = new[] {
+                                new {
+                                    data = pieData,
+                                    backgroundColor = new[] {
+                                        "rgba(54, 162, 235, 0.8)",
+                                        "rgba(255, 99, 132, 0.8)",
+                                        "rgba(255, 206, 86, 0.8)",
+                                        "rgba(75, 192, 192, 0.8)",
+                                        "rgba(153, 102, 255, 0.8)",
+                                        "rgba(255, 159, 64, 0.8)",
+                                        "rgba(199, 199, 199, 0.8)",
+                                        "rgba(83, 102, 255, 0.8)",
+                                        "rgba(255, 99, 255, 0.8)",
+                                        "rgba(99, 255, 132, 0.8)"
+                                    }
+                                }
+                            }
+                        },
+                        options = new
+                        {
+                            responsive = true,
+                            maintainAspectRatio = false,
+                            plugins = new
+                            {
+                                title = new
+                                {
+                                    display = true,
+                                    text = string.IsNullOrEmpty(groupTitle) 
+                                        ? (_request.Configuration.Title ?? "") 
+                                        : $"{_request.Configuration.Title ?? ""} - {groupTitle}".TrimStart(' ', '-')
+                                },
+                                legend = new
+                                {
+                                    display = _request.Configuration.ShowLegend,
+                                    position = (_request.Configuration.LegendPosition ?? "right").ToLower()
+                                }
+                            }
+                        }
+                    };
+
+                    var pieChartConfigJson = System.Text.Json.JsonSerializer.Serialize(pieChartConfig, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                    });
+
+                    await JSRuntime.InvokeVoidAsync("chartPreview.renderChart", canvasId, pieChartConfigJson);
+                    return;
+                }
+            }
+
+            // Build datasets for other chart types
+            foreach (var varName in seriesToShow)
+            {
+                var variableGroup = groupedByVariable.FirstOrDefault(g => g.Key.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                if (variableGroup == null) continue;
+
+                var dataPoints = new List<double?>();
+                foreach (var xValue in allXValues)
+                {
+                    var matchingRow = variableGroup.FirstOrDefault(row =>
+                    {
+                        if (xAxisIndex >= row.Count) return false;
+                        var rowXValue = row[xAxisIndex]?.Trim() ?? "";
+                        
+                        if (rowXValue.Equals(xValue, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                        
+                        if (DateTime.TryParse(rowXValue, out DateTime rowDate) && 
+                            DateTime.TryParse(xValue, out DateTime targetDate))
+                        {
+                            return rowDate.Date == targetDate.Date;
+                        }
+                        
+                        return false;
+                    });
+
+                    if (matchingRow != null && yAxisIndex < matchingRow.Count)
+                    {
+                        var yValue = matchingRow[yAxisIndex]?.Trim() ?? "";
+                        if (!string.IsNullOrWhiteSpace(yValue))
+                        {
+                            if (double.TryParse(yValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double numValue))
+                            {
+                                dataPoints.Add(numValue);
+                            }
+                            else
+                            {
+                                var numberMatch = System.Text.RegularExpressions.Regex.Match(yValue, @"-?\d+\.?\d*");
+                                if (numberMatch.Success && double.TryParse(numberMatch.Value, out double extractedNum))
+                                {
+                                    dataPoints.Add(extractedNum);
+                                }
+                                else
+                                {
+                                    dataPoints.Add(null);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            dataPoints.Add(null);
+                        }
+                    }
+                    else
+                    {
+                        dataPoints.Add(null);
+                    }
+                }
+
+                if (dataPoints.Any(d => d.HasValue))
+                {
+                    var colorIndex = datasets.Count % 10;
+                    var colors = new[]
+                    {
+                        "rgba(54, 162, 235, 0.8)",
+                        "rgba(255, 99, 132, 0.8)",
+                        "rgba(255, 206, 86, 0.8)",
+                        "rgba(75, 192, 192, 0.8)",
+                        "rgba(153, 102, 255, 0.8)",
+                        "rgba(255, 159, 64, 0.8)",
+                        "rgba(199, 199, 199, 0.8)",
+                        "rgba(83, 102, 255, 0.8)",
+                        "rgba(255, 99, 255, 0.8)",
+                        "rgba(99, 255, 132, 0.8)"
+                    };
+
+                    datasets.Add(new
+                    {
+                        label = varName,
+                        data = dataPoints,
+                        borderWidth = 2,
+                        backgroundColor = isStacked || isArea ? colors[colorIndex] : colors[colorIndex].Replace("0.8", "0.2"),
+                        borderColor = colors[colorIndex].Replace("0.8", "1"),
+                        fill = isArea || isStacked,
+                        pointRadius = showMarkers ? 4 : (chartType == "line" ? 0 : 3),
+                        pointHoverRadius = 6
+                    });
+                }
+            }
+
+            if (!datasets.Any())
+                return;
+
+            // Build Chart.js configuration
+            var chartConfig = new
+            {
+                type = chartType,
+                data = new
+                {
+                    labels = allXValues,
+                    datasets = datasets
+                },
+                options = new
+                {
+                    responsive = true,
+                    maintainAspectRatio = false,
+                    plugins = new
+                    {
+                        title = new
+                        {
+                            display = true,
+                            text = string.IsNullOrEmpty(groupTitle) 
+                                ? (_request.Configuration.Title ?? "") 
+                                : $"{_request.Configuration.Title ?? ""} - {groupTitle}".TrimStart(' ', '-')
+                        },
+                        legend = new
+                        {
+                            display = _request.Configuration.ShowLegend,
+                            position = (_request.Configuration.LegendPosition ?? "right").ToLower()
+                        }
+                    },
+                    scales = chartType != "pie" ? new
+                    {
+                        x = new
+                        {
+                            title = new
+                            {
+                                display = !string.IsNullOrEmpty(_request.Configuration.XAxisTitle),
+                                text = _request.Configuration.XAxisTitle ?? _selectedXAxisColumn
+                            },
+                            stacked = isStacked
+                        },
+                        y = new
+                        {
+                            title = new
+                            {
+                                display = !string.IsNullOrEmpty(_request.Configuration.YAxisTitle),
+                                text = _request.Configuration.YAxisTitle ?? _selectedYAxisColumn
+                            },
+                            beginAtZero = true,
+                            stacked = isStacked
+                        }
+                    } : null
+                }
+            };
+
+            var chartConfigJson = System.Text.Json.JsonSerializer.Serialize(chartConfig, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+
+            // Verify canvas exists before rendering
+            try
+            {
+                var canvasExists = await JSRuntime.InvokeAsync<bool>("eval", $"document.getElementById('{canvasId}') !== null");
+                if (canvasExists)
+                {
+                    await JSRuntime.InvokeVoidAsync("chartPreview.renderChart", canvasId, chartConfigJson);
+                }
+                else
+                {
+                    Console.WriteLine($"Canvas {canvasId} not found when trying to render chart");
+                }
+            }
+            catch (Exception jsEx)
+            {
+                Console.WriteLine($"Error checking/rendering canvas {canvasId}: {jsEx.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering chart preview for {canvasId}: {ex.Message}");
+        }
     }
 
     private async Task CreateChartAsync()

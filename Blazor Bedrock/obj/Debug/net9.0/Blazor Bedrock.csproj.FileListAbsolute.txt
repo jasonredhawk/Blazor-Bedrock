@@ -168,3 +168,4 @@ C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\n
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\OneOf.Extended.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\bin\Debug\net9.0\Pinecone.Client.dll
 C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\staticwebassets.upToDateCheck.txt
+C:\Users\ouelletf\Documents\Jason\repo\Blazor-Bedrock\Blazor Bedrock\obj\Debug\net9.0\compressed\4zyrj45u1z-{0}-kbcnajw9gd-kbcnajw9gd.gz
