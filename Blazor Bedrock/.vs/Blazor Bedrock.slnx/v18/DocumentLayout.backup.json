@@ -3,16 +3,16 @@
   "WorkspaceRootPath": "C:\\Users\\ouelletf\\Documents\\Jason\\repo\\Blazor-Bedrock\\Blazor Bedrock\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
-      "RelativeMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|solutionrelative:appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+      "AbsoluteMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|solutionrelative:appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
-      "RelativeMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|solutionrelative:appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+      "AbsoluteMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|solutionrelative:appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.production.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
-      "RelativeMoniker": "D:0:0:{9F03BB88-EC4D-497E-8DF1-2B9AB3890189}|Blazor Bedrock.csproj|solutionrelative:appsettings.production.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+      "AbsoluteMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|c:\\users\\ouelletf\\documents\\jason\\repo\\blazor-bedrock\\blazor bedrock\\appsettings.production.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{56CFE27C-B138-5A9E-B854-B32EC8E7DCE3}|Blazor Bedrock.csproj|solutionrelative:appsettings.production.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     }
   ],
   "DocumentGroupContainers": [
@@ -47,8 +47,7 @@
               "RelativeToolTip": "appsettings.Development.json",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAAeAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2025-12-31T19:43:39.635Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-12-31T19:43:39.635Z"
             },
             {
               "$type": "Document",
@@ -60,8 +59,7 @@
               "RelativeToolTip": "appsettings.Production.json",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2025-12-31T19:38:26.746Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-12-31T19:38:26.746Z"
             }
           ]
         }
